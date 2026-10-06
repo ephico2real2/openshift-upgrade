@@ -1,0 +1,831 @@
+<title>OpenShift Update Egress</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root {
+  --ground: #f4f6f8; --surface: #ffffff; --ink: #17212b; --muted: #56616d; --rule: #d5dbe2;
+  --host: #a55a0b; --host-wash: #fbf1e4; --remote: #0e6f68; --remote-wash: #e3f3f1;
+  --gap: #b3261e; --gap-wash: #fbe9e7; --none: #5f6a77; --none-wash: #eef0f3;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --ground: #0e131a; --surface: #151c25; --ink: #e5e9ef; --muted: #9aa5b3; --rule: #2a3440;
+    --host: #f0a53c; --host-wash: #2a2014; --remote: #3fcfc0; --remote-wash: #122a28;
+    --gap: #f2857c; --gap-wash: #2d1614; --none: #9aa5b3; --none-wash: #1b232d;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground: #0e131a; --surface: #151c25; --ink: #e5e9ef; --muted: #9aa5b3; --rule: #2a3440;
+  --host: #f0a53c; --host-wash: #2a2014; --remote: #3fcfc0; --remote-wash: #122a28;
+  --gap: #f2857c; --gap-wash: #2d1614; --none: #9aa5b3; --none-wash: #1b232d;
+}
+* { box-sizing: border-box; }
+body { background: var(--ground); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.55; margin: 0; }
+.page { max-width: 1080px; margin: 0 auto; padding-inline: 16px; padding-block: 40px 72px; display: grid; gap: 48px; }
+header { display: grid; gap: 12px; }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font-size: clamp(26px, 4vw, 36px); line-height: 1.15; margin: 0; font-weight: 700; text-wrap: balance; }
+h2 { font-size: 21px; margin: 0; font-weight: 600; text-wrap: balance; }
+h3 { font-size: 16px; margin: 0; font-weight: 600; }
+p { margin: 0; max-width: 74ch; }
+.lede { font-size: 17px; max-width: 72ch; }
+.muted { color: var(--muted); }
+code { font-family: var(--font-mono); font-size: .88em; overflow-wrap: anywhere; }
+section { display: grid; gap: 16px; }
+.intro { display: grid; gap: 8px; }
+ul.facts, ol.steps { margin: 0; padding-left: 22px; display: grid; gap: 8px; max-width: 80ch; }
+figure { margin: 0; display: grid; gap: 10px; }
+.fig-scroll { overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 12px; }
+.fig-scroll svg { display: block; width: 100%; min-width: 760px; height: auto; color: var(--ink); }
+figcaption { font-size: 13.5px; color: var(--muted); max-width: 84ch; }
+.tbl { overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 10px 14px; border-bottom: 1px solid var(--rule); }
+th { font-size: 12px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); background: var(--ground); white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+td.claim { min-width: 190px; font-weight: 500; }
+td.ev { min-width: 340px; }
+td .src { display: block; margin-top: 4px; font-size: 12.5px; color: var(--muted); }
+.pill { display: inline-block; font-family: var(--font-mono); font-size: 11.5px; font-weight: 600; letter-spacing: .03em; padding: 2px 8px; border-radius: 999px; white-space: nowrap; border: 1px solid; }
+.p-hold { color: var(--remote); background: var(--remote-wash); border-color: var(--remote); }
+.p-cond { color: var(--host); background: var(--host-wash); border-color: var(--host); }
+.p-no { color: var(--gap); background: var(--gap-wash); border-color: var(--gap); }
+.p-unv { color: var(--none); background: var(--none-wash); border-color: var(--none); }
+.opt-head td { background: var(--ground); font-family: var(--font-mono); font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.cards { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.card { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 16px 18px; display: grid; gap: 6px; align-content: start; }
+.card .k { font-family: var(--font-mono); font-size: 12px; color: var(--muted); letter-spacing: .04em; }
+.decisions { display: grid; gap: 12px; }
+.decision { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 16px 20px; display: grid; gap: 8px; }
+.decision .id { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+.decision .q { font-weight: 600; }
+.decision .rec { font-size: 14px; border-left: 3px solid var(--remote); padding-left: 10px; }
+.decision .rec.warn { border-left-color: var(--host); }
+.phase { font-family: var(--font-mono); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.impact-none { color: var(--remote); font-weight: 600; }
+.impact-drain { color: var(--host); font-weight: 600; }
+.impact-reboot { color: var(--gap); font-weight: 600; }
+details { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 12px 16px; display: grid; gap: 10px; }
+summary { cursor: pointer; font-weight: 600; }
+pre { margin: 0; overflow-x: auto; background: var(--ground); border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px; font-family: var(--font-mono); font-size: 12.5px; line-height: 1.5; }
+pre code { font-size: inherit; overflow-wrap: normal; }
+.sources { font-size: 13.5px; display: grid; gap: 6px; padding-left: 22px; margin: 0; }
+.sources li { overflow-wrap: anywhere; }
+a { color: var(--remote); }
+:focus-visible { outline: 2px solid var(--remote); outline-offset: 2px; }
+</style>
+
+<div class="page">
+  <header>
+    <div class="eyebrow">platform engineering · design decision · 2026-09-25 · checked against OpenShift 4.22</div>
+    <h1>How our OpenShift clusters should reach Red Hat to stay current</h1>
+    <p class="lede">Our clusters run disconnected, so every update starts with a manual mirror. Red Hat ships a z-stream for the newest minor about weekly (4.22.1 to 4.22.15 came out every 7 days, 16 Jun to 22 Sep 2026) and a new minor about every four months, and it expects customers on the latest 4.x.z. This page checks both proposed designs against Red Hat's documentation and product source, draws them, and adds a third design that the research supports.</p>
+  </header>
+
+  <section>
+    <div class="intro">
+      <h2>What the research found</h2>
+      <p class="muted">Each point is traced to a document or source file in the tables below.</p>
+    </div>
+    <ul class="facts">
+      <li><strong>Every design opens <code>quay.io</code> and <code>registry.redhat.io</code> at the firewall.</strong> They differ only in which machines use that opening: every cluster node (Option 1) or one mirror host (Options 2 and 3).</li>
+      <li><strong>Neither option needs two-headed DNS.</strong> Behind an HTTP CONNECT proxy, nodes resolve only the proxy's name; the proxy resolves Red Hat's names. Quay's repository mirroring and oc-mirror both accept a proxy setting too.</li>
+      <li><strong>The "Quay image sync" in Option 2 is not the documented way to mirror OpenShift content.</strong> The 4.22 docs name oc-mirror plugin v2. Quay repository mirroring copies tags by glob, one repository at a time, and has no logic for release payloads, operator catalogs, signatures or the update graph.</li>
+      <li><strong>Enabling the cluster-wide proxy drains and reboots every node once.</strong> Updating the pull secret changes nothing on the nodes. Editing mirror sets drains the nodes and reloads CRI-O; the MCO code shows no reboot, although one paragraph of the docs says there is one.</li>
+      <li><strong>Since 4.21, signature checks are on by default for release images.</strong> Any design that serves release images from a mirror must also mirror their sigstore signatures, or node updates stop.</li>
+      <li><strong>Git by itself enforces nothing on operator catalogs.</strong> Default RBAC already stops namespace admins from adding catalogs. <code>disableAllDefaultSources</code> hides only Red Hat's defaults, and does not touch the OLM v1 catalogs. Only an admission policy also binds cluster-admins and Argo CD. A filtered catalog also needs a registry to host its image.</li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="intro">
+      <h2>Who talks to Red Hat, in each design</h2>
+      <p>The three designs side by side. Look at the egress band in the middle: it shows what crosses the firewall and from where.</p>
+    </div>
+    <figure>
+      <div class="fig-scroll">
+        <svg viewBox="0 0 1040 600" role="img" aria-label="Three designs compared. In Option 1 the cluster sends images, graph and signature traffic through the proxy. In Option 3 the cluster sends only graph and signature requests, and a mirror host fetches images into the internal registry. In Option 2 the cluster has no egress and a mirror host fills an internal Quay. Every design opens quay.io and registry.redhat.io at the firewall.">
+          <defs><marker id="ah1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
+          <marker id="ah1t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--remote)"/></marker></defs>
+
+          <!-- zone labels in the left gutter -->
+          <g font-family="IBM Plex Mono, monospace" font-size="12.5" font-weight="600">
+            <text x="20" y="100" fill="var(--host)">INSIDE</text>
+            <text x="20" y="116" fill="var(--muted)" font-weight="400" font-size="11">our network</text>
+            <text x="20" y="360" fill="var(--none)">EGRESS</text>
+            <text x="20" y="376" fill="var(--muted)" font-weight="400" font-size="11">proxy + FW</text>
+            <text x="20" y="430" fill="var(--remote)">RED HAT</text>
+            <text x="20" y="446" fill="var(--muted)" font-weight="400" font-size="11">TCP 443</text>
+          </g>
+
+          <!-- egress band -->
+          <rect x="112" y="338" width="908" height="46" fill="var(--none-wash)"/>
+          <line x1="112" y1="338" x2="1020" y2="338" stroke="var(--rule)" stroke-width="1.5" stroke-dasharray="6 5"/>
+          <line x1="112" y1="384" x2="1020" y2="384" stroke="var(--rule)" stroke-width="1.5" stroke-dasharray="6 5"/>
+
+          <g font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="currentColor">
+            <!-- column headers -->
+            <text x="135" y="34" font-weight="700" font-size="14">Option 1 · allowlist + proxy</text>
+            <text x="135" y="54" fill="var(--muted)">the cluster pulls from Red Hat</text>
+            <text x="440" y="34" font-weight="700" font-size="14">Option 3 · hybrid (added here)</text>
+            <text x="440" y="54" fill="var(--muted)">graph from Red Hat, images from inside</text>
+            <text x="745" y="34" font-weight="700" font-size="14">Option 2 · Quay + OSUS, corrected</text>
+            <text x="745" y="54" fill="var(--muted)">no egress from the cluster</text>
+            <line x1="418" y1="16" x2="418" y2="330" stroke="var(--rule)"/>
+            <line x1="723" y1="16" x2="723" y2="330" stroke="var(--rule)"/>
+
+            <!-- ============ Option 1 ============ -->
+            <rect x="135" y="80" width="260" height="66" rx="7" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.4"/>
+            <text x="151" y="101" font-weight="600">OpenShift cluster</text>
+            <text x="151" y="118">proxy for CRI-O, CVO, OLM, Insights</text>
+            <text x="151" y="135" fill="var(--muted)">allowedRegistries + image policy</text>
+
+            <rect x="135" y="182" width="175" height="48" rx="7" fill="none" stroke="var(--none)" stroke-width="1.2" stroke-dasharray="4 4"/>
+            <text x="151" y="202" fill="var(--none)">no mirror registry</text>
+            <text x="151" y="219" fill="var(--none)">no mirror host</text>
+
+            <line x1="350" y1="146" x2="350" y2="408" stroke="var(--remote)" stroke-width="1.8" marker-end="url(#ah1t)"/>
+            <text x="344" y="366" text-anchor="end" fill="var(--remote)" font-weight="600">images, graph, signatures</text>
+
+            <rect x="135" y="412" width="260" height="112" rx="7" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.4"/>
+            <text x="151" y="433" font-weight="600" fill="var(--remote)">every update + operator host</text>
+            <g font-family="IBM Plex Mono, monospace" font-size="12">
+              <text x="151" y="452">quay.io + cdn01–06.quay.io</text>
+              <text x="151" y="469">registry.redhat.io</text>
+              <text x="151" y="486">api.openshift.com</text>
+              <text x="151" y="503">mirror.openshift.com</text>
+            </g>
+            <text x="151" y="519" fill="var(--muted)" font-size="11.5">+ telemetry hosts, if kept</text>
+
+            <!-- ============ Option 3 ============ -->
+            <rect x="440" y="80" width="260" height="66" rx="7" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.4"/>
+            <text x="456" y="101" font-weight="600">OpenShift cluster</text>
+            <text x="456" y="118">IDMS: NeverContactSource</text>
+            <text x="456" y="135" fill="var(--muted)">proxy used for graph + signatures</text>
+
+            <rect x="530" y="178" width="170" height="52" rx="7" fill="var(--surface)" stroke="currentColor" stroke-width="1.2"/>
+            <text x="546" y="199" font-weight="600">internal registry</text>
+            <text x="546" y="216" fill="var(--muted)">the one we run today</text>
+
+            <rect x="530" y="254" width="170" height="60" rx="7" fill="var(--surface)" stroke="currentColor" stroke-width="1.2"/>
+            <text x="546" y="275" font-weight="600">mirror host</text>
+            <text x="546" y="291">oc-mirror v2, m2m</text>
+            <text x="546" y="307" fill="var(--muted)">scheduled CI job</text>
+
+            <line x1="615" y1="178" x2="615" y2="150" stroke="currentColor" stroke-width="1.3" marker-end="url(#ah1)"/>
+            <text x="622" y="168" fill="var(--muted)">images</text>
+            <line x1="615" y1="254" x2="615" y2="234" stroke="currentColor" stroke-width="1.3" marker-end="url(#ah1)"/>
+            <text x="622" y="248" fill="var(--muted)">push</text>
+
+            <line x1="470" y1="146" x2="470" y2="408" stroke="var(--remote)" stroke-width="1.8" marker-end="url(#ah1t)"/>
+            <text x="476" y="366" fill="var(--remote)" font-weight="600">graph, signatures</text>
+            <line x1="665" y1="314" x2="665" y2="470" stroke="var(--remote)" stroke-width="1.8" marker-end="url(#ah1t)"/>
+            <text x="671" y="366" fill="var(--remote)" font-weight="600">images</text>
+
+            <rect x="440" y="412" width="190" height="50" rx="7" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.4"/>
+            <g font-family="IBM Plex Mono, monospace" font-size="12">
+              <text x="456" y="433">api.openshift.com</text>
+              <text x="456" y="450">mirror.openshift.com</text>
+            </g>
+            <rect x="440" y="474" width="260" height="50" rx="7" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.4"/>
+            <text x="456" y="495" font-family="IBM Plex Mono, monospace" font-size="12">quay.io · registry.redhat.io</text>
+            <text x="456" y="513" fill="var(--muted)" font-size="11.5">+ CDN hosts, api / mirror.openshift.com</text>
+
+            <!-- ============ Option 2 ============ -->
+            <rect x="745" y="80" width="260" height="66" rx="7" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.4"/>
+            <text x="761" y="101" font-weight="600">OpenShift cluster</text>
+            <text x="761" y="118">local OSUS serves the graph</text>
+            <text x="761" y="135" fill="var(--muted)">IDMS: NeverContactSource</text>
+
+            <rect x="835" y="178" width="170" height="52" rx="7" fill="var(--surface)" stroke="currentColor" stroke-width="1.2"/>
+            <text x="851" y="199" font-weight="600">Red Hat Quay (HA)</text>
+            <text x="851" y="216" fill="var(--muted)">oc-mirror target</text>
+
+            <rect x="835" y="254" width="170" height="60" rx="7" fill="var(--surface)" stroke="currentColor" stroke-width="1.2"/>
+            <text x="851" y="275" font-weight="600">mirror host</text>
+            <text x="851" y="291">oc-mirror v2, m2m</text>
+            <text x="851" y="307" fill="var(--muted)">scheduled CI job</text>
+
+            <line x1="920" y1="178" x2="920" y2="150" stroke="currentColor" stroke-width="1.3" marker-end="url(#ah1)"/>
+            <text x="927" y="168" fill="var(--muted)">images, graph data</text>
+            <line x1="920" y1="254" x2="920" y2="234" stroke="currentColor" stroke-width="1.3" marker-end="url(#ah1)"/>
+            <text x="927" y="248" fill="var(--muted)">push</text>
+
+            <line x1="775" y1="146" x2="775" y2="330" stroke="var(--none)" stroke-width="1.4" stroke-dasharray="4 4"/>
+            <line x1="765" y1="332" x2="785" y2="332" stroke="var(--none)" stroke-width="2"/>
+            <text x="781" y="366" fill="var(--none)" font-weight="600">no cluster egress</text>
+            <line x1="970" y1="314" x2="970" y2="470" stroke="var(--remote)" stroke-width="1.8" marker-end="url(#ah1t)"/>
+            <text x="964" y="366" text-anchor="end" fill="var(--remote)" font-weight="600">images</text>
+
+            <rect x="745" y="474" width="260" height="50" rx="7" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.4"/>
+            <text x="761" y="495" font-family="IBM Plex Mono, monospace" font-size="12">quay.io · registry.redhat.io</text>
+            <text x="761" y="513" fill="var(--muted)" font-size="11.5">+ CDN hosts, api / mirror.openshift.com</text>
+
+            <text x="20" y="560">Every design opens quay.io and registry.redhat.io at the firewall. The designs differ in which machines use that opening.</text>
+            <text x="20" y="582" fill="var(--host)" font-weight="600">All three are proposals. Option 3 comes from this research; ask Red Hat Support to confirm it in writing before adopting it.</text>
+          </g>
+        </svg>
+      </div>
+      <figcaption>Every design opens <code>quay.io</code> and <code>registry.redhat.io</code> at the firewall. In Option 1 every node uses the opening. In Option 3 the cluster sends only update-graph and signature requests, and a mirror host brings the images in. In Option 2 the cluster has no egress and the mirror host also brings in the update graph for a local OpenShift Update Service (OSUS).</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <div class="intro">
+      <h2>Your plan, checked line by line</h2>
+      <p class="muted">Sources are the OpenShift 4.22 docs (built from <code>openshift/openshift-docs</code>, branch <code>enterprise-4.22</code>), Red Hat Quay 3.18 docs, Red Hat KB articles, and the <code>release-4.22</code> product source. Labels: <span class="pill p-hold">holds</span> <span class="pill p-cond">holds, with conditions</span> <span class="pill p-no">does not hold</span> <span class="pill p-unv">unverified</span></p>
+    </div>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>Claim in the plan</th><th>Verdict</th><th>What the sources show</th></tr></thead>
+        <tbody>
+          <tr class="opt-head"><td colspan="3">Option 1 · allowlist Red Hat URLs + cluster-wide proxy</td></tr>
+          <tr>
+            <td class="claim">a. Allowlist the Red Hat URLs</td>
+            <td><span class="pill p-hold">holds</span></td>
+            <td class="ev">"Configuring your firewall" lists the hosts, all on TCP 443 except NTP. The host list is the same in every version from 4.18 to 4.22. <code>*.quay.io</code> may replace <code>cdn01–06.quay.io</code>. The CVO "needs only a single functioning source" for signatures, so <code>mirror.openshift.com</code> is enough and the <code>storage.googleapis.com/openshift-release</code> path rule can be dropped.<span class="src">docs 4.22 installation_configuration/configuring-firewall</span></td>
+          </tr>
+          <tr>
+            <td class="claim">a. No two-headed DNS required</td>
+            <td><span class="pill p-cond">holds, with conditions</span></td>
+            <td class="ev">With CONNECT, the client sends only the destination host and port to the proxy, and the proxy opens the connection (RFC 9110 §9.3.6). CRI-O, the CVO and the operators use Go's proxy transport, so nodes resolve only the proxy's name and <code>noProxy</code> names. <strong>Conditions:</strong> the authentication and console operators probe their <code>*.apps</code> routes through the proxy, and the apps domain is not added to <code>noProxy</code> automatically, so add <code>.apps.&lt;cluster&gt;.&lt;domain&gt;</code>. NTP (UDP 123) needs an internal source. Red Hat's docs do not state the DNS point outright; it follows from the RFC and the code.<span class="src">cluster-authentication-operator release-4.22 proxyconfig_controller.go; cluster-network-operator no_proxy.go; KB 7073329</span></td>
+          </tr>
+          <tr>
+            <td class="claim">b. Configure the OpenShift proxy</td>
+            <td><span class="pill p-cond">holds, with conditions</span></td>
+            <td class="ev">This is a documented configuration (<code>proxy.config.openshift.io/cluster</code>). <strong>Cost:</strong> "the Machine Config Operator (MCO) reboots all nodes in your cluster" when you enable it, and again when <code>httpProxy</code>, <code>httpsProxy</code> or <code>noProxy</code> change, because the MCO writes <code>/etc/mco/proxy.env</code> and that file is not on its list of files it changes without a reboot. A <code>trustedCA</code>-only change restarts CRI-O and does not reboot. The proxy applies to platform components only, not user workloads.<span class="src">docs 4.22 nw-proxy-configure-object.adoc; machine-config-operator release-4.22 pkg/daemon/update.go</span></td>
+          </tr>
+          <tr>
+            <td class="claim">c. Limit catalogs via Git so developers cannot use an unapproved catalog</td>
+            <td><span class="pill p-cond">holds, with conditions</span></td>
+            <td class="ev">Git is where the configuration is reviewed; nothing in Git enforces it. What enforces it: default RBAC gives namespace <code>admin</code>/<code>edit</code> <code>create</code> on Subscriptions only, never on CatalogSources or OperatorGroups (the OLM aggregated ClusterRoles are byte-identical from 4.18 to 4.22). <code>disableAllDefaultSources</code> removes only the Red Hat default catalogs and has no effect on OLM v1 ClusterCatalogs (GA and on by default since 4.18). A ValidatingAdmissionPolicy is the only control that also binds cluster-admins and Argo CD. <strong>Condition specific to Option 1:</strong> a filtered catalog needs a registry to host its image. Without one, use a package-and-channel allowlist on the stock <code>redhat-operators</code> catalog instead.<span class="src">operator-framework-olm manifests/0000_50_olm_09-aggregated.clusterrole.yaml; docs olm-policy-understanding.adoc; openshift/api types_operatorhub.go</span></td>
+          </tr>
+          <tr>
+            <td class="claim">Pro: a supported, standard pattern</td>
+            <td><span class="pill p-cond">holds, with conditions</span></td>
+            <td class="ev">The firewall allowlist and the cluster-wide proxy are both documented configurations, and Red Hat's own blog lists "internet access… only via an HTTP(S) proxy" as one supported form of restricted network. <strong>Gap:</strong> no documented procedure converts a disconnected cluster to connected. The closest, "Restoring the network", covers ICSP objects only.<span class="src">redhat.com/en/blog/introducing-mirror-registry-for-red-hat-openshift; docs 4.18 postinstallation_configuration/converting-to-disconnected</span></td>
+          </tr>
+          <tr>
+            <td class="claim">Con: security approval</td>
+            <td><span class="pill p-hold">holds</span></td>
+            <td class="ev">The real concerns to answer: <code>quay.io</code> is a public registry, and a CONNECT proxy sees only <code>quay.io:443</code>, so it cannot filter by repository or tell a pull from a push without TLS interception. The in-cluster answers are <code>allowedRegistries</code> scoped to <code>quay.io/openshift-release-dev</code> (KB 5614901) and the default <code>openshift</code> ClusterImagePolicy (on by default since 4.21). See the security controls section.<span class="src">access.redhat.com/solutions/5614901; 4.21 release notes</span></td>
+          </tr>
+
+          <tr class="opt-head"><td colspan="3">Option 2 · internal Quay, two-headed DNS, sync, OSUS</td></tr>
+          <tr>
+            <td class="claim">a1. Two-headed DNS is needed so Quay can reach Red Hat</td>
+            <td><span class="pill p-no">does not hold</span></td>
+            <td class="ev">Each Quay repository mirror has its own "HTTPS Proxy" and "No Proxy" settings, which Quay passes to skopeo. oc-mirror v2 "can operate in a proxy-configured environment" (GA in 4.18). The only DNS need in the docs is that the Quay hostname resolves internally.<span class="src">Quay 3.18 mirroring-creating-repository; quay util/repomirror/skopeomirror.py; 4.18 release notes</span></td>
+          </tr>
+          <tr>
+            <td class="claim">a2. Quay's image sync (full Quay only) talks to Red Hat and syncs catalogs and images</td>
+            <td><span class="pill p-no">does not hold</span></td>
+            <td class="ev">Quay repository mirroring runs <code>skopeo list-tags</code> on one upstream repository, keeps the tags that match a glob and copies them. Its worker code has no logic for release image references, catalog <code>relatedImages</code>, signatures or the update graph. A 4.22.15 release references <strong>191</strong> component images by digest, and <code>4.22.*-x86_64</code> matches 58 tags on quay.io, of which only 17 are GA x86_64 releases; the other 41 are pre-release or multi-arch variants. The 4.22 docs give oc-mirror v2 as the method ("<code>oc adm release mirror</code>" is deprecated in 4.22), and oc-mirror also writes the IDMS/ITMS, filtered catalogs, UpdateService, graph-data image and signature ConfigMaps. No Red Hat document endorses or forbids Quay repository mirroring for release content.<span class="src">quay/quay workers/repomirrorworker; docs 4.22 disconnected/updating/mirroring-image-repository; mirror.openshift.com …/4.22.15/release.txt</span></td>
+          </tr>
+          <tr>
+            <td class="claim">b. Point the cluster at the internal registry</td>
+            <td><span class="pill p-hold">holds</span></td>
+            <td class="ev">Use ImageDigestMirrorSet / ImageTagMirrorSet (ICSP deprecated since 4.13). Creating an IDMS changes nothing on the nodes. Editing or deleting one drains the nodes and reloads CRI-O. The 4.22 docs text also says "reboots", but the MCO code maps <code>registries.conf</code> changes to a CRI-O reload.<span class="src">docs 4.22 images-configuration-registry-mirror.adoc; MCO pkg/daemon/update.go, drain.go</span></td>
+          </tr>
+          <tr>
+            <td class="claim">c. Set up the update service</td>
+            <td><span class="pill p-hold">holds</span></td>
+            <td class="ev">OSUS (<code>cincinnati-operator</code>) needs a graph-data image, which oc-mirror builds when <code>graph: true</code> is set. One instance "is capable of serving recommendations to thousands of clusters." Without OSUS you update with <code>--allow-explicit-upgrade</code>, which skips the recommendation and known-risk checks (stable-4.22 has 12 conditional edges today).<span class="src">docs 4.22 updating-a-cluster-in-a-disconnected-environment; oc pkg/cli/admin/upgrade</span></td>
+          </tr>
+          <tr>
+            <td class="claim">d. Limit catalogs via Git</td>
+            <td><span class="pill p-cond">holds, with conditions</span></td>
+            <td class="ev">oc-mirror rebuilds a filtered catalog so it holds only the packages listed in the ImageSetConfiguration, and in 4.22 pins it by digest. It "does not infer… bundle dependencies", so dependencies have to be listed by hand. The enforcement is the same as in Option 1: RBAC plus an admission policy.<span class="src">docs 4.22 oc-mirror-operator-catalog-filtering.adoc; oc-mirror internal/pkg/operator/filtered_collector.go</span></td>
+          </tr>
+          <tr>
+            <td class="claim">e. Set up the OpenShift console</td>
+            <td><span class="pill p-unv">unverified</span></td>
+            <td class="ev">The plan does not say what console work is meant (the Quay UI, OperatorHub in the console, or the update view). Not researched.</td>
+          </tr>
+          <tr>
+            <td class="claim">Con: new setup, new cluster</td>
+            <td><span class="pill p-cond">holds, with conditions</span></td>
+            <td class="ev">No document requires a new cluster. Quay runs either standalone HA on RHEL (3+ Quay hosts, PostgreSQL, Redis, object storage, a load balancer) or through the Quay Operator on an existing cluster. A Red Hat blog says the registry should "ideally" run on a central infrastructure cluster, which avoids a dependency loop. OpenShift Platform Plus allows Quay "on any cluster that has an OpenShift Platform Plus entitlement", with "no limit on the number of Quay deployments". The bundled mirror registry for Red Hat OpenShift "is not a highly-available registry" and its use with more than one cluster "is discouraged".<span class="src">Quay 3.18 deploy HA; self-managed OpenShift subscription guide (Jan 2026); docs 4.22 mirror-registry-introduction</span></td>
+          </tr>
+          <tr>
+            <td class="claim">Con: may need Red Hat Consulting</td>
+            <td><span class="pill p-unv">unverified</span></td>
+            <td class="ev">The docs say to "contact your sales representative or Red Hat Support". None says Consulting is required.</td>
+          </tr>
+          <tr>
+            <td class="claim">Con: image sync issues remain</td>
+            <td><span class="pill p-hold">holds</span></td>
+            <td class="ev">Sizing guidance is "about 358 GB for… release images and… Red Hat Operator images… up to 1 TB per stream". oc-mirror v2 deletes manifests only, so the registry's garbage collection has to reclaim space. KBs 7130341 (context deadline exceeded), 7139982 (<code>.sig</code> manifest unknown) and 7128745 (disk2mirror manifest unknown) describe open failure modes. Since 4.21, release images from a mirror also need their sigstore signatures mirrored, or "the default openshift cluster image policy… blocks… the node update."<span class="src">docs 4.22 disconnected; nodes-sigstore-configure-cluster-policy.adoc</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="intro">
+      <h2>Option 1 in detail: one update, step by step</h2>
+      <p>What happens on the wire when a proxied cluster updates. The numbered steps follow the order in the CVO code: it verifies the release signature before it pulls the payload.</p>
+    </div>
+    <figure>
+      <div class="fig-scroll">
+        <svg viewBox="0 0 1000 524" role="img" aria-label="An Option 1 update in six steps. The CVO fetches the update graph from api.openshift.com and the release signature from mirror.openshift.com. CRI-O pulls the payload from quay.io and its CDN, checks allowedRegistries and the sigstore policy, and OLM pulls approved operators from registry.redhat.io. Every request goes through the proxy.">
+          <defs><marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--remote)"/></marker></defs>
+          <g font-family="IBM Plex Mono, monospace" font-size="12.5" font-weight="600">
+            <rect x="20" y="14" width="400" height="30" rx="6" fill="var(--host-wash)" stroke="var(--host)"/>
+            <text x="220" y="34" text-anchor="middle" fill="var(--host)">INSIDE · the cluster</text>
+            <rect x="440" y="14" width="160" height="30" rx="6" fill="var(--none-wash)" stroke="var(--none)"/>
+            <text x="520" y="34" text-anchor="middle" fill="var(--none)">EGRESS · proxy</text>
+            <rect x="620" y="14" width="360" height="30" rx="6" fill="var(--remote-wash)" stroke="var(--remote)"/>
+            <text x="800" y="34" text-anchor="middle" fill="var(--remote)">RED HAT · TCP 443</text>
+          </g>
+          <line x1="430" y1="14" x2="430" y2="426" stroke="var(--rule)" stroke-width="1.5" stroke-dasharray="6 5"/>
+          <line x1="610" y1="14" x2="610" y2="426" stroke="var(--rule)" stroke-width="1.5" stroke-dasharray="6 5"/>
+
+          <g font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="currentColor">
+            <!-- step 1 -->
+            <rect x="30" y="60" width="380" height="50" rx="7" fill="var(--surface)" stroke="currentColor" stroke-width="1.2"/>
+            <text x="46" y="80" font-weight="600">① The CVO checks for updates</text>
+            <text x="46" y="98" fill="var(--muted)">sends channel, version, architecture, cluster ID</text>
+            <line x1="410" y1="85" x2="626" y2="85" stroke="var(--remote)" stroke-width="1.6" marker-end="url(#ah2)"/>
+            <rect x="630" y="60" width="340" height="50" rx="7" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.2"/>
+            <text x="646" y="80" font-family="IBM Plex Mono, monospace" font-weight="600" font-size="12.5">api.openshift.com</text>
+            <text x="646" y="98" fill="var(--muted)">returns the graph: digests, edges, known risks</text>
+
+            <!-- step 2 -->
+            <rect x="30" y="122" width="380" height="50" rx="7" fill="var(--surface)" stroke="currentColor" stroke-width="1.2"/>
+            <text x="46" y="142" font-weight="600">② An admin picks the target</text>
+            <text x="46" y="160" font-family="IBM Plex Mono, monospace" font-size="12" fill="var(--muted)">oc adm upgrade --to=4.22.z</text>
+            <text x="520" y="151" text-anchor="middle" fill="var(--none)">no egress</text>
+
+            <!-- step 3 -->
+            <rect x="30" y="184" width="380" height="50" rx="7" fill="var(--surface)" stroke="currentColor" stroke-width="1.2"/>
+            <text x="46" y="204" font-weight="600">③ The CVO verifies the release</text>
+            <text x="46" y="222" fill="var(--muted)">GPG signature, looked up by release digest</text>
+            <line x1="410" y1="209" x2="626" y2="209" stroke="var(--remote)" stroke-width="1.6" marker-end="url(#ah2)"/>
+            <rect x="630" y="184" width="340" height="50" rx="7" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.2"/>
+            <text x="646" y="204" font-family="IBM Plex Mono, monospace" font-weight="600" font-size="12.5">mirror.openshift.com</text>
+            <text x="646" y="222" fill="var(--muted)">one working signature store is enough</text>
+
+            <!-- step 4 -->
+            <rect x="30" y="246" width="380" height="50" rx="7" fill="var(--surface)" stroke="currentColor" stroke-width="1.2"/>
+            <text x="46" y="266" font-weight="600">④ CRI-O pulls the payload</text>
+            <text x="46" y="284" fill="var(--muted)">ocp-release + 191 component images (4.22.15)</text>
+            <line x1="410" y1="271" x2="626" y2="271" stroke="var(--remote)" stroke-width="1.6" marker-end="url(#ah2)"/>
+            <rect x="630" y="246" width="340" height="50" rx="7" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.2"/>
+            <text x="646" y="266" font-family="IBM Plex Mono, monospace" font-weight="600" font-size="12.5">quay.io → cdn01–06.quay.io</text>
+            <text x="646" y="284" fill="var(--muted)">image layers are redirected to the CDN hosts</text>
+
+            <!-- step 5 -->
+            <rect x="30" y="308" width="380" height="50" rx="7" fill="var(--surface)" stroke="currentColor" stroke-width="1.2"/>
+            <text x="46" y="328" font-weight="600">⑤ CRI-O checks each pull</text>
+            <text x="46" y="346" fill="var(--muted)">allowedRegistries + ClusterImagePolicy "openshift"</text>
+            <line x1="410" y1="333" x2="626" y2="333" stroke="var(--remote)" stroke-width="1.6" marker-end="url(#ah2)"/>
+            <rect x="630" y="308" width="340" height="50" rx="7" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.2"/>
+            <text x="646" y="328" font-family="IBM Plex Mono, monospace" font-weight="600" font-size="12.5">quay.io · sha256-&lt;digest&gt;.sig</text>
+            <text x="646" y="346" fill="var(--muted)">sigstore signature, checked with Red Hat's key</text>
+
+            <!-- step 6 -->
+            <rect x="30" y="370" width="380" height="50" rx="7" fill="var(--surface)" stroke="currentColor" stroke-width="1.2"/>
+            <text x="46" y="390" font-weight="600">⑥ OLM installs approved operators</text>
+            <text x="46" y="408" fill="var(--muted)">only from catalogs that Git defines</text>
+            <line x1="410" y1="395" x2="626" y2="395" stroke="var(--remote)" stroke-width="1.6" marker-end="url(#ah2)"/>
+            <rect x="630" y="370" width="340" height="50" rx="7" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.2"/>
+            <text x="646" y="390" font-family="IBM Plex Mono, monospace" font-weight="600" font-size="12.5">registry.redhat.io</text>
+            <text x="646" y="408" fill="var(--muted)">catalog, bundle and operator images</text>
+
+            <text x="20" y="456">Nodes resolve only the proxy's name; the proxy resolves Red Hat's names (HTTP CONNECT, RFC 9110 §9.3.6). No split DNS.</text>
+            <text x="20" y="478" fill="var(--gap)" font-weight="600">Enabling the proxy drains and reboots every node once. Add .apps.&lt;cluster&gt;.&lt;domain&gt; to noProxy, or the auth and console route checks fail.</text>
+            <text x="20" y="500" fill="var(--host)" font-weight="600">Proposed design: none of this is configured today.</text>
+          </g>
+        </svg>
+      </div>
+      <figcaption>Every request in an Option 1 update goes through the proxy to four host groups. The CVO fetches the graph (①) and the release signature (③) before CRI-O pulls the payload (④). CRI-O then enforces the repository allowlist and the sigstore policy on every pull (⑤). The sigstore scope in 4.22 covers <code>ocp-release</code>, <code>ocp-v4.0-art-dev</code> and <code>ocp-v5.0-art-dev</code>.</figcaption>
+    </figure>
+
+    <div class="tbl">
+      <table>
+        <thead><tr><th>Host (TCP 443)</th><th>Used for</th><th>Needed when</th></tr></thead>
+        <tbody>
+          <tr><td><code>quay.io</code>, <code>cdn.quay.io</code>, <code>cdn01–06.quay.io</code> (or <code>*.quay.io</code>)</td><td>Release payload and image layers. <code>registry.redhat.io</code> layers are also served from the Quay CDN.</td><td>Always</td></tr>
+          <tr><td><code>registry.redhat.io</code></td><td>Core images, operator catalogs and operator images</td><td>Always</td></tr>
+          <tr><td><code>api.openshift.com</code></td><td>"API endpoint for cluster tokens and update checks"</td><td>Always</td></tr>
+          <tr><td><code>mirror.openshift.com</code></td><td>Release signatures (one source is enough)</td><td>Always</td></tr>
+          <tr><td><code>quayio-production-s3.s3.amazonaws.com</code></td><td>"Required to access Quay image content in AWS"</td><td>As the doc lists it; ask Red Hat whether it applies on-premises</td></tr>
+          <tr><td><code>registry.access.redhat.com</code>, <code>access.redhat.com</code></td><td>Ecosystem Catalog images and their signature store</td><td>If you use images from that registry</td></tr>
+          <tr><td><code>console.redhat.com</code>, <code>sso.redhat.com</code></td><td>Cluster tokens and authentication</td><td>Listed under "cluster access, authentication, and updates"; whether updates fail without them is <span class="pill p-unv">unverified</span></td></tr>
+          <tr><td><code>cert-api.access.redhat.com</code>, <code>api.access.redhat.com</code>, <code>infogw.api.openshift.com</code></td><td>Telemetry and Insights</td><td>Only if telemetry stays on</td></tr>
+          <tr><td><code>registry.connect.redhat.com</code></td><td>Certified and third-party operators</td><td>Only if you use them</td></tr>
+          <tr><td><code>rhcos.mirror.openshift.com</code></td><td>RHCOS boot images</td><td>Installs; in-place updates ship the OS in a container (<span class="pill p-unv">unverified</span> that updates never need it)</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="intro">
+      <h2>Option 2 as the documentation describes it</h2>
+      <p>The documented form of Option 2 keeps full Quay as the registry and changes how content gets into it: oc-mirror v2 fills Quay and writes the cluster configuration. The red dashed path is the mechanism in the plan as written.</p>
+    </div>
+    <figure>
+      <div class="fig-scroll">
+        <svg viewBox="0 0 1000 512" role="img" aria-label="Option 2 in its documented form. A connected mirror host runs oc-mirror v2 from a Git-held ImageSetConfiguration, pulls from Red Hat through the proxy, pushes to an HA Red Hat Quay, and writes YAML that Argo CD applies. The cluster pulls images from Quay through IDMS and gets its update graph from a local OSUS. Quay repository mirroring, the plan's mechanism, is shown in red because it has no release, catalog, signature or graph logic.">
+          <defs><marker id="ah3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
+          <marker id="ah3t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--remote)"/></marker>
+          <marker id="ah3r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--gap)"/></marker></defs>
+          <g font-family="IBM Plex Mono, monospace" font-size="12.5" font-weight="600">
+            <rect x="20" y="14" width="620" height="30" rx="6" fill="var(--host-wash)" stroke="var(--host)"/>
+            <text x="330" y="34" text-anchor="middle" fill="var(--host)">INSIDE · our network</text>
+            <rect x="660" y="14" width="100" height="30" rx="6" fill="var(--none-wash)" stroke="var(--none)"/>
+            <text x="710" y="34" text-anchor="middle" fill="var(--none)">EGRESS</text>
+            <rect x="780" y="14" width="200" height="30" rx="6" fill="var(--remote-wash)" stroke="var(--remote)"/>
+            <text x="880" y="34" text-anchor="middle" fill="var(--remote)">RED HAT</text>
+          </g>
+          <line x1="650" y1="14" x2="650" y2="430" stroke="var(--rule)" stroke-width="1.5" stroke-dasharray="6 5"/>
+          <line x1="770" y1="14" x2="770" y2="430" stroke="var(--rule)" stroke-width="1.5" stroke-dasharray="6 5"/>
+
+          <g font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="currentColor">
+            <!-- Git -->
+            <rect x="30" y="64" width="200" height="76" rx="7" fill="var(--surface)" stroke="currentColor" stroke-width="1.2"/>
+            <text x="46" y="86" font-weight="600">Git + OpenShift GitOps</text>
+            <text x="46" y="104" font-family="IBM Plex Mono, monospace" font-size="12">ImageSetConfiguration</text>
+            <text x="46" y="122" fill="var(--muted)">+ generated cluster YAML</text>
+
+            <!-- mirror host -->
+            <rect x="280" y="64" width="210" height="76" rx="7" fill="var(--surface)" stroke="currentColor" stroke-width="1.2"/>
+            <text x="296" y="86" font-weight="600">mirror host (connected)</text>
+            <text x="296" y="104" font-family="IBM Plex Mono, monospace" font-size="12">oc mirror --v2</text>
+            <text x="296" y="122" fill="var(--muted)">mirror-to-mirror, scheduled</text>
+
+            <line x1="230" y1="90" x2="276" y2="90" stroke="currentColor" stroke-width="1.3" marker-end="url(#ah3)"/>
+            <text x="253" y="83" text-anchor="middle" fill="var(--muted)" font-size="11.5">config</text>
+            <line x1="280" y1="116" x2="234" y2="116" stroke="currentColor" stroke-width="1.3" marker-end="url(#ah3)"/>
+            <text x="257" y="133" text-anchor="middle" fill="var(--muted)" font-size="11.5">YAML</text>
+
+            <!-- Red Hat -->
+            <rect x="790" y="64" width="180" height="196" rx="7" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.4"/>
+            <text x="806" y="86" font-weight="600" fill="var(--remote)">Red Hat</text>
+            <g font-family="IBM Plex Mono, monospace" font-size="12">
+              <text x="806" y="106">quay.io + CDN</text>
+              <text x="806" y="123">registry.redhat.io</text>
+              <text x="806" y="140">api.openshift.com</text>
+              <text x="806" y="157">mirror.openshift.com</text>
+            </g>
+            <text x="806" y="176" fill="var(--muted)" font-size="11.5">graph data comes from</text>
+            <text x="806" y="192" fill="var(--muted)" font-size="11.5">api.openshift.com, GPG</text>
+            <text x="806" y="208" fill="var(--muted)" font-size="11.5">signatures from</text>
+            <text x="806" y="224" fill="var(--muted)" font-size="11.5">mirror.openshift.com</text>
+
+            <line x1="490" y1="90" x2="786" y2="90" stroke="var(--remote)" stroke-width="1.8" marker-end="url(#ah3t)"/>
+            <text x="498" y="82" fill="var(--remote)" font-weight="600">pull through the proxy</text>
+
+            <!-- Quay -->
+            <rect x="280" y="180" width="210" height="76" rx="7" fill="var(--surface)" stroke="currentColor" stroke-width="1.2"/>
+            <text x="296" y="202" font-weight="600">Red Hat Quay (HA)</text>
+            <text x="296" y="220">payload, catalogs, .sig tags</text>
+            <text x="296" y="238" fill="var(--muted)">HA: PostgreSQL, Redis, storage</text>
+
+            <line x1="385" y1="140" x2="385" y2="176" stroke="currentColor" stroke-width="1.3" marker-end="url(#ah3)"/>
+            <text x="392" y="163" fill="var(--muted)">push</text>
+
+            <!-- the plan-as-written path -->
+            <line x1="490" y1="218" x2="786" y2="218" stroke="var(--gap)" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#ah3r)"/>
+            <text x="500" y="208" fill="var(--gap)" font-weight="600">plan as written: Quay repo mirroring</text>
+            <text x="500" y="238" fill="var(--gap)">tag globs per repository; no payload,</text>
+            <text x="500" y="254" fill="var(--gap)">catalog, signature or graph logic</text>
+
+            <!-- cluster -->
+            <rect x="30" y="300" width="610" height="128" rx="8" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.4"/>
+            <rect x="50" y="316" width="160" height="72" rx="7" fill="var(--surface)" stroke="currentColor" stroke-width="1.2"/>
+            <text x="130" y="338" text-anchor="middle" font-weight="600">CVO</text>
+            <text x="130" y="355" text-anchor="middle">upstream = local OSUS</text>
+            <text x="130" y="372" text-anchor="middle" fill="var(--muted)" font-size="11.5">signature ConfigMaps</text>
+            <rect x="250" y="316" width="160" height="72" rx="7" fill="var(--surface)" stroke="currentColor" stroke-width="1.2"/>
+            <text x="330" y="338" text-anchor="middle" font-weight="600">OSUS</text>
+            <text x="330" y="355" text-anchor="middle">local update graph</text>
+            <text x="330" y="372" text-anchor="middle" fill="var(--muted)" font-size="11.5">cincinnati-operator</text>
+            <rect x="450" y="316" width="170" height="72" rx="7" fill="var(--surface)" stroke="currentColor" stroke-width="1.2"/>
+            <text x="535" y="338" text-anchor="middle" font-weight="600">CRI-O</text>
+            <text x="535" y="355" text-anchor="middle">pulls through IDMS</text>
+            <text x="535" y="372" text-anchor="middle" fill="var(--muted)" font-size="11.5">NeverContactSource</text>
+            <text x="46" y="414" font-weight="600" fill="var(--host)">OpenShift cluster · no egress</text>
+
+            <line x1="210" y1="352" x2="246" y2="352" stroke="currentColor" stroke-width="1.3" marker-end="url(#ah3)"/>
+            <line x1="330" y1="256" x2="330" y2="312" stroke="currentColor" stroke-width="1.3" marker-end="url(#ah3)"/>
+            <text x="323" y="284" text-anchor="end" fill="var(--muted)">graph data</text>
+            <line x1="470" y1="256" x2="470" y2="312" stroke="currentColor" stroke-width="1.3" marker-end="url(#ah3)"/>
+            <text x="477" y="284" fill="var(--muted)">images by digest</text>
+            <line x1="130" y1="140" x2="130" y2="312" stroke="currentColor" stroke-width="1.3" marker-end="url(#ah3)"/>
+            <text x="138" y="220" fill="var(--muted)">Argo CD applies</text>
+            <text x="138" y="236" fill="var(--muted)">the generated YAML</text>
+
+            <text x="20" y="458">Documented form: oc-mirror v2 fills Quay and writes the IDMS/ITMS, filtered catalogs, UpdateService and signature ConfigMaps.</text>
+            <text x="20" y="478" fill="var(--gap)" font-weight="600">Red, dashed: the plan's mechanism, which is not among the methods the OpenShift docs give for release or operator content.</text>
+            <text x="20" y="498" fill="var(--host)" font-weight="600">Proposed design; not built.</text>
+          </g>
+        </svg>
+      </div>
+      <figcaption>In the documented form of Option 2, the mirror host holds the only egress. It pulls from four Red Hat hosts through the proxy, pushes images to Quay, and writes the IDMS/ITMS, catalogs, UpdateService and signature ConfigMaps. Argo CD applies that YAML from Git. The cluster pulls images from Quay by digest and asks its local OSUS for updates.</figcaption>
+    </figure>
+  </section>
+
+  <section id="catalog">
+    <div class="intro">
+      <h2>Limiting operator catalogs: what actually enforces it</h2>
+      <p>Both options say "limit the catalog via Git". Git is where changes get reviewed, but it enforces nothing. The figure follows a Subscription through the gates that can refuse it, in the order the API server, OLM and CRI-O apply them.</p>
+    </div>
+    <figure>
+      <div class="fig-scroll">
+        <svg viewBox="0 0 1000 640" role="img" aria-label="Five gates for an operator Subscription. Default RBAC stops namespace admins from creating CatalogSources or OperatorGroups. A proposed ValidatingAdmissionPolicy limits catalogs and Subscriptions for everyone, including cluster-admins and Argo CD. OLM installs nothing without an OperatorGroup. Proposed Manual InstallPlan approval holds each version for the platform team. The CRI-O registry allowlist is weak in a connected cluster.">
+          <defs><marker id="ah4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
+          <marker id="ah4r" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--gap)"/></marker></defs>
+          <g font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="currentColor">
+            <!-- entry points -->
+            <rect x="40" y="16" width="300" height="54" rx="7" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.3"/>
+            <text x="56" y="38" font-weight="600" fill="var(--remote)">Platform team</text>
+            <text x="56" y="56">Git pull request → Argo CD applies</text>
+            <rect x="380" y="16" width="300" height="54" rx="7" fill="var(--none-wash)" stroke="var(--none)" stroke-width="1.3"/>
+            <text x="396" y="38" font-weight="600">Developer (namespace admin)</text>
+            <text x="396" y="56">oc apply in their own namespace</text>
+            <line x1="190" y1="70" x2="190" y2="96" stroke="currentColor" stroke-width="1.3" marker-end="url(#ah4)"/>
+            <line x1="530" y1="70" x2="530" y2="96" stroke="currentColor" stroke-width="1.3" marker-end="url(#ah4)"/>
+            <text x="720" y="38" fill="var(--muted)" font-family="IBM Plex Mono, monospace" font-size="12" font-weight="600">REFUSED HERE</text>
+
+            <!-- gate 1: shipped -->
+            <rect x="40" y="100" width="640" height="76" rx="8" fill="var(--surface)" stroke="currentColor" stroke-width="1.3"/>
+            <text x="56" y="122" font-weight="600">① RBAC · default today, verified</text>
+            <text x="56" y="142">Namespace admin and edit may create Subscriptions only. They cannot create CatalogSources</text>
+            <text x="56" y="160">or OperatorGroups, or approve InstallPlans (checked with kubectl auth can-i).</text>
+            <line x1="680" y1="138" x2="716" y2="138" stroke="var(--gap)" stroke-width="1.4" marker-end="url(#ah4r)"/>
+            <rect x="720" y="112" width="260" height="52" rx="7" fill="var(--gap-wash)" stroke="var(--gap)" stroke-width="1.2"/>
+            <text x="736" y="133" fill="var(--gap)">developer creates a CatalogSource</text>
+            <text x="736" y="151" fill="var(--gap)" font-weight="600">→ 403 Forbidden</text>
+
+            <line x1="360" y1="176" x2="360" y2="194" stroke="currentColor" stroke-width="1.3" marker-end="url(#ah4)"/>
+
+            <!-- gate 2: proposed -->
+            <rect x="40" y="198" width="640" height="76" rx="8" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5" stroke-dasharray="5 4"/>
+            <text x="56" y="220" font-weight="600" fill="var(--host)">② ValidatingAdmissionPolicy · proposed</text>
+            <text x="56" y="240">CatalogSource: only in openshift-marketplace, only a gRPC image under an approved prefix.</text>
+            <text x="56" y="258">Subscription: only approved catalogs, installPlanApproval: Manual. Binds cluster-admins too.</text>
+            <line x1="680" y1="236" x2="716" y2="236" stroke="var(--gap)" stroke-width="1.4" marker-end="url(#ah4r)"/>
+            <rect x="720" y="210" width="260" height="52" rx="7" fill="var(--gap-wash)" stroke="var(--gap)" stroke-width="1.2"/>
+            <text x="736" y="231" fill="var(--gap)">Argo CD or a cluster-admin points</text>
+            <text x="736" y="249" fill="var(--gap)" font-weight="600">a catalog at quay.io → denied</text>
+
+            <line x1="360" y1="274" x2="360" y2="292" stroke="currentColor" stroke-width="1.3" marker-end="url(#ah4)"/>
+
+            <!-- gate 3: shipped behaviour + proposed setting -->
+            <rect x="40" y="296" width="640" height="76" rx="8" fill="var(--surface)" stroke="currentColor" stroke-width="1.3"/>
+            <text x="56" y="318" font-weight="600">③ OLM · OperatorGroups and default catalogs</text>
+            <text x="56" y="338">Without an OperatorGroup in the namespace, OLM generates no CSV. Only admins create them.</text>
+            <text x="56" y="356" fill="var(--host)">Proposed: OperatorHub disableAllDefaultSources: true; default ClusterCatalogs Unavailable.</text>
+            <line x1="680" y1="334" x2="716" y2="334" stroke="var(--gap)" stroke-width="1.4" marker-end="url(#ah4r)"/>
+            <rect x="720" y="308" width="260" height="52" rx="7" fill="var(--gap-wash)" stroke="var(--gap)" stroke-width="1.2"/>
+            <text x="736" y="329" fill="var(--gap)">Subscription in a namespace with</text>
+            <text x="736" y="347" fill="var(--gap)" font-weight="600">no OperatorGroup → nothing installs</text>
+
+            <line x1="360" y1="372" x2="360" y2="390" stroke="currentColor" stroke-width="1.3" marker-end="url(#ah4)"/>
+
+            <!-- gate 4: proposed -->
+            <rect x="40" y="394" width="640" height="76" rx="8" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5" stroke-dasharray="5 4"/>
+            <text x="56" y="416" font-weight="600" fill="var(--host)">④ InstallPlan approval: Manual · proposed</text>
+            <text x="56" y="436">Each operator version waits for the platform team. Namespace admins cannot approve (tested).</text>
+            <text x="56" y="454" fill="var(--muted)">Approve through ACM OperatorPolicy versions or the redhat-cop operators-installer chart.</text>
+            <line x1="680" y1="432" x2="716" y2="432" stroke="var(--gap)" stroke-width="1.4" marker-end="url(#ah4r)"/>
+            <rect x="720" y="406" width="260" height="52" rx="7" fill="var(--gap-wash)" stroke="var(--gap)" stroke-width="1.2"/>
+            <text x="736" y="427" fill="var(--gap)">new version appears in the catalog</text>
+            <text x="736" y="445" fill="var(--gap)" font-weight="600">→ InstallPlan waits for approval</text>
+
+            <line x1="360" y1="470" x2="360" y2="488" stroke="currentColor" stroke-width="1.3" marker-end="url(#ah4)"/>
+
+            <!-- gate 5: proposed, weak when connected -->
+            <rect x="40" y="492" width="640" height="76" rx="8" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5" stroke-dasharray="5 4"/>
+            <text x="56" y="514" font-weight="600" fill="var(--host)">⑤ CRI-O allowedRegistries · proposed</text>
+            <text x="56" y="534">Nodes refuse catalog and bundle images from registries that are not listed.</text>
+            <text x="56" y="552" fill="var(--gap)">In a connected cluster quay.io and registry.redhat.io stay allowed, so this gate is weak.</text>
+            <line x1="680" y1="530" x2="716" y2="530" stroke="var(--gap)" stroke-width="1.4" marker-end="url(#ah4r)"/>
+            <rect x="720" y="504" width="260" height="52" rx="7" fill="var(--gap-wash)" stroke="var(--gap)" stroke-width="1.2"/>
+            <text x="736" y="525" fill="var(--gap)">catalog image from an unlisted</text>
+            <text x="736" y="543" fill="var(--gap)" font-weight="600">registry → pull refused</text>
+
+            <text x="20" y="602">Git review is a process control. Enforcement happens at ① and ②, and ② is the only gate that binds cluster-admins and Argo CD.</text>
+            <text x="20" y="624" fill="var(--host)" font-weight="600">Dashed = proposed. ① and the OperatorGroup rule in ③ are OpenShift's default behaviour today.</text>
+          </g>
+        </svg>
+      </div>
+      <figcaption>Default RBAC (①) already stops developers from adding a catalog. Only an admission policy (②) also stops a cluster-admin or Argo CD from adding one by mistake. Turning off the default catalogs (③) affects OLM v0 only; the OLM v1 ClusterCatalogs have to be set to <code>Unavailable</code> separately. The registry allowlist (⑤) cannot tell approved content from unapproved once <code>quay.io</code> and <code>registry.redhat.io</code> are allowed.</figcaption>
+    </figure>
+
+    <div class="tbl">
+      <table>
+        <thead><tr><th>Catalog model</th><th>How it works</th><th>Needs a registry?</th><th>Fits</th></tr></thead>
+        <tbody>
+          <tr><td><strong>A · Filtered catalog</strong></td><td>Build a catalog that holds only the approved packages and channels (<code>opm render</code> + edit + <code>opm validate</code>, or oc-mirror v2). Then allow only that image by prefix in the admission policy. In a file-based catalog each bundle keeps its original pull spec, so bundle and operand images still come from <code>registry.redhat.io</code> (this follows from the catalog format; confirm it in the lab).</td><td>Yes, for the catalog image. Every node must be able to pull it.</td><td>Options 2 and 3; Option 1 if we keep our current registry for the catalog image</td></tr>
+          <tr><td><strong>B · Allowlist on the stock catalog</strong></td><td>Keep only <code>redhat-operators</code>. The admission policy accepts a Subscription only if its package and channel are on the list, and each dependency has to be listed too. Developers still see the full catalog in the console but cannot install from it.</td><td>No</td><td>Option 1 as written</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <details>
+      <summary>Admission policy for model A: the CatalogSource rule</summary>
+      <pre><code># Tested on kind with the OLM CRDs on Kubernetes 1.31.14 (the OpenShift 4.18 base) and 1.37.0: 19/19 cases,
+# including system:masters being denied. Not yet run on a live OpenShift cluster.
+# Roll out with validationActions: [Warn, Audit] first, then switch to Deny.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: restrict-olm-catalogsources
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups: ["operators.coreos.com"]
+      apiVersions: ["*"]
+      operations: ["CREATE", "UPDATE"]
+      resources: ["catalogsources"]
+  variables:
+  - name: approvedPrefixes            # trailing "/" stops look-alike hosts such as mirror.corp.example.com.evil.io
+    expression: "['mirror.corp.example.com/olm/']"
+  - name: annotations
+    expression: "has(object.metadata.annotations) ? object.metadata.annotations : {}"
+  validations:
+  - expression: "request.namespace == 'openshift-marketplace'"
+    message: "CatalogSource objects are only permitted in openshift-marketplace."
+  - expression: "has(object.spec.sourceType) &amp;&amp; object.spec.sourceType == 'grpc' &amp;&amp; has(object.spec.image) &amp;&amp; !has(object.spec.address)"
+    message: "Only image-backed gRPC CatalogSources are permitted (no configmap or address sources)."
+  - expression: "has(object.spec.image) &amp;&amp; variables.approvedPrefixes.exists(p, object.spec.image.startsWith(p))"
+    message: "spec.image must come from an approved catalog repository."
+  - expression: "!('olm.catalogImageTemplate' in variables.annotations) || variables.approvedPrefixes.exists(p, variables.annotations['olm.catalogImageTemplate'].startsWith(p))"
+    message: "olm.catalogImageTemplate must point at an approved catalog repository."</code></pre>
+      <p class="muted">The full set also covers Subscriptions (approved catalogs only; Manual approval, with OLM's own service account exempt because OLM creates dependency Subscriptions as Automatic) and OLM v1 ClusterCatalogs. <code>mirror.corp.example.com/olm/</code> is a placeholder.</p>
+    </details>
+  </section>
+
+  <section>
+    <div class="intro">
+      <h2>What each change does to the nodes</h2>
+      <p>This table sets the order of the rollout: do the changes that touch no nodes first, and group the disruptive ones into planned windows.</p>
+    </div>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>Change</th><th>Node effect</th><th>Source</th></tr></thead>
+        <tbody>
+          <tr><td>Global pull secret (add Red Hat credentials)</td><td class="impact-none">None</td><td>docs 4.22 snippet node-icsp-no-drain: "without draining or rebooting the node"</td></tr>
+          <tr><td><code>image.config</code> <code>allowedRegistries</code></td><td class="impact-none">CRI-O reload, no drain</td><td>docs 4.22: "Changes to the /etc/containers/policy.json file do not require the node to drain"</td></tr>
+          <tr><td>Create an IDMS</td><td class="impact-none">None</td><td>docs 4.22 images-configuration-registry-mirror</td></tr>
+          <tr><td>Edit or delete an IDMS / ICSP; create, edit or delete an ITMS</td><td class="impact-drain">Drain + CRI-O reload</td><td>MCO release-4.22 update.go maps <code>registries.conf</code> to "reload crio"; the docs text also says "reboots"; ask Red Hat Support which is right</td></tr>
+          <tr><td>Proxy <code>trustedCA</code> only</td><td class="impact-drain">CRI-O restart</td><td>default node disruption policy</td></tr>
+          <tr><td>Proxy <code>httpProxy</code>, <code>httpsProxy</code>, <code>noProxy</code></td><td class="impact-reboot">Drain + reboot, every node</td><td>docs 4.22 nw-proxy-configure-object; MCO <code>/etc/mco/proxy.env</code></td></tr>
+          <tr><td>ClusterVersion <code>upstream</code> / channel, OperatorHub, CatalogSource</td><td class="impact-none">None found</td><td>no MachineConfig path in the MCO code read</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="intro">
+      <h2>Security controls for the approval request</h2>
+      <p>Opening Red Hat hosts to cluster nodes raises specific risks. Each one below is paired with a control that exists today.</p>
+    </div>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>Risk</th><th>Control</th><th>Where it is enforced</th></tr></thead>
+        <tbody>
+          <tr><td><code>quay.io</code> hosts anyone's public images</td><td><code>allowedRegistries</code> lists repositories, not just registries: <code>quay.io/openshift-release-dev</code>, <code>registry.redhat.io</code>, the internal registry and the in-cluster image registry. "All other registries are blocked." One caveat: you cannot set both <code>allowedRegistries</code> and <code>blockedRegistries</code>.</td><td>Every node's <code>policy.json</code> (KB 5614901)</td></tr>
+          <tr><td>A tampered release payload</td><td>The CVO checks the GPG signature before it updates. The ClusterImagePolicy <code>openshift</code> makes CRI-O check sigstore signatures on <code>ocp-release</code> and on the component repositories (GA and on by default from 4.21).</td><td>CVO and CRI-O</td></tr>
+          <tr><td>Pushing data out to an allowed host</td><td>A CONNECT proxy sees only <code>quay.io:443</code>, so it cannot tell a pull from a push without TLS interception. Workload pods do not use the cluster proxy by default. To keep them from reaching the proxy, use an OVN-Kubernetes EgressFirewall in workload namespaces.</td><td>Proxy; EgressFirewall per namespace</td></tr>
+          <tr><td>Cluster data leaving</td><td>Telemetry can be switched off, which drops three hosts from the list. The update check still sends the cluster ID, channel and version to <code>api.openshift.com</code>.</td><td>Pull secret / telemetry config</td></tr>
+          <tr><td>Red Hat changes its hostnames</td><td>This has happened before: layers moved to the Quay CDN in 2023. Track the firewall doc and alert on proxy denies. <code>readinessEndpoints</code> are checked through the proxy before its settings are applied.</td><td>Proxy logs; Proxy object</td></tr>
+          <tr><td>Proxy outage stops pulls</td><td>Run the proxy HA. The docs require the same of a mirror registry: its availability must "at least match the production availability" of the clusters.</td><td>Network team</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="intro">
+      <h2>Rollout plan for Option 1, per cluster, lower environments first</h2>
+      <p>The order keeps disruption to a single planned reboot. Changes that touch no nodes go first, the proxy change gets its own window, and the mirror sets come out only after a connected update has succeeded.</p>
+    </div>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>Phase</th><th>What</th><th>Node effect</th><th>Done when</th></tr></thead>
+        <tbody>
+          <tr><td class="phase">0 · Approve</td><td>Security sign-off on the host list and the controls table. An HA egress proxy, and a firewall that lets only the proxy out. A Red Hat Registry Service Account for <code>registry.redhat.io</code> ("recommended… in place of an individual's Customer Portal credentials"). Open a support case with the questions listed below.</td><td class="impact-none">None</td><td><code>curl</code> through the proxy reaches every listed host</td></tr>
+          <tr><td class="phase">1 · Prepare</td><td>Merge the Red Hat credentials into the global pull secret. Set <code>allowedRegistries</code> to our current mirror, the in-cluster registry, <code>quay.io/openshift-release-dev</code>, <code>registry.redhat.io</code> and anything our workloads pull from. Deploy the catalog admission policy in <code>Warn, Audit</code> mode.</td><td class="impact-drain">CRI-O reload only</td><td>No unexpected pull denials; the policy audit log is clean</td></tr>
+          <tr><td class="phase">2 · Proxy</td><td>Proxy object: <code>httpProxy</code>/<code>httpsProxy</code>; <code>noProxy</code> with <code>.apps.&lt;cluster&gt;.&lt;domain&gt;</code>, the internal registry and internal domains; <code>trustedCA</code> if the proxy has a private CA; <code>readinessEndpoints</code>.</td><td class="impact-reboot">Drain + reboot, every node</td><td>Machine config pools updated; all cluster operators Available</td></tr>
+          <tr><td class="phase">3 · Update checks</td><td>Clear <code>spec.upstream</code> so it defaults to <code>api.openshift.com</code>. Set the channel: <code>oc adm upgrade channel stable-4.y</code>.</td><td class="impact-none">None</td><td><code>oc adm upgrade</code> lists recommended updates</td></tr>
+          <tr><td class="phase">4 · Catalogs</td><td>Set OperatorHub <code>disableAllDefaultSources: true</code> and turn the default ClusterCatalogs to <code>Unavailable</code>. Git owns every CatalogSource and Subscription, with Manual approval. Switch the admission policy to <code>Deny</code>.</td><td class="impact-none">None</td><td>The denial test cases fail as expected</td></tr>
+          <tr><td class="phase">5 · First update</td><td>Update to the next z-stream. Mirror sets can stay during this update: with the default <code>AllowContactingSource</code>, CRI-O tries the mirror first and then the source. Remove them afterwards. If any were created with <code>NeverContactSource</code>, change them first.</td><td class="impact-drain">Removing mirror sets: drain + CRI-O reload</td><td>The update completes; CRI-O logs show pulls from <code>quay.io</code></td></tr>
+          <tr><td class="phase">6 · Cadence</td><td>Z-streams on a fixed schedule from the <code>stable</code> channel, lower environments first. Minors once they reach <code>stable</code> (45–90 days after GA for the first updates).</td><td>Per update</td><td>Clusters stay on a supported 4.x.z</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="muted">If a cluster is on 4.20 or earlier and still has IDMS/ICSP objects, the 4.20 → 4.21 update is blocked until the sigstore signatures are mirrored and the admin-ack <code>ack-4.20-sigstore-in-4.21</code> is given (4.20 docs, nodes §12.5). Removing the mirror sets first (phase 5) takes that condition away. A support case should confirm this.</p>
+  </section>
+
+  <section>
+    <div class="intro">
+      <h2>Decisions</h2>
+    </div>
+    <div class="decisions">
+      <div class="decision">
+        <div class="id">D1 · design</div>
+        <div class="q">Which design do we build?</div>
+        <div>It depends on one security answer: which machines may reach Red Hat through the proxy. Option 1 uses only documented configuration and needs no mirror to run. Option 3 keeps our registry and limits the clusters to update metadata, but Red Hat has not documented that combination. Option 2 keeps clusters fully closed, but it means running oc-mirror, an HA Quay and OSUS.</div>
+        <div class="rec"><strong>Recommend Option 1</strong> if security approves node egress to the four host groups with the controls above. If it approves only <code>api.openshift.com</code> and <code>mirror.openshift.com</code> from the clusters, use Option 3, and add a CI gate so the cluster is only told to go to versions already mirrored. With no cluster egress at all, use Option 2 in its documented form: oc-mirror v2, not Quay repository mirroring.</div>
+      </div>
+      <div class="decision">
+        <div class="id">D2 · catalog model</div>
+        <div class="q">Filtered catalog (model A) or an allowlist on the stock catalog (model B)?</div>
+        <div>Model A shows developers only what they may install, but it needs a registry for the catalog image. Model B needs no registry, but the full catalog stays visible in the console, and every dependency has to be listed by hand.</div>
+        <div class="rec"><strong>Recommend model A</strong> and keep our current registry for the catalog image alone. That leaves the admission policy one prefix to check.</div>
+      </div>
+      <div class="decision">
+        <div class="id">D3 · telemetry</div>
+        <div class="q">Keep telemetry and Insights on?</div>
+        <div>The firewall doc lists the telemetry hosts only "if you do not disable Telemetry". Updates do not use them. Turning telemetry off removes three hosts from the request, and we lose Insights recommendations.</div>
+        <div class="rec warn"><strong>Security team's call.</strong> Leaving it off makes the first approval smaller, and it can be turned on later without touching nodes.</div>
+      </div>
+      <div class="decision">
+        <div class="id">D4 · TLS interception</div>
+        <div class="q">Will the proxy decrypt traffic to Red Hat hosts?</div>
+        <div>Interception is the only way to filter <code>quay.io</code> by repository at the network layer. It needs the proxy CA in <code>trustedCA</code>. Red Hat's support position on it could not be verified.</div>
+        <div class="rec warn"><strong>Exempt the Red Hat hosts from interception until Support answers.</strong> The CVO checks GPG signatures and CRI-O checks sigstore signatures, so payload integrity does not depend on the proxy.</div>
+      </div>
+      <div class="decision">
+        <div class="id">D5 · cadence</div>
+        <div class="q">How often do we update?</div>
+        <div>Z-streams for the newest minor ship weekly. Full support lasts 6 months, or until 90 days after the next minor's GA, whichever is later; maintenance runs to 18 months. Even minors get EUS (4.22 EUS Term 1 runs to 2028-06-30). 4.18 left maintenance on 2026-08-25.</div>
+        <div class="rec"><strong>Recommend a monthly z-stream window from <code>stable</code>, and EUS-to-EUS minors for production.</strong> Control-plane-only updates work between even minors.</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="intro">
+      <h2>Still open</h2>
+    </div>
+    <div class="cards">
+      <div class="card">
+        <div class="k">FOR OUR TEAM</div>
+        <ul class="facts">
+          <li>Current OpenShift version and platform, and how many clusters</li>
+          <li>Do we have OpenShift Platform Plus? It includes Quay and ACM.</li>
+          <li>Which registry product we mirror into today</li>
+          <li>Is OpenShift GitOps or ACM already running?</li>
+          <li>What "set up the OpenShift console" in Option 2 refers to</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="k">FOR A RED HAT SUPPORT CASE</div>
+        <ul class="facts">
+          <li>Is Option 3 supported: graph from <code>api.openshift.com</code> through the proxy, images from an IDMS mirror?</li>
+          <li>What is the support position on a TLS-intercepting proxy?</li>
+          <li>Do updates need <code>console.redhat.com</code> / <code>sso.redhat.com</code>, and does an on-premises cluster need <code>quayio-production-s3.s3.amazonaws.com</code>?</li>
+          <li>Does editing an IDMS drain only or also reboot? The docs text and the MCO code disagree.</li>
+          <li>Is <code>allowedRegistries: quay.io/openshift-release-dev</code> enough for a connected cluster?</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="intro">
+      <h2>How this was checked, and the sources</h2>
+      <p class="muted">docs.redhat.com refuses scripted fetches, so the doc quotes were read from the AsciiDoc source it is built from (<code>openshift/openshift-docs</code>, branches <code>enterprise-4.18</code> to <code>enterprise-4.22</code>, fetched 2026-09-25). Behaviour claims were checked against the <code>release-4.22</code> product source. Live measurements: <code>release.txt</code> for 4.22.15, quay.io tag lists, and the public update graph. KB articles marked subscriber-only were read in summary only.</p>
+    </div>
+    <ol class="sources">
+      <li>Configuring your firewall (4.22) — https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/installation_configuration/configuring-firewall</li>
+      <li>Enabling the cluster-wide proxy (4.18; same text in 4.22) — https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html/configuring_network_settings/enable-cluster-wide-proxy</li>
+      <li>Image configuration: allowedRegistries, IDMS/ITMS (4.22) — https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/images/image-configuration-classic</li>
+      <li>Disconnected environments: oc-mirror v2, OSUS, mirror registry (4.22) — https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/disconnected_environments/</li>
+      <li>Machine configuration, drain and reboot rules (4.18) — https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html-single/machine_configuration/index</li>
+      <li>Converting a connected cluster to disconnected (4.18) — https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html/postinstallation_configuration/converting-to-disconnected</li>
+      <li>OLM administrator tasks (4.18) — https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html/operators/administrator-tasks</li>
+      <li>KB 5614901, restricting a repository within a registry — https://access.redhat.com/solutions/5614901</li>
+      <li>KB 2998411, Red Hat hosts to allowlist — https://access.redhat.com/solutions/2998411</li>
+      <li>Quay CDN change for registry.redhat.io — https://access.redhat.com/articles/6999582</li>
+      <li>OpenShift life cycle policy — https://access.redhat.com/support/policy/updates/openshift</li>
+      <li>Red Hat Quay 3.18 repository mirroring — https://docs.redhat.com/en/documentation/red_hat_quay/3.18/html/manage_red_hat_quay/arch-mirroring-intro</li>
+      <li>Red Hat Quay 3.18 content distribution — https://docs.redhat.com/en/documentation/red_hat_quay/3.18/html/red_hat_quay_architecture/content-distrib-intro</li>
+      <li>Self-managed OpenShift subscription guide — https://www.redhat.com/en/resources/self-managed-openshift-subscription-guide</li>
+      <li>Introducing the mirror registry for Red Hat OpenShift — https://www.redhat.com/en/blog/introducing-mirror-registry-for-red-hat-openshift</li>
+      <li>OLM aggregated ClusterRoles (release-4.22) — https://github.com/openshift/operator-framework-olm/blob/release-4.22/manifests/0000_50_olm_09-aggregated.clusterrole.yaml</li>
+      <li>MCO post-change actions (release-4.22) — https://github.com/openshift/machine-config-operator/blob/release-4.22/pkg/daemon/update.go</li>
+      <li>Default ClusterImagePolicy and signature stores — https://github.com/openshift/cluster-update-keys</li>
+      <li>Quay repository mirror worker — https://github.com/quay/quay/tree/master/workers/repomirrorworker</li>
+      <li>oc-mirror v2 source (commit 125fa8d) — https://github.com/openshift/oc-mirror</li>
+      <li>ValidatingAdmissionPolicy — https://kubernetes.io/docs/reference/access-authn-authz/validating-admission-policy/</li>
+      <li>RFC 9110 §9.3.6, CONNECT — https://www.rfc-editor.org/rfc/rfc9110.html#name-connect</li>
+      <li>Operating OpenShift in air-gapped environments (Red Hat Developer, 2026-03-19) — https://developers.redhat.com/articles/2026/03/19/how-operate-openshift-air-gapped-environments</li>
+      <li>GitOps for OLM-managed operators (Red Hat Developer, 2024-08-20) — https://developers.redhat.com/articles/2024/08/20/git-based-operations-gitops-operators-managed-operator-lifecycle-manager-olm</li>
+    </ol>
+  </section>
+</div>

@@ -1,0 +1,17 @@
+kind: Suite
+apiVersion: test.gatekeeper.sh/v1alpha1
+metadata:
+  name: olm-catalogsource-restrict
+tests:
+- name: catalogsource-restrictions
+  template: gk-template.yaml
+  constraint: gk-constraint.yaml
+  cases:
+  - {name: allow-approved,          object: cs-01-allow-approved.yaml,  assertions: [{violations: no}]}
+  - {name: deny-dev-namespace,      object: cs-02-deny-devns.yaml,      assertions: [{violations: yes}]}
+  - {name: deny-quay,               object: cs-03-deny-quay.yaml,       assertions: [{violations: yes}]}
+  - {name: deny-prefix-spoof,       object: cs-04-deny-spoof.yaml,      assertions: [{violations: yes}]}
+  - {name: deny-configmap,          object: cs-05-deny-configmap.yaml,  assertions: [{violations: yes}]}
+  - {name: deny-address,            object: cs-06-deny-address.yaml,    assertions: [{violations: yes}]}
+  - {name: deny-template,           object: cs-07-deny-template.yaml,   assertions: [{violations: yes}]}
+  - {name: allow-approved-template, object: cs-08-allow-template.yaml,  assertions: [{violations: no}]}

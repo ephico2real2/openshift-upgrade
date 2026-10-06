@@ -1,0 +1,524 @@
+<title>Disconnected Update Problem</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column; each figure scrolls sideways inside its own frame on a phone. */
+:root {
+  --ground: #f5f6f8; --surface: #ffffff; --ink: #18212c; --muted: #58636f; --rule: #d7dce3;
+  --host: #a55a0b; --host-wash: #fbf1e4; --remote: #0e6f68; --remote-wash: #e3f3f1;
+  --gap: #b3261e; --gap-wash: #fbe9e7; --none: #5f6a77; --none-wash: #eef0f3;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --ground: #0e131a; --surface: #151c25; --ink: #e5e9ef; --muted: #9aa5b3; --rule: #2a3440;
+    --host: #f0a53c; --host-wash: #2a2014; --remote: #3fcfc0; --remote-wash: #122a28;
+    --gap: #f2857c; --gap-wash: #2d1614; --none: #9aa5b3; --none-wash: #1b232d;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground: #0e131a; --surface: #151c25; --ink: #e5e9ef; --muted: #9aa5b3; --rule: #2a3440;
+  --host: #f0a53c; --host-wash: #2a2014; --remote: #3fcfc0; --remote-wash: #122a28;
+  --gap: #f2857c; --gap-wash: #2d1614; --none: #9aa5b3; --none-wash: #1b232d;
+}
+* { box-sizing: border-box; }
+body { background: var(--ground); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.55; margin: 0; }
+.page { max-width: 1060px; margin: 0 auto; padding-inline: 16px; padding-block: 40px 72px; display: grid; gap: 44px; }
+.page > * { min-width: 0; }
+header { display: grid; gap: 10px; }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font-size: clamp(26px, 4vw, 36px); line-height: 1.15; margin: 0; font-weight: 700; text-wrap: balance; }
+h2 { font-size: 20px; margin: 0 0 6px; font-weight: 600; text-wrap: balance; }
+p { margin: 0; max-width: 72ch; }
+.lede { font-size: 17px; max-width: 70ch; }
+.muted { color: var(--muted); }
+code { font-family: var(--font-mono); font-size: .9em; }
+section { display: grid; gap: 14px; }
+section > * { min-width: 0; }
+figure { margin: 0; display: grid; gap: 10px; }
+.fig-scroll { overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 12px; }
+.fig-scroll svg { display: block; width: 100%; min-width: 760px; height: auto; color: var(--ink); }
+figcaption { font-size: 13.5px; color: var(--muted); max-width: 80ch; }
+.tbl { overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 10px 14px; border-bottom: 1px solid var(--rule); }
+th { font-size: 12px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); background: var(--ground); }
+tr:last-child td { border-bottom: 0; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.cell-gap { background: var(--gap-wash); }
+.src { display: block; font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); margin-top: 4px; overflow-wrap: anywhere; }
+ul.plain { margin: 0; padding-left: 20px; display: grid; gap: 8px; max-width: 76ch; }
+details { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; }
+summary { padding: 10px 14px; cursor: pointer; font-weight: 600; font-size: 14px; }
+details .tbl { border: 0; border-top: 1px solid var(--rule); border-radius: 0 0 10px 10px; }
+pre { margin: 0; overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 12px 14px; font-family: var(--font-mono); font-size: 12px; line-height: 1.5; }
+a { color: var(--remote); overflow-wrap: anywhere; }
+:focus-visible { outline: 2px solid var(--remote); outline-offset: 2px; }
+</style>
+
+<div class="page">
+  <header>
+    <div class="eyebrow">platform engineering · problem statement · 2026-10-05 · measured against OpenShift 4.18 to 4.22</div>
+    <h1>Why our offline image sync cannot keep pace, and what replaces it</h1>
+    <p class="lede">Our clusters run OpenShift 4.18 on the EUS channel and are well behind. Standard maintenance for 4.18 ended on 25 August 2026, and the plan is to move to 4.20 and then 4.22. Every step waits for someone to copy images and catalogs into the local registry by hand. That sync has failed several times, and Red Hat has replaced the tools it relies on.</p>
+  </header>
+
+  <section>
+    <h2>Every fix has to cross the gap by hand</h2>
+    <p>The left lane is measured from Red Hat's public endpoints. The right lane is our process as the team describes it.</p>
+    <figure>
+      <div class="fig-scroll">
+        <svg viewBox="0 0 1000 452" role="img" aria-label="Red Hat keeps shipping fixes for 4.18, the version we run, and the road to 4.22 needs four more release payloads and a catalog for every minor. All of it reaches our network only when a person starts an offline sync by hand. When that sync fails, the clusters get no update that cycle, and they are still on 4.18.">
+          <defs>
+            <marker id="ah1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
+            <marker id="ah1g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--gap)"/></marker>
+          </defs>
+          <g font-family="IBM Plex Mono, monospace" font-size="13" font-weight="600">
+            <rect x="20" y="14" width="380" height="30" rx="6" fill="var(--remote-wash)" stroke="var(--remote)"/>
+            <text x="210" y="34" text-anchor="middle" fill="var(--remote)">RED HAT  ·  publishes</text>
+            <rect x="470" y="14" width="510" height="30" rx="6" fill="var(--host-wash)" stroke="var(--host)"/>
+            <text x="725" y="34" text-anchor="middle" fill="var(--host)">OUR NETWORK  ·  disconnected</text>
+            <text x="435" y="33" text-anchor="middle" font-size="11" font-weight="500" fill="var(--muted)">AIR GAP</text>
+          </g>
+          <line x1="435" y1="50" x2="435" y2="206" stroke="var(--rule)" stroke-width="1.5" stroke-dasharray="6 5"/>
+          <line x1="435" y1="246" x2="435" y2="396" stroke="var(--rule)" stroke-width="1.5" stroke-dasharray="6 5"/>
+          <g font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="currentColor">
+            <!-- Red Hat lane: measured -->
+            <rect x="30" y="64" width="360" height="64" rx="8" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.5"/>
+            <text x="46" y="86" font-weight="600" fill="var(--remote)">4.18, the version we run, is in its EUS term</text>
+            <text x="46" y="103">maintenance ended 25 Aug 2026; EUS ends 25 Feb 2027</text>
+            <text x="46" y="119" fill="var(--muted)">newest release image: 4.18.56, tagged 24 Sep 2026</text>
+
+            <rect x="30" y="150" width="360" height="64" rx="8" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.5"/>
+            <text x="46" y="172" font-weight="600" fill="var(--remote)">security fixes for 4.18 keep shipping</text>
+            <text x="46" y="189">156 CVEs fixed in 4.18 advisories so far in 2026</text>
+            <text x="46" y="205" fill="var(--muted)">on 27 advisory days, the latest on 1 Oct</text>
+
+            <rect x="30" y="236" width="360" height="64" rx="8" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.5"/>
+            <text x="46" y="258" font-weight="600" fill="var(--remote)">the road to 4.22 needs four more releases</text>
+            <text x="46" y="275">4.19, 4.20, 4.21 and 4.22: 187 to 191 images each</text>
+            <text x="46" y="291" fill="var(--muted)">pulled by digest; 4.21 and 4.22 need signatures too</text>
+
+            <rect x="30" y="322" width="360" height="64" rx="8" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.5"/>
+            <text x="46" y="344" font-weight="600" fill="var(--remote)">operator catalogs and operator images</text>
+            <text x="46" y="361">a catalog index for every minor, a second stream</text>
+            <text x="46" y="377" fill="var(--muted)">ours are out of date today (team report)</text>
+
+            <!-- everything on the left crosses in one manual step -->
+            <line x1="396" y1="64" x2="402" y2="64" stroke="var(--remote)" stroke-width="1.5"/>
+            <line x1="402" y1="64" x2="402" y2="386" stroke="var(--remote)" stroke-width="1.5"/>
+            <line x1="396" y1="386" x2="402" y2="386" stroke="var(--remote)" stroke-width="1.5"/>
+            <line x1="402" y1="230" x2="476" y2="230" stroke="currentColor" stroke-width="1.2" marker-end="url(#ah1)"/>
+            <text x="440" y="221" text-anchor="middle" fill="var(--muted)">offline</text>
+
+            <!-- our lane: as the team describes it -->
+            <rect x="480" y="64" width="236" height="62" rx="6" fill="none" stroke="currentColor" stroke-width="1.2"/>
+            <text x="496" y="86" font-weight="600">① a person starts the sync</text>
+            <text x="496" y="103">by hand</text>
+            <text x="496" y="119" fill="var(--muted)">as the team describes it</text>
+            <line x1="598" y1="126" x2="598" y2="195" stroke="currentColor" stroke-width="1.2" marker-end="url(#ah1)"/>
+
+            <rect x="480" y="199" width="236" height="62" rx="6" fill="none" stroke="currentColor" stroke-width="1.2"/>
+            <text x="496" y="221" font-weight="600">② images are copied offline</text>
+            <text x="496" y="238">into our local registry</text>
+            <line x1="598" y1="261" x2="598" y2="320" stroke="currentColor" stroke-width="1.2" marker-end="url(#ah1)"/>
+            <text x="608" y="295" fill="var(--muted)">when it works</text>
+
+            <rect x="480" y="324" width="236" height="62" rx="6" fill="none" stroke="currentColor" stroke-width="1.2"/>
+            <text x="496" y="346" font-weight="600">③ clusters update</text>
+            <text x="496" y="363">from the local registry</text>
+            <text x="496" y="379" fill="var(--muted)">only to what the sync brought in</text>
+
+            <!-- failure branch -->
+            <line x1="716" y1="230" x2="756" y2="230" stroke="var(--gap)" stroke-width="1.4" marker-end="url(#ah1g)"/>
+            <text x="736" y="221" text-anchor="middle" fill="var(--gap)">fails</text>
+            <rect x="760" y="199" width="210" height="62" rx="8" fill="var(--gap-wash)" stroke="var(--gap)" stroke-width="1.5"/>
+            <text x="774" y="221" font-weight="600" fill="var(--gap)">the sync fails</text>
+            <text x="774" y="238">has happened multiple times</text>
+            <text x="774" y="254" fill="var(--muted)">team report, not counted</text>
+            <line x1="865" y1="261" x2="865" y2="320" stroke="var(--gap)" stroke-width="1.4" marker-end="url(#ah1g)"/>
+            <rect x="760" y="324" width="210" height="62" rx="8" fill="var(--gap-wash)" stroke="var(--gap)" stroke-width="1.5"/>
+            <text x="774" y="346" font-weight="600" fill="var(--gap)">no update that cycle</text>
+            <text x="774" y="363">clusters stay where they are</text>
+            <text x="774" y="379" fill="var(--muted)">today that is 4.18</text>
+
+            <text x="30" y="420">Red Hat keeps shipping. Our clusters move only when a manual sync succeeds, and they are still on 4.18.</text>
+            <text x="30" y="440" fill="var(--muted)">The right lane is the current process as the team describes it; which sync tool it uses is not recorded here.</text>
+          </g>
+        </svg>
+      </div>
+      <figcaption>Red Hat still ships fixes for 4.18, and the road to 4.22 needs four more release payloads plus a catalog for every minor. All of it reaches our network only through an offline sync that a person starts by hand. When the sync fails, the clusters get no update that cycle. They are still on 4.18.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>The road from 4.18 to 4.22</h2>
+    <p>Between EUS releases the control plane passes through the odd minor while the workers stay paused. That makes four release payloads, and under today's process each one needs a sync before its hop can start.</p>
+    <figure>
+      <div class="fig-scroll">
+        <svg viewBox="0 0 1000 400" role="img" aria-label="The planned road from 4.18 to 4.22 has four control-plane hops: 4.18 to 4.19 to 4.20, then 4.20 to 4.21 to 4.22. Each hop needs its release payload of 187 to 191 images synced by hand first. The hops into 4.21 and 4.22 also need sigstore signatures, the hop out of 4.20 needs an administrator acknowledgment, and every edge from 4.21 into 4.22 is conditional today.">
+          <defs>
+            <marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
+            <marker id="ah2g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--gap)"/></marker>
+          </defs>
+          <g font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="currentColor">
+            <rect x="30" y="30" width="150" height="66" rx="8" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5"/>
+            <text x="42" y="52" font-weight="600" fill="var(--host)">4.18 · EUS</text>
+            <text x="42" y="69">we are here</text>
+            <text x="42" y="85" fill="var(--muted)">EUS ends 25 Feb 2027</text>
+            <line x1="180" y1="63" x2="228" y2="63" stroke="currentColor" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#ah2)"/>
+            <text x="206" y="56" text-anchor="middle" font-size="11" fill="var(--muted)">planned</text>
+
+            <rect x="232" y="30" width="150" height="66" rx="8" fill="none" stroke="var(--none)" stroke-width="1.2" stroke-dasharray="5 4"/>
+            <text x="244" y="52" font-weight="600">4.19</text>
+            <text x="244" y="69">control plane only</text>
+            <text x="244" y="85" fill="var(--muted)">workers stay paused</text>
+            <line x1="382" y1="63" x2="431" y2="63" stroke="currentColor" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#ah2)"/>
+            <text x="408" y="56" text-anchor="middle" font-size="11" fill="var(--muted)">planned</text>
+
+            <rect x="435" y="30" width="150" height="66" rx="8" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.5" stroke-dasharray="5 4"/>
+            <text x="447" y="52" font-weight="600" fill="var(--remote)">4.20 · EUS</text>
+            <text x="447" y="69">first target</text>
+            <text x="447" y="85" fill="var(--muted)">EUS ends 21 Oct 2027</text>
+            <line x1="585" y1="63" x2="633" y2="63" stroke="currentColor" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#ah2)"/>
+            <text x="611" y="56" text-anchor="middle" font-size="11" fill="var(--muted)">planned</text>
+
+            <rect x="637" y="30" width="150" height="66" rx="8" fill="none" stroke="var(--none)" stroke-width="1.2" stroke-dasharray="5 4"/>
+            <text x="649" y="52" font-weight="600">4.21</text>
+            <text x="649" y="69">control plane only</text>
+            <text x="649" y="85" fill="var(--muted)">workers stay paused</text>
+            <line x1="787" y1="63" x2="836" y2="63" stroke="var(--gap)" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#ah2g)"/>
+            <text x="813" y="56" text-anchor="middle" font-size="11" fill="var(--muted)">planned</text>
+
+            <rect x="840" y="30" width="150" height="66" rx="8" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.5" stroke-dasharray="5 4"/>
+            <text x="852" y="52" font-weight="600" fill="var(--remote)">4.22 · EUS</text>
+            <text x="852" y="69">second target</text>
+            <text x="852" y="85" fill="var(--muted)">EUS ends 30 Jun 2028</text>
+
+            <!-- measured paths -->
+            <line x1="30" y1="112" x2="585" y2="112" stroke="var(--rule)" stroke-width="1.5"/>
+            <text x="307" y="132" text-anchor="middle" fill="var(--muted)">recommended today on the eus-4.20 channel</text>
+            <text x="307" y="150" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="12">4.18.54 → 4.19.47 → 4.20.39</text>
+            <line x1="597" y1="112" x2="990" y2="112" stroke="var(--rule)" stroke-width="1.5"/>
+            <text x="793" y="132" text-anchor="middle" fill="var(--gap)">eus-4.22: all 344 edges into 4.22 are conditional</text>
+            <text x="793" y="150" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="12">4.20.39 → 4.21.34 → 4.22.15</text>
+
+            <!-- what today's process has to sync before each hop -->
+            <text x="30" y="188" font-weight="600">Under today's process, a manual sync has to bring in, before each hop:</text>
+            <rect x="232" y="202" width="150" height="84" rx="8" fill="var(--gap-wash)" stroke="var(--gap)" stroke-width="1.5"/>
+            <text x="244" y="223" font-family="IBM Plex Mono, monospace" font-size="12" font-weight="500">4.19.47</text>
+            <text x="244" y="240">187 component images</text>
+            <rect x="435" y="202" width="150" height="84" rx="8" fill="var(--gap-wash)" stroke="var(--gap)" stroke-width="1.5"/>
+            <text x="447" y="223" font-family="IBM Plex Mono, monospace" font-size="12" font-weight="500">4.20.39</text>
+            <text x="447" y="240">189 component images</text>
+            <rect x="637" y="202" width="150" height="84" rx="8" fill="var(--gap-wash)" stroke="var(--gap)" stroke-width="1.5"/>
+            <text x="649" y="223" font-family="IBM Plex Mono, monospace" font-size="12" font-weight="500">4.21.34</text>
+            <text x="649" y="240">190 component images</text>
+            <text x="649" y="257">+ sigstore signatures</text>
+            <text x="649" y="274" fill="var(--muted)">+ admin ack on 4.20</text>
+            <rect x="840" y="202" width="150" height="84" rx="8" fill="var(--gap-wash)" stroke="var(--gap)" stroke-width="1.5"/>
+            <text x="852" y="223" font-family="IBM Plex Mono, monospace" font-size="12" font-weight="500">4.22.15</text>
+            <text x="852" y="240">191 component images</text>
+            <text x="852" y="257">+ sigstore signatures</text>
+            <text x="42" y="240" fill="var(--muted)">release payload,</text>
+            <text x="42" y="257" fill="var(--muted)">copied offline</text>
+
+            <rect x="30" y="302" width="960" height="62" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+            <text x="46" y="323" font-weight="600">Operators and catalogs ride along at every hop</text>
+            <text x="46" y="340">Red Hat: “Some products and OLM Operators might require updates either before or during a Control Plane Only update.”</text>
+            <text x="46" y="356" fill="var(--muted)">Each of those needs that minor's catalog index and operator images synced first. Ours are out of date today (team report).</text>
+
+            <text x="30" y="388" font-weight="600" fill="var(--host)">Dashed = planned, not done. Versions are the newest in the eus-4.20 and eus-4.22 channels on 2026-10-05.</text>
+          </g>
+        </svg>
+      </div>
+      <figcaption>The plan is two EUS-to-EUS updates, which is four control-plane hops. Red Hat's update graph recommends a path from 4.18 to 4.20 today. Every edge from 4.21 into 4.22 is conditional, meaning it carries a declared risk the cluster has to evaluate. Under today's process each hop first needs its release payload synced by hand; the hops into 4.21 and 4.22 also need sigstore signatures, and leaving 4.20 needs an administrator acknowledgment that the signatures are mirrored.</figcaption>
+    </figure>
+    <p class="muted">A conditional edge is not a blocked one. The six risks declared on the 4.21 to 4.22 edges include one that applies to every cluster (kube-state-metrics crash loops when CronJobs set a time zone) and others limited to multi-arch, s390x, Portworx or third-party CNI clusters. A disconnected cluster sees those risks only if its local update service has current graph data.</p>
+  </section>
+
+  <section>
+    <h2>Fixes keep arriving for the version we run</h2>
+    <p>Each bar is a month of 2026. A CVE is counted once, in the month its first 4.18 fix shipped. Hover a bar for that month's detail.</p>
+    <figure>
+      <div class="fig-scroll">
+        <svg viewBox="0 0 1000 318" role="img" aria-label="Bar chart of CVEs first fixed in OpenShift 4.18 advisories in each month of 2026 from January to September. The nine months total 144, with 42 in August and 31 in September.">
+          <g font-family="IBM Plex Sans, sans-serif" font-size="11.5" fill="currentColor">
+            <text x="20" y="30" fill="var(--muted)">CVEs first fixed in a 4.18 advisory that month, 2026</text>
+            <line x1="64" y1="250" x2="984" y2="250" stroke="var(--rule)" stroke-width="1.4"/>
+            <text x="54" y="254" text-anchor="end" fill="var(--muted)">0</text>
+            <line x1="64" y1="210" x2="984" y2="210" stroke="var(--rule)" stroke-width="1"/>
+            <text x="54" y="214" text-anchor="end" fill="var(--muted)">10</text>
+            <line x1="64" y1="170" x2="984" y2="170" stroke="var(--rule)" stroke-width="1"/>
+            <text x="54" y="174" text-anchor="end" fill="var(--muted)">20</text>
+            <line x1="64" y1="130" x2="984" y2="130" stroke="var(--rule)" stroke-width="1"/>
+            <text x="54" y="134" text-anchor="end" fill="var(--muted)">30</text>
+            <line x1="64" y1="90" x2="984" y2="90" stroke="var(--rule)" stroke-width="1"/>
+            <text x="54" y="94" text-anchor="end" fill="var(--muted)">40</text>
+            <line x1="64" y1="50" x2="984" y2="50" stroke="var(--rule)" stroke-width="1"/>
+            <text x="54" y="54" text-anchor="end" fill="var(--muted)">50</text>
+            <g><title>January 2026: 7 CVEs first fixed, on 2 advisory days (3 advisories)</title><rect x="64.00" y="50" width="102.22" height="200" fill="transparent"/><path d="M93.11,250 V226 Q93.11,222 97.11,222 H133.11 Q137.11,222 137.11,226 V250 Z" fill="var(--remote)"/></g>
+            <text x="115.11" y="268" text-anchor="middle" font-size="11" fill="var(--muted)">Jan</text>
+            <g><title>February 2026: 10 CVEs first fixed, on 3 advisory days (10 advisories)</title><rect x="166.22" y="50" width="102.22" height="200" fill="transparent"/><path d="M195.33,250 V214 Q195.33,210 199.33,210 H235.33 Q239.33,210 239.33,214 V250 Z" fill="var(--remote)"/></g>
+            <text x="217.33" y="268" text-anchor="middle" font-size="11" fill="var(--muted)">Feb</text>
+            <g><title>March 2026: 7 CVEs first fixed, on 2 advisory days (6 advisories)</title><rect x="268.44" y="50" width="102.22" height="200" fill="transparent"/><path d="M297.56,250 V226 Q297.56,222 301.56,222 H337.56 Q341.56,222 341.56,226 V250 Z" fill="var(--remote)"/></g>
+            <text x="319.56" y="268" text-anchor="middle" font-size="11" fill="var(--muted)">Mar</text>
+            <g><title>April 2026: 12 CVEs first fixed, on 2 advisory days (7 advisories)</title><rect x="370.67" y="50" width="102.22" height="200" fill="transparent"/><path d="M399.78,250 V206 Q399.78,202 403.78,202 H439.78 Q443.78,202 443.78,206 V250 Z" fill="var(--remote)"/></g>
+            <text x="421.78" y="268" text-anchor="middle" font-size="11" fill="var(--muted)">Apr</text>
+            <g><title>May 2026: 11 CVEs first fixed, on 4 advisory days (10 advisories)</title><rect x="472.89" y="50" width="102.22" height="200" fill="transparent"/><path d="M502.00,250 V210 Q502.00,206 506.00,206 H542.00 Q546.00,206 546.00,210 V250 Z" fill="var(--remote)"/></g>
+            <text x="524.00" y="268" text-anchor="middle" font-size="11" fill="var(--muted)">May</text>
+            <g><title>June 2026: 17 CVEs first fixed, on 3 advisory days (10 advisories)</title><rect x="575.11" y="50" width="102.22" height="200" fill="transparent"/><path d="M604.22,250 V186 Q604.22,182 608.22,182 H644.22 Q648.22,182 648.22,186 V250 Z" fill="var(--remote)"/></g>
+            <text x="626.22" y="268" text-anchor="middle" font-size="11" fill="var(--muted)">Jun</text>
+            <g><title>July 2026: 7 CVEs first fixed, on 5 advisory days (9 advisories)</title><rect x="677.33" y="50" width="102.22" height="200" fill="transparent"/><path d="M706.44,250 V226 Q706.44,222 710.44,222 H746.44 Q750.44,222 750.44,226 V250 Z" fill="var(--remote)"/></g>
+            <text x="728.44" y="268" text-anchor="middle" font-size="11" fill="var(--muted)">Jul</text>
+            <g><title>August 2026: 42 CVEs first fixed, on 4 advisory days (11 advisories)</title><rect x="779.56" y="50" width="102.22" height="200" fill="transparent"/><path d="M808.67,250 V86 Q808.67,82 812.67,82 H848.67 Q852.67,82 852.67,86 V250 Z" fill="var(--remote)"/></g>
+            <text x="830.67" y="268" text-anchor="middle" font-size="11" fill="var(--muted)">Aug</text>
+            <text x="830.67" y="75" text-anchor="middle" font-size="12.5" font-weight="600">42</text>
+            <g><title>September 2026: 31 CVEs first fixed, on 1 advisory day (4 advisories)</title><rect x="881.78" y="50" width="102.22" height="200" fill="transparent"/><path d="M910.89,250 V130 Q910.89,126 914.89,126 H950.89 Q954.89,126 954.89,130 V250 Z" fill="var(--remote)"/></g>
+            <text x="932.89" y="268" text-anchor="middle" font-size="11" fill="var(--muted)">Sep</text>
+            <text x="932.89" y="119" text-anchor="middle" font-size="12.5" font-weight="600">31</text>
+            <text x="64" y="306" fill="var(--muted)">144 CVEs from January to September, and 12 more on 1 October: 156 so far in 2026.</text>
+          </g>
+        </svg>
+      </div>
+      <figcaption>Red Hat's 4.18 advisories first fixed 156 CVEs in 2026, on 27 advisory days up to 1 October. August and September carried 73 of them. Each fix reaches our clusters only after a sync brings in the release that carries it. This measurement does not show why the later months are higher.</figcaption>
+    </figure>
+    <details>
+      <summary>The same data as a table</summary>
+      <div class="tbl">
+        <table>
+          <thead><tr><th>Month of 2026</th><th class="num">Advisory days</th><th class="num">Advisories</th><th class="num">CVEs first fixed</th></tr></thead>
+          <tbody>
+            <tr><td>January</td><td class="num">2</td><td class="num">3</td><td class="num">7</td></tr>
+            <tr><td>February</td><td class="num">3</td><td class="num">10</td><td class="num">10</td></tr>
+            <tr><td>March</td><td class="num">2</td><td class="num">6</td><td class="num">7</td></tr>
+            <tr><td>April</td><td class="num">2</td><td class="num">7</td><td class="num">12</td></tr>
+            <tr><td>May</td><td class="num">4</td><td class="num">10</td><td class="num">11</td></tr>
+            <tr><td>June</td><td class="num">3</td><td class="num">10</td><td class="num">17</td></tr>
+            <tr><td>July</td><td class="num">5</td><td class="num">9</td><td class="num">7</td></tr>
+            <tr><td>August</td><td class="num">4</td><td class="num">11</td><td class="num">42</td></tr>
+            <tr><td>September</td><td class="num">1</td><td class="num">4</td><td class="num">31</td></tr>
+            <tr><td>October (to the 1st)</td><td class="num">1</td><td class="num">4</td><td class="num">12</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </details>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>Version on our road</th><th class="num">CVEs first fixed in 2026</th><th class="num">Advisory days in 2026</th><th>Newest release image</th><th>Support today</th></tr></thead>
+        <tbody>
+          <tr><td>4.18 (where we are)</td><td class="num">156</td><td class="num">27</td><td>4.18.56, tagged 24 Sep</td><td>EUS term 1, to 25 Feb 2027</td></tr>
+          <tr><td>4.20 (first target)</td><td class="num">152</td><td class="num">32</td><td>4.20.41, tagged 1 Oct</td><td>Maintenance, to 21 Apr 2027; EUS to 21 Oct 2027</td></tr>
+          <tr><td>4.22 (second target)</td><td class="num">159</td><td class="num">16</td><td>4.22.17, tagged 1 Oct</td><td>Full support, to 31 Dec 2026; EUS to 30 Jun 2028</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="muted">Counts are CVEs that Red Hat's security data API lists with a fix released under that product version. 4.22 became generally available on 9 June 2026, so its count covers under four months.</p>
+    <p>The wider industry reports the same pressure. FIRST expects 2026 to end near 66,000 CVEs, and Help Net Security attributes most of the rise to AI tools that hunt for flaws on their own. The Cloud Security Alliance reports that of 1,596 AI-found flaws disclosed to open-source maintainers by 22 May 2026, 97 were confirmed patched. Those are industry figures. Nothing measured here ties a specific OpenShift fix to AI discovery.</p>
+  </section>
+
+  <section>
+    <h2>The tools changed too</h2>
+    <p>Whichever tool our sync uses today, Red Hat's 4.22 documentation has moved on from it. Staying disconnected means migrating the process as well as running it.</p>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>Was</th><th>In 4.22</th></tr></thead>
+        <tbody>
+          <tr><td><code>oc adm release mirror</code></td><td>"deprecated as of OpenShift Container Platform 4.22 and will be removed in a future release"<span class="src">snippets/oc-adm-release-mirror-depr.adoc</span></td></tr>
+          <tr><td>oc-mirror plugin v1</td><td>"The oc-mirror v1 plugin is deprecated." The docs say to "migrate to the supported v2 plugin".<span class="src">disconnected/installing-mirroring-disconnected.adoc</span></td></tr>
+          <tr><td><code>ImageSetConfiguration</code>, <code>mirror.openshift.io/v1alpha2</code></td><td><code>v2alpha1</code>. "You must manually update the configuration files before migration", and <code>storageConfig</code> must be removed.<span class="src">modules/oc-mirror-migration-differences.adoc</span></td></tr>
+          <tr><td><code>ImageContentSourcePolicy</code> (ICSP)</td><td>Replaced by <code>ImageDigestMirrorSet</code> and <code>ImageTagMirrorSet</code>.<span class="src">modules/oc-mirror-migration-differences.adoc</span></td></tr>
+          <tr><td>Automatic pruning of old images (v1)</td><td>v2 "does not perform automatic pruning"; deleting images is a separate workflow.<span class="src">modules/oc-mirror-v2-about.adoc</span></td></tr>
+          <tr><td>Release images served from a mirror</td><td>"you must mirror the sigstore signatures" as well; otherwise the default image policy stops the node update. The policy is "active by default" from 4.21, and leaving 4.20 needs the <code>ack-4.20-sigstore-in-4.21</code> acknowledgment.<span class="src">modules/nodes-sigstore-configure-cluster-policy.adoc · 4.21 release notes · 4.20 modules/update-preparing-ack-sigstore.adoc</span></td></tr>
+          <tr><td>Operator dependencies</td><td>v2 "does not infer Group Version Kind (GVK) or bundle dependencies". Each dependent package has to be listed.<span class="src">modules/oc-mirror-operator-catalog-filtering.adoc</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="muted">Quotes are from the <code>openshift/openshift-docs</code> source, branch <code>enterprise-4.22</code>, commit <code>b9f51d8</code>, with <code>enterprise-4.20</code> (<code>d51f4f2</code>) and <code>enterprise-4.21</code> (<code>acdecf2</code>) where named.</p>
+  </section>
+
+  <section>
+    <h2>Where we go instead</h2>
+    <p>Our preferred position is a direct enterprise proxy with only Red Hat's documented hosts allowed. The alternative is a full Red Hat Quay registry on-prem, built with Red Hat Consulting and a Quay specialist. Neither is built or approved yet.</p>
+    <figure>
+      <div class="fig-scroll">
+        <svg viewBox="0 0 1000 690" role="img" aria-label="Two proposed designs. In the preferred design the cluster pulls images, the update graph and signatures from Red Hat through an enterprise proxy with an allowlist, with no mirror and no two-headed DNS. In the alternative the cluster has no egress and pulls from an on-prem Red Hat Quay that a scheduled oc-mirror v2 job fills. Both open the same Red Hat hosts and both need a plan for operator catalogs.">
+          <defs>
+            <marker id="ah3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker>
+            <marker id="ah3t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--remote)"/></marker>
+          </defs>
+          <line x1="555" y1="14" x2="555" y2="624" stroke="var(--rule)" stroke-width="1.5"/>
+          <rect x="120" y="350" width="860" height="40" fill="var(--none-wash)"/>
+          <line x1="120" y1="350" x2="980" y2="350" stroke="var(--rule)" stroke-width="1.5" stroke-dasharray="6 5"/>
+          <line x1="120" y1="390" x2="980" y2="390" stroke="var(--rule)" stroke-width="1.5" stroke-dasharray="6 5"/>
+          <g font-family="IBM Plex Mono, monospace" font-size="13" font-weight="600">
+            <text x="20" y="92" fill="var(--host)">INSIDE</text>
+            <text x="20" y="110" font-size="11" font-weight="400" fill="var(--muted)">our network</text>
+            <text x="20" y="366" fill="var(--muted)">EGRESS</text>
+            <text x="20" y="384" font-size="11" font-weight="400" fill="var(--muted)">proxy + FW</text>
+            <text x="20" y="440" fill="var(--remote)">RED HAT</text>
+            <text x="20" y="458" font-size="11" font-weight="400" fill="var(--muted)">TCP 443</text>
+            <text x="20" y="566" fill="var(--host)">CATALOGS</text>
+            <text x="20" y="584" font-size="11" font-weight="400" fill="var(--muted)">operators</text>
+          </g>
+          <g font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="currentColor">
+            <!-- preferred -->
+            <text x="150" y="30" font-size="15" font-weight="700">Preferred · proxy + allowlist</text>
+            <text x="150" y="50" fill="var(--muted)">the cluster pulls from Red Hat; nothing to sync</text>
+
+            <rect x="150" y="70" width="370" height="64" rx="8" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5" stroke-dasharray="5 4"/>
+            <text x="166" y="92" font-weight="600">OpenShift cluster</text>
+            <text x="166" y="109">cluster-wide proxy for CRI-O, the CVO and OLM</text>
+            <text x="166" y="125" fill="var(--muted)">turning it on reboots every node once</text>
+            <line x1="250" y1="134" x2="250" y2="162" stroke="var(--remote)" stroke-width="1.6" marker-end="url(#ah3t)"/>
+            <text x="262" y="153" fill="var(--muted)">images, graph, signatures</text>
+
+            <rect x="150" y="166" width="370" height="64" rx="8" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5" stroke-dasharray="5 4"/>
+            <text x="166" y="188" font-weight="600">enterprise proxy</text>
+            <text x="166" y="205">allowlist: Red Hat's documented hosts, TCP 443</text>
+            <text x="166" y="221" fill="var(--muted)">nodes resolve only the proxy: no two-headed DNS</text>
+            <line x1="250" y1="230" x2="250" y2="410" stroke="var(--remote)" stroke-width="1.6" marker-end="url(#ah3t)"/>
+            <text x="262" y="375" font-weight="600" fill="var(--remote)">every node, through the proxy</text>
+
+            <rect x="360" y="262" width="160" height="64" rx="8" fill="none" stroke="var(--none)" stroke-width="1.2" stroke-dasharray="5 4"/>
+            <text x="440" y="290" text-anchor="middle" fill="var(--muted)">no mirror host</text>
+            <text x="440" y="307" text-anchor="middle" fill="var(--muted)">no sync job to run</text>
+
+            <rect x="150" y="414" width="370" height="100" rx="8" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.5"/>
+            <text x="166" y="434" font-weight="600" fill="var(--remote)">the allowlist, opened to every node</text>
+            <text x="166" y="453" font-family="IBM Plex Mono, monospace" font-size="12">quay.io · cdn.quay.io · cdn01–06.quay.io</text>
+            <text x="166" y="470" font-family="IBM Plex Mono, monospace" font-size="12">registry.redhat.io</text>
+            <text x="166" y="487" font-family="IBM Plex Mono, monospace" font-size="12">api.openshift.com · mirror.openshift.com</text>
+            <text x="166" y="504" fill="var(--muted)">+ telemetry hosts only if telemetry stays on</text>
+
+            <rect x="150" y="540" width="370" height="84" rx="8" fill="none" stroke="var(--host)" stroke-width="1.5" stroke-dasharray="5 4"/>
+            <text x="166" y="561" font-weight="600">catalogs come straight from registry.redhat.io</text>
+            <text x="166" y="578">an admission policy limits what can be installed</text>
+            <text x="166" y="595">an allowlist on the stock catalog needs no registry</text>
+            <text x="166" y="612" fill="var(--muted)">a filtered catalog would need one for its image</text>
+
+            <!-- alternative -->
+            <text x="590" y="30" font-size="15" font-weight="700">Alternative · Red Hat Quay on-prem</text>
+            <text x="590" y="50" fill="var(--muted)">a scheduled sync replaces the manual one</text>
+
+            <rect x="590" y="70" width="370" height="64" rx="8" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5" stroke-dasharray="5 4"/>
+            <text x="606" y="92" font-weight="600">OpenShift cluster</text>
+            <text x="606" y="109">no egress; pulls from Quay through IDMS / ITMS</text>
+            <text x="606" y="125" fill="var(--muted)">update graph from a local OSUS</text>
+            <line x1="860" y1="166" x2="860" y2="138" stroke="currentColor" stroke-width="1.3" marker-end="url(#ah3)"/>
+            <text x="848" y="155" text-anchor="end" fill="var(--muted)">images, graph data</text>
+
+            <rect x="590" y="166" width="370" height="64" rx="8" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5" stroke-dasharray="5 4"/>
+            <text x="606" y="188" font-weight="600">Red Hat Quay, highly available</text>
+            <text x="606" y="205">built with Red Hat Consulting and a Quay SME</text>
+            <text x="606" y="221" fill="var(--muted)">filled by oc-mirror v2, not Quay repo mirroring</text>
+            <line x1="860" y1="262" x2="860" y2="234" stroke="currentColor" stroke-width="1.3" marker-end="url(#ah3)"/>
+            <text x="848" y="252" text-anchor="end" fill="var(--muted)">push</text>
+
+            <rect x="590" y="262" width="370" height="64" rx="8" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5" stroke-dasharray="5 4"/>
+            <text x="606" y="284" font-weight="600">mirror host, scheduled job</text>
+            <text x="606" y="301">oc-mirror v2 with an ImageSetConfiguration in Git</text>
+            <text x="606" y="317" fill="var(--muted)">the sync remains; a job runs it, not a person</text>
+            <line x1="690" y1="326" x2="690" y2="410" stroke="var(--remote)" stroke-width="1.6" marker-end="url(#ah3t)"/>
+            <text x="702" y="375" font-weight="600" fill="var(--remote)">one host, through the proxy</text>
+
+            <rect x="590" y="414" width="370" height="100" rx="8" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.5"/>
+            <text x="606" y="434" font-weight="600" fill="var(--remote)">the same hosts, opened to one machine</text>
+            <text x="606" y="453" font-family="IBM Plex Mono, monospace" font-size="12">quay.io · cdn.quay.io · cdn01–06.quay.io</text>
+            <text x="606" y="470" font-family="IBM Plex Mono, monospace" font-size="12">registry.redhat.io</text>
+            <text x="606" y="487" font-family="IBM Plex Mono, monospace" font-size="12">api.openshift.com · mirror.openshift.com</text>
+            <text x="606" y="504" fill="var(--muted)">the cluster itself reaches none of them</text>
+
+            <rect x="590" y="540" width="370" height="84" rx="8" fill="none" stroke="var(--host)" stroke-width="1.5" stroke-dasharray="5 4"/>
+            <text x="606" y="561" font-weight="600">oc-mirror v2 builds a filtered catalog</text>
+            <text x="606" y="578">from the packages in the ImageSetConfiguration</text>
+            <text x="606" y="595">every dependency has to be listed by hand</text>
+            <text x="606" y="612" fill="var(--muted)">the same admission policy enforces it</text>
+
+            <text x="20" y="652">Both designs open the same Red Hat hosts. They differ in who uses the opening: every node, or one mirror host.</text>
+            <text x="20" y="674" font-weight="600" fill="var(--host)">Dashed = proposed, not built. Solid = exists today. Neither design is approved yet.</text>
+          </g>
+        </svg>
+      </div>
+      <figcaption>Both designs are proposals. In the preferred one, every node pulls from Red Hat through an enterprise proxy that allows only Red Hat's documented hosts, so there is no mirror and no sync, and no two-headed DNS. In the alternative, the cluster keeps no egress and pulls from an on-prem Red Hat Quay that a scheduled oc-mirror v2 job fills. Both open the same Red Hat hosts at the firewall, and both need a plan for operator catalogs.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>What the proposal removes, and what stays</h2>
+    <p>Neither design makes the remaining work go away. The updates still have to be run, the clusters still have to be pointed at an update service and a registry, and the operator catalog still has to be gated through GitOps so that only approved items are exposed. That work exists today and in both designs.</p>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>Stays in every option</th><th>Today</th><th>Preferred: proxy</th><th>Alternative: Quay on-prem</th></tr></thead>
+        <tbody>
+          <tr><td>The updates themselves</td><td>4.18 to 4.20 to 4.22, four control-plane hops</td><td>The same hops</td><td>The same hops</td></tr>
+          <tr><td>Update service</td><td>A local service whose graph data has to be refreshed</td><td>Point the cluster at Red Hat's service: clear <code>spec.upstream</code> and set the channel</td><td>A local OSUS; oc-mirror v2 builds its graph image on each run</td></tr>
+          <tr><td>Cluster registry configuration</td><td>Mirror sets point at the local registry</td><td>Red Hat credentials in the pull secret, <code>allowedRegistries</code>, and the mirror sets removed after the first connected update</td><td>New IDMS and ITMS pointing at Quay, generated by oc-mirror v2</td></tr>
+          <tr><td>Catalog gating through GitOps</td><td>Needed</td><td>Git owns every CatalogSource and Subscription; an admission policy enforces the approved list</td><td>The same, with the filtered catalog built by oc-mirror v2</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>What the proposal changes is the part that is broken today: copying images and catalogs across by hand.</p>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>Removed or automated</th><th>Today</th><th>Preferred: proxy</th><th>Alternative: Quay on-prem</th></tr></thead>
+        <tbody>
+          <tr><td>Image sync</td><td class="cell-gap">By hand, offline</td><td>Gone. Each node pulls through the proxy.</td><td>A scheduled oc-mirror v2 job</td></tr>
+          <tr><td>Catalog sync</td><td class="cell-gap">By hand, and out of date today</td><td>Gone. Catalogs and operator images come from <code>registry.redhat.io</code>.</td><td>The same scheduled job; every dependency listed by hand</td></tr>
+          <tr><td>A failed sync</td><td class="cell-gap">No update that cycle. It has happened multiple times.</td><td>No sync to fail. A proxy outage stops pulls, so the proxy has to be highly available.</td><td>Still possible. Red Hat lists open oc-mirror failure modes in KB 7130341, 7139982 and 7128745.</td></tr>
+          <tr><td>Tooling migration</td><td class="cell-gap">Owed: oc-mirror v2 and a <code>v2alpha1</code> configuration</td><td>No mirroring tool to maintain</td><td>Start on oc-mirror v2</td></tr>
+          <tr><td>Release signatures</td><td class="cell-gap">Have to be mirrored, with an acknowledgment before 4.21</td><td>Checked against Red Hat directly once the mirror sets are gone</td><td>oc-mirror v2 mirrors signatures by default</td></tr>
+          <tr><td>Two-headed DNS</td><td>Not applicable</td><td>Not needed. Nodes resolve only the proxy.</td><td>Not needed. oc-mirror v2 uses the proxy.</td></tr>
+          <tr><td>What we run</td><td>A local registry and a manual process</td><td>A highly available proxy</td><td>Highly available Quay, a mirror host, OSUS, and a proxy for the mirror host</td></tr>
+          <tr><td>What it costs to get there</td><td>Nothing new</td><td>Security approval for node egress; one reboot of every node</td><td>A Consulting engagement, a Quay specialist, and a new registry to size and operate</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>The team's assessment is that our backlog of fixes and our limits on upgrading come from this process, not from OpenShift. The measurements are consistent with that: Red Hat has shipped 156 fixes for 4.18 this year, and its update graph recommends a path to 4.20 from every 4.18 release. What is missing is the content inside our network.</p>
+    <p class="muted">The rows on DNS, signatures, catalogs and the Quay failure KBs come from the plan's research of 2026-09-25. That research found no Red Hat document that requires Consulting for Quay; bringing them in is our choice.</p>
+  </section>
+
+  <section>
+    <h2>Still to settle</h2>
+    <ul class="plain">
+      <li>Security has not yet said whether cluster nodes may reach Red Hat through the proxy. The preferred design depends on that answer.</li>
+      <li>Order of work: the cluster-wide proxy is a documented configuration on 4.18. Enabling it before the updates would let the hops to 4.20 and 4.22 run without any sync. Red Hat Support should confirm that removing the mirror sets also removes the signature acknowledgment before 4.21.</li>
+      <li>The Red Hat Consulting engagement and the Quay specialist for the alternative are not arranged.</li>
+      <li>This page does not record which 4.18 release each cluster is on, which tool the current sync uses, or how many times it has failed. Those three facts would make the case stronger.</li>
+      <li>The plan also holds a third design that sits between these two: update graph and signatures from Red Hat through the proxy, images from the registry we run today. Red Hat does not document that combination.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>How this was measured</h2>
+    <p>All measurements were taken on 2026-10-05.</p>
+    <pre># support phases for 4.18 to 4.22
+curl 'https://access.redhat.com/product-life-cycles/api/v1/products?name=Openshift%20Container%20Platform%204'
+
+# release images per minor, with push timestamps (repeat for 4.18, 4.20, 4.22)
+curl 'https://quay.io/api/v1/repository/openshift-release-dev/ocp-release/tag/?filter_tag_name=like:4.18.%25-x86_64&amp;limit=100&amp;onlyActiveTags=true'
+
+# update graph: recommended and conditional edges (repeat for eus-4.22)
+curl -H 'Accept: application/json' 'https://api.openshift.com/api/upgrades_info/v1/graph?channel=eus-4.20&amp;arch=amd64'
+
+# component images in one release: digests in the Images section (4.19.47, 4.20.39, 4.21.34, 4.22.15)
+curl https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/4.19.47/release.txt
+
+# CVEs with a fix released under one product version (repeat for 4.20 and 4.22)
+curl 'https://access.redhat.com/hydra/rest/securitydata/cve.json?product=Red%20Hat%20OpenShift%20Container%20Platform%204.18&amp;per_page=5000'
+# then, for each CVE, the release_date and advisory of every matching entry in affected_release
+curl https://access.redhat.com/hydra/rest/securitydata/cve/&lt;CVE&gt;.json
+
+# documentation quotes
+git clone --depth 1 -b enterprise-4.22 https://github.com/openshift/openshift-docs.git   # commit b9f51d8</pre>
+    <ul class="plain">
+      <li>Help Net Security, 15 June 2026, "AI vulnerability discovery is pushing 2026 CVEs toward 66,000": <a href="https://www.helpnetsecurity.com/2026/06/15/first-2026-cve-forecast/">helpnetsecurity.com/2026/06/15/first-2026-cve-forecast</a></li>
+      <li>Cloud Security Alliance AI Safety Initiative, 8 June 2026, "Project Glasswing: AI Discovery Outpaces Open Source Patching Capacity": <a href="https://labs.cloudsecurityalliance.org/research/csa-research-note-glasswing-ai-vuln-patching-deficit-2026060/">labs.cloudsecurityalliance.org</a></li>
+      <li>OpenShift 4.22, Disconnected environments: <a href="https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/disconnected_environments/">docs.redhat.com</a></li>
+    </ul>
+  </section>
+</div>

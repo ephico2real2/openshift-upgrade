@@ -1,0 +1,60 @@
+# Gatekeeper equivalent of restrict-olm-catalogsources (CatalogSource only).
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: olmcatalogsourcerestrict
+spec:
+  crd:
+    spec:
+      names:
+        kind: OLMCatalogSourceRestrict
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            allowedNamespace:
+              type: string
+            approvedPrefixes:
+              type: array
+              items:
+                type: string
+  targets:
+  - target: admission.k8s.gatekeeper.sh
+    rego: |
+      package olmcatalogsourcerestrict
+
+      spec := object.get(input.review.object, "spec", {})
+      annotations := object.get(input.review.object.metadata, "annotations", {})
+
+      approved(ref) {
+        prefix := input.parameters.approvedPrefixes[_]
+        startswith(ref, prefix)
+      }
+
+      violation[{"msg": msg}] {
+        input.review.namespace != input.parameters.allowedNamespace
+        msg := sprintf("CatalogSource must be created in %v, not %v", [input.parameters.allowedNamespace, input.review.namespace])
+      }
+
+      violation[{"msg": msg}] {
+        object.get(spec, "sourceType", "") != "grpc"
+        msg := "only sourceType grpc is permitted"
+      }
+
+      violation[{"msg": msg}] {
+        object.get(spec, "address", "") != ""
+        msg := "address-based CatalogSources are not permitted"
+      }
+
+      violation[{"msg": msg}] {
+        img := object.get(spec, "image", "")
+        not approved(img)
+        msg := sprintf("CatalogSource image %v is not from an approved repository", [img])
+      }
+
+      violation[{"msg": msg}] {
+        tmpl := object.get(annotations, "olm.catalogImageTemplate", "")
+        tmpl != ""
+        not approved(tmpl)
+        msg := sprintf("olm.catalogImageTemplate %v is not from an approved repository", [tmpl])
+      }

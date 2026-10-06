@@ -1,0 +1,54 @@
+# Kyverno equivalent of restrict-olm-catalogsources (CatalogSource only).
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-olm-catalogsources
+spec:
+  background: false
+  rules:
+  - name: catalogsource-location-and-image
+    match:
+      any:
+      - resources:
+          kinds: ["operators.coreos.com/v1alpha1/CatalogSource"]
+          operations: ["CREATE", "UPDATE"]
+    validate:
+      failureAction: Enforce
+      message: >-
+        CatalogSources must live in openshift-marketplace, be image-backed gRPC,
+        and use an image under mirror.corp.example.com/olm/.
+      deny:
+        conditions:
+          any:
+          - key: "{{ request.namespace }}"
+            operator: NotEquals
+            value: openshift-marketplace
+          - key: "{{ request.object.spec.sourceType || '' }}"
+            operator: NotEquals
+            value: grpc
+          - key: "{{ request.object.spec.address || '' }}"
+            operator: NotEquals
+            value: ""
+          - key: "{{ request.object.spec.image || '' }}"
+            operator: NotEquals
+            value: "mirror.corp.example.com/olm/*"
+  - name: catalogsource-image-template
+    match:
+      any:
+      - resources:
+          kinds: ["operators.coreos.com/v1alpha1/CatalogSource"]
+          operations: ["CREATE", "UPDATE"]
+    preconditions:
+      all:
+      - key: "{{ request.object.metadata.annotations.\"olm.catalogImageTemplate\" || '' }}"
+        operator: NotEquals
+        value: ""
+    validate:
+      failureAction: Enforce
+      message: "olm.catalogImageTemplate must point under mirror.corp.example.com/olm/."
+      deny:
+        conditions:
+          any:
+          - key: "{{ request.object.metadata.annotations.\"olm.catalogImageTemplate\" }}"
+            operator: NotEquals
+            value: "mirror.corp.example.com/olm/*"

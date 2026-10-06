@@ -1,0 +1,9 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: CatalogSource
+metadata:
+  name: bad-devns
+  namespace: dev-team
+
+spec:
+  sourceType: grpc
+  image: mirror.corp.example.com/olm/approved-catalog:v4.18

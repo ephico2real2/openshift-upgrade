@@ -1,0 +1,10 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: CatalogSource
+metadata:
+  name: bad-template
+  namespace: openshift-marketplace
+  annotations:
+    olm.catalogImageTemplate: "quay.io/evil/catalog:v{kube_major_version}.{kube_minor_version}"
+spec:
+  sourceType: grpc
+  image: mirror.corp.example.com/olm/approved-catalog:v4.18

@@ -1,0 +1,133 @@
+# Restrict OLM v0 CatalogSources to the global catalog namespace, image-backed gRPC only,
+# with the image (and any olm.catalogImageTemplate) under an approved repository prefix.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: restrict-olm-catalogsources
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups:   ["operators.coreos.com"]
+      apiVersions: ["*"]
+      operations:  ["CREATE", "UPDATE"]
+      resources:   ["catalogsources"]
+  variables:
+  # Trailing "/" is deliberate: prevents "mirror.corp.example.com.evil.io" or "olm-evil/" matching.
+  - name: approvedPrefixes
+    expression: "['mirror.corp.example.com/olm/']"
+  - name: annotations
+    expression: "has(object.metadata.annotations) ? object.metadata.annotations : {}"
+  validations:
+  - expression: "request.namespace == 'openshift-marketplace'"
+    message: "CatalogSource objects are only permitted in openshift-marketplace."
+  - expression: "has(object.spec.sourceType) && object.spec.sourceType == 'grpc' && has(object.spec.image) && !has(object.spec.address)"
+    message: "Only image-backed gRPC CatalogSources are permitted (no configmap or address sources)."
+  - expression: "has(object.spec.image) && variables.approvedPrefixes.exists(p, object.spec.image.startsWith(p))"
+    message: "spec.image must come from an approved catalog repository."
+  - expression: "!('olm.catalogImageTemplate' in variables.annotations) || variables.approvedPrefixes.exists(p, variables.annotations['olm.catalogImageTemplate'].startsWith(p))"
+    message: "olm.catalogImageTemplate must point at an approved catalog repository."
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: restrict-olm-catalogsources
+spec:
+  policyName: restrict-olm-catalogsources
+  validationActions: ["Deny"]
+---
+# Subscriptions (including the dependency Subscriptions OLM creates itself) may only
+# reference approved catalogs in the global catalog namespace.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: restrict-olm-subscriptions
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups:   ["operators.coreos.com"]
+      apiVersions: ["*"]
+      operations:  ["CREATE", "UPDATE"]
+      resources:   ["subscriptions"]
+  variables:
+  - name: approvedCatalogs
+    expression: "['approved-operators']"
+  validations:
+  - expression: "object.spec.sourceNamespace == 'openshift-marketplace' && object.spec.source in variables.approvedCatalogs"
+    message: "Subscriptions must reference an approved CatalogSource in openshift-marketplace."
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: restrict-olm-subscriptions
+spec:
+  policyName: restrict-olm-subscriptions
+  validationActions: ["Deny"]
+---
+# Human/GitOps-authored Subscriptions must use Manual InstallPlan approval. OLM's own service
+# account is exempt: the resolver creates dependency Subscriptions hard-coded to Automatic
+# (resolver/steps.go), and any Manual Subscription in the namespace already forces every
+# generated InstallPlan to Manual (catalog/operator.go).
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: require-manual-installplan-approval
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups:   ["operators.coreos.com"]
+      apiVersions: ["*"]
+      operations:  ["CREATE", "UPDATE"]
+      resources:   ["subscriptions"]
+  matchConditions:
+  - name: exclude-olm-controller
+    expression: "request.userInfo.username != 'system:serviceaccount:openshift-operator-lifecycle-manager:olm-operator-serviceaccount'"
+  validations:
+  - expression: "has(object.spec.installPlanApproval) && object.spec.installPlanApproval == 'Manual'"
+    message: "Subscriptions must set installPlanApproval: Manual."
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: require-manual-installplan-approval
+spec:
+  policyName: require-manual-installplan-approval
+  validationActions: ["Deny"]
+---
+# OLM v1: ClusterCatalogs must pull from an approved repository. The four Red Hat default
+# catalogs keep their registry.redhat.io refs so they can still be patched to
+# availabilityMode: Unavailable; they cannot be repointed elsewhere.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: restrict-olmv1-clustercatalogs
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups:   ["olm.operatorframework.io"]
+      apiVersions: ["*"]
+      operations:  ["CREATE", "UPDATE"]
+      resources:   ["clustercatalogs"]
+  variables:
+  - name: approvedPrefixes
+    expression: "['mirror.corp.example.com/olm/']"
+  - name: defaultCatalogs
+    expression: "['openshift-redhat-operators', 'openshift-certified-operators', 'openshift-redhat-marketplace', 'openshift-community-operators']"
+  validations:
+  - expression: >-
+      object.spec.source.type == 'Image' &&
+      (variables.approvedPrefixes.exists(p, object.spec.source.image.ref.startsWith(p)) ||
+       (object.metadata.name in variables.defaultCatalogs &&
+        object.spec.source.image.ref.startsWith('registry.redhat.io/redhat/')))
+    message: "ClusterCatalog spec.source.image.ref must come from an approved catalog repository."
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: restrict-olmv1-clustercatalogs
+spec:
+  policyName: restrict-olmv1-clustercatalogs
+  validationActions: ["Deny"]

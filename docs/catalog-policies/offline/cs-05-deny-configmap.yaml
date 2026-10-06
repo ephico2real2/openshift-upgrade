@@ -1,0 +1,9 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: CatalogSource
+metadata:
+  name: bad-configmap
+  namespace: openshift-marketplace
+
+spec:
+  sourceType: configmap
+  configMap: rogue-cm

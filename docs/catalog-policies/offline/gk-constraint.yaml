@@ -1,0 +1,14 @@
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: OLMCatalogSourceRestrict
+metadata:
+  name: restrict-olm-catalogsources
+spec:
+  enforcementAction: deny
+  match:
+    kinds:
+    - apiGroups: ["operators.coreos.com"]
+      kinds: ["CatalogSource"]
+  parameters:
+    allowedNamespace: openshift-marketplace
+    approvedPrefixes: ["mirror.corp.example.com/olm/"]
+

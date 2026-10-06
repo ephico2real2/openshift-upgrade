@@ -1,0 +1,9 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: CatalogSource
+metadata:
+  name: bad-spoof
+  namespace: openshift-marketplace
+
+spec:
+  sourceType: grpc
+  image: mirror.corp.example.com.evil.io/olm/catalog:v1

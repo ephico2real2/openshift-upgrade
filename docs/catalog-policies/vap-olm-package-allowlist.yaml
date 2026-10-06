@@ -1,0 +1,67 @@
+# Connected/proxied cluster WITHOUT a registry of your own: keep only the stock Red Hat
+# catalog, and restrict what can be subscribed to by package and channel at admission.
+# Every package OLM must pull in as a dependency has to be on the list too, because OLM
+# creates dependency Subscriptions itself and they pass through this same policy.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: restrict-olm-subscription-packages
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups:   ["operators.coreos.com"]
+      apiVersions: ["*"]
+      operations:  ["CREATE", "UPDATE"]
+      resources:   ["subscriptions"]
+  variables:
+  # package name -> approved channels
+  - name: approved
+    expression: >-
+      {'openshift-gitops-operator': ['gitops-1.18'],
+       'openshift-cert-manager-operator': ['stable-v1']}
+  validations:
+  - expression: "object.spec.sourceNamespace == 'openshift-marketplace' && object.spec.source == 'redhat-operators'"
+    message: "Subscriptions must use the redhat-operators catalog in openshift-marketplace."
+  - expression: "object.spec.name in variables.approved"
+    messageExpression: "'package ' + object.spec.name + ' is not on the approved Operator list'"
+  - expression: "!(object.spec.name in variables.approved) || (has(object.spec.channel) && object.spec.channel in variables.approved[object.spec.name])"
+    messageExpression: "'an approved, explicit channel is required for package ' + object.spec.name"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: restrict-olm-subscription-packages
+spec:
+  policyName: restrict-olm-subscription-packages
+  validationActions: ["Deny"]
+---
+# The only CatalogSource allowed is the stock Red Hat index (as reconciled by the Marketplace
+# Operator), in openshift-marketplace.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: restrict-olm-catalogsources-stock
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+    - apiGroups:   ["operators.coreos.com"]
+      apiVersions: ["*"]
+      operations:  ["CREATE", "UPDATE"]
+      resources:   ["catalogsources"]
+  validations:
+  - expression: >-
+      request.namespace == 'openshift-marketplace' &&
+      has(object.spec.sourceType) && object.spec.sourceType == 'grpc' &&
+      !has(object.spec.address) && has(object.spec.image) &&
+      object.spec.image.startsWith('registry.redhat.io/redhat/redhat-operator-index:')
+    message: "Only the stock redhat-operators index in openshift-marketplace is permitted."
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: restrict-olm-catalogsources-stock
+spec:
+  policyName: restrict-olm-catalogsources-stock
+  validationActions: ["Deny"]

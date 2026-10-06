@@ -1,0 +1,9 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: CatalogSource
+metadata:
+  name: bad-address
+  namespace: openshift-marketplace
+
+spec:
+  sourceType: grpc
+  address: rogue.example.com:50051
