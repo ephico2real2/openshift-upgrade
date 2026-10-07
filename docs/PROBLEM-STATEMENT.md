@@ -10,6 +10,8 @@ Our clusters run OpenShift 4.18 on the EUS channel and are well behind. Standard
 someone to copy images and catalogs into the local registry by hand. That sync has failed several
 times, and Red Hat has replaced the tools it relies on.
 
+**Refined (2026-10-07):** the current process now uses Ansible. The sync runs oc-mirror v2 from the playbooks in [`oc-mirror-ansible/`](../oc-mirror-ansible/README.md). A person still starts each run, so the gap described below narrows but does not close; the two designs under [Where we go instead](#where-we-go-instead) are the next steps.
+
 ## Every fix has to cross the gap by hand
 
 <picture>
@@ -38,7 +40,7 @@ RED HAT publishes (measured)                    | AIR GAP |  OUR NETWORK, discon
   of date today (team report)                   |         |
 
 Red Hat keeps shipping. Our clusters move only when a manual sync succeeds, and they are still on 4.18.
-Which sync tool the current process uses is not recorded here.
+Refined 2026-10-07: the current process runs oc-mirror v2 from Ansible (oc-mirror-ansible/); a person still starts it.
 ```
 
 ## The road from 4.18 to 4.22
@@ -147,6 +149,8 @@ disconnected means migrating the process as well as running it.
 Quotes are from `openshift/openshift-docs`, branch `enterprise-4.22`, commit `b9f51d8`, with
 `enterprise-4.20` (`d51f4f2`) and `enterprise-4.21` (`acdecf2`) where named.
 
+The refined current process ([`oc-mirror-ansible/`](../oc-mirror-ansible/README.md)) is built on oc-mirror v2 and `v2alpha1` ImageSetConfigurations: it generates IDMS and ITMS instead of ICSP, mirrors release signatures by default, never prunes, and lists every operator package explicitly.
+
 ## Where we go instead
 
 The plan now has three steps (refined 2026-10-07). Step 1 modernises today's process with Ansible
@@ -199,13 +203,13 @@ hand.
 
 | Removed or automated | Today | Preferred: proxy | Alternative: Quay on-prem |
 |---|---|---|---|
-| Image sync | By hand, offline | Gone. Each node pulls through the proxy | A scheduled oc-mirror v2 job |
-| Catalog sync | By hand, and out of date today | Gone. Catalogs and operator images come from `registry.redhat.io` | The same scheduled job; every dependency listed by hand |
+| Image sync | Refined: oc-mirror v2 run from Ansible (`oc-mirror-ansible/`), still started by a person | Gone. Each node pulls through the proxy | A scheduled oc-mirror v2 job |
+| Catalog sync | Refined: the Ansible catalog playbook, still started by a person; catalogs stay out of date until it runs | Gone. Catalogs and operator images come from `registry.redhat.io` | The same scheduled job; every dependency listed by hand |
 | A failed sync | No update that cycle. It has happened multiple times | No sync to fail. A proxy outage stops pulls, so the proxy has to be highly available | Still possible. Red Hat lists open oc-mirror failure modes in KB 7130341, 7139982 and 7128745 |
-| Tooling migration | Owed: oc-mirror v2 and a `v2alpha1` configuration | No mirroring tool to maintain | Start on oc-mirror v2 |
+| Tooling migration | Done: oc-mirror v2 and `v2alpha1`, in `oc-mirror-ansible/` | No mirroring tool to maintain | Start on oc-mirror v2 |
 | Release signatures | Have to be mirrored, with an acknowledgment before 4.21 | Checked against Red Hat directly once the mirror sets are gone | oc-mirror v2 mirrors signatures by default |
 | Two-headed DNS | Not applicable | Not needed. Nodes resolve only the proxy | Not needed. oc-mirror v2 uses the proxy |
-| What we run | A local registry and a manual process | A highly available proxy | Highly available Quay, a mirror host, OSUS, and a proxy for the mirror host |
+| What we run | A local registry and Ansible playbooks run by hand | A highly available proxy | Highly available Quay, a mirror host, OSUS, and a proxy for the mirror host |
 | What it costs to get there | Nothing new | Security approval for node egress; one reboot of every node | A Consulting engagement, a Quay specialist, and a new registry to size and operate |
 
 The team's assessment is that our backlog of fixes and our limits on upgrading come from this
@@ -225,8 +229,9 @@ them in is our choice.
   the updates would let the hops to 4.20 and 4.22 run without any sync. Red Hat Support should
   confirm that removing the mirror sets also removes the signature acknowledgment before 4.21.
 - The Red Hat Consulting engagement and the Quay specialist for the alternative are not arranged.
-- This document does not record which 4.18 release each cluster is on, which tool the current sync
-  uses, or how many times it has failed. Those three facts would make the case stronger.
+- This document does not record which 4.18 release each cluster is on or how many times the sync
+  has failed. Those two facts would make the case stronger. The sync tool is recorded: since
+  2026-10-07 the current process runs oc-mirror v2 from Ansible ([`oc-mirror-ansible/`](../oc-mirror-ansible/README.md)).
 - The plan also holds a third design that sits between these two: update graph and signatures from
   Red Hat through the proxy, images from the registry we run today. Red Hat does not document that
   combination.
