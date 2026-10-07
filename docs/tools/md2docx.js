@@ -8,7 +8,7 @@ const path = require("path");
 const {
   Document, Packer, Paragraph, TextRun, ImageRun, ExternalHyperlink, Table, TableRow, TableCell,
   HeadingLevel, AlignmentType, WidthType, ShadingType, BorderStyle, LevelFormat, Footer, PageNumber,
-  TableLayoutType,
+  TableLayoutType, LineRuleType,
 } = require("docx");
 
 const [, , inPath, outPath] = process.argv;
@@ -86,7 +86,7 @@ function figure(src, alt) {
   const [w, h] = pngSize(file);
   const width = 672;                                            // 7.0" at 96 px per inch
   return new Paragraph({
-    spacing: { before: 120, after: 80 }, keepNext: true,
+    spacing: { before: 120, after: 80, line: 240, lineRule: LineRuleType.AUTO }, keepNext: true,  // an explicit auto rule: LibreOffice crops images to a bare line height
     children: [new ImageRun({ type: "png", data: fs.readFileSync(file), transformation: { width, height: Math.round((width * h) / w) },
       altText: { title: path.basename(src), description: alt, name: path.basename(src) } })],
   });
@@ -157,7 +157,7 @@ const heading = (size, before, after) => ({ run: { font: BODY, size, bold: true,
 const doc = new Document({
   title, creator: "Platform engineering",
   styles: {
-    default: { document: { run: { font: BODY, size: 21, color: INK }, paragraph: { spacing: { line: 288 } } } },
+    default: { document: { run: { font: BODY, size: 21, color: INK }, paragraph: { spacing: { line: 288, lineRule: LineRuleType.AUTO } } } },
     paragraphStyles: [
       { id: "Title", name: "Title", basedOn: "Normal", next: "Normal", quickFormat: true, ...heading(40, 0, 220) },
       { id: "Heading1", name: "heading 1", basedOn: "Normal", next: "Normal", quickFormat: true, ...heading(28, 360, 140) },

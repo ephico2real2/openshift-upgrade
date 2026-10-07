@@ -6,28 +6,48 @@ Oct 6, 2026 · Lateef Onifade
 
 One Ansible playbook mirrors OpenShift **4.18.17 from the `eus-4.18` channel** into an internal registry with `oc-mirror --v2`, for a **disconnected cluster**. The same run mirrors the OpenShift Update Service (OSUS) operator and builds its update graph, so the cluster can see and apply updates on its own. The cluster has no Red Hat credentials, so the Red Hat pull secret comes from console.redhat.com and is stored in Ansible Vault, next to the internal registry login.
 
-The playbook runs these steps on the mirror host, keeping all its files under /data/oc-mirror:
+The playbook runs these steps on the mirroring bastion of your datacenter ([`PREREQUISITES.md`](../../docs/PREREQUISITES.md)), keeping all its files under /data/oc-mirror:
 
 1. Reads the Red Hat pull secret from a Vault-encrypted file and checks that it covers `quay.io` and `registry.redhat.io`.
 2. Adds the internal registry login, also from Vault.
 3. Writes the merged auth file with mode `0600` in a private folder and renders the `ImageSetConfiguration`: the release, the update graph (`graph: true`) and the OSUS operator.
-4. Runs `oc-mirror --v2` from the Red Hat registries to the internal registry, with up to 4 attempts if it times out.
+4. Runs `oc-mirror --v2` with up to 4 attempts if it times out, in one of two halves: **download** (`m2d`) from the Red Hat registries into an archive on `/data`, filling a persistent cache so later downloads fetch only what changed; or **push** (`d2m`) that archive into one registry, run once per registry: lab first, then production. The same archive goes everywhere, so the lab tests exactly what production gets.
 5. Deletes the auth file in an `always:` block, which runs on success and on failure.
 
 Steps 1–9 run on the mirror host. Step 10 is done on the disconnected cluster by a cluster admin.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="diagrams/mirroring/run-flow.dark.png">
+  <source srcset="diagrams/mirroring/run-flow.light.png">
+  <img alt="One Step 1 release run. On the mirroring bastion: start the playbook in tmux with the Vault password; it checks the Red Hat pull secret, writes a private auth file and renders the ImageSet. A dry-run lists what would be copied; anything in missing.txt is fixed first. The real run downloads into an archive on the bastion and then pushes that archive into the lab registry, later the production registry; it retries each image five times, then the whole run up to three more times two minutes apart, and the cache lets a rerun resume. The auth file is removed even when the run fails. Then verify the tags, the .sig tags and the cluster-resources folder. In the cluster's change window an admin trusts the registry CA, applies the renamed IDMS and ITMS, the signatures and CatalogSources, sets up the Update Service, and oc adm upgrade lists the target." src="diagrams/mirroring/run-flow.light.png">
+</picture>
+
+*One release run, end to end. The circled numbers are the order of a run, not this guide's step
+numbers: ① to ⑥ happen in Steps 8 and 9, ⑦ to ⑩ in Step 10. Red boxes are what stops a run and what
+fixes it.*
+
+```text
+MIRRORING BASTION                                       CLUSTER, change window
+1 ansible-playbook in tmux, Vault password              7 registry login + CA trust
+2 check pull secret (quay.io, registry.redhat.io)       8 apply cluster-resources (IDMS/ITMS renamed per run,
+3 dry-run: mapping.txt; fix anything in missing.txt       signature ConfigMap, CatalogSources)
+4 download (m2d) + cache, push (d2m) per registry   9 Update Service, spec.upstream, restart on new graph
+5 auth file removed, even on failure                    10 oc adm upgrade lists the target
+6 verify tags, .sig tags, cluster-resources/  --hand over-->
+```
 
 The proxy is set on the host, not in the playbook. `oc` and `oc-mirror` inherit `HTTPS_PROXY` and `NO_PROXY` from the shell that starts `ansible-playbook`. This guide adapts Fabio Reis's article *Automating OpenShift oc-mirror v2 with Ansible* (Medium, Aug 18). The article passes the proxy as a playbook variable instead.
 
 ## Before you start
 
-Get these from other teams before you touch the host. Each later step assumes you have them.
+Get these from other teams before you touch the host. Each later step assumes you have them. The hosts themselves (one mirroring bastion per datacenter, and the lab and two production registries) are specified in [`PREREQUISITES.md`](../../docs/PREREQUISITES.md); build them first.
 
-- [ ] **Mirror host**: a RHEL 9 VM you can SSH to, with `sudo` rights and a registered subscription (`sudo subscription-manager status`)
-- [ ] **Disk**: at least 100 GB free on a data volume, e.g. mounted at `/data` (one release is tens of GB, and the cache is kept between runs)
+- [ ] **Mirror host**: the mirroring bastion of your datacenter, RHEL 9, that you can SSH to, with `sudo` rights and a registered subscription (`sudo subscription-manager status`). In this guide "mirror host" means that bastion
+- [ ] **Disk**: a data volume mounted at `/data`, sized as in [`PREREQUISITES.md`](../../docs/PREREQUISITES.md) (workspaces, logs and `cluster-resources`; the images themselves land on the registry host)
 - [ ] **Red Hat account**: the login your team uses for console.redhat.com (ask your lead which one; don't use a personal account unless told to)
 - [ ] **Proxy**: the address and port (e.g. `proxy.corp:8080`), and whether it needs a username
 - [ ] **Proxy CA certificate**: only if the proxy re-signs HTTPS traffic; ask the network team for the `.crt` file
-- [ ] **Internal registry**: the exact **host** (with `:port` if it uses one), the **repository path** under it (e.g. `ocp4` or `docker-local/ocp4`), a service account that can push, and whether that account is limited to that one path (Step 5)
+- [ ] **Registry**: which of the three registries this run fills (`registry-lab`, `registry-dc1` or `registry-dc2`, port 8443), its `ocp4v2` organization, and a robot account that can write to it (Step 5)
 - [ ] **Release**: `eus-4.18` channel, version `4.18.17` (this guide's defaults)
 - [ ] **Cluster admin for Step 10**: someone with `cluster-admin` on the disconnected cluster to install the Update Service
 
@@ -39,7 +59,17 @@ All commands below run on the mirror host as your own user unless they start wit
 
 Internet traffic goes through the proxy. Local and internal traffic must bypass it, so `NO_PROXY` matters as much as `HTTPS_PROXY`.
 
-![Network routes from the mirror host: proxy vs direct](images/network-routes.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="diagrams/mirroring/network-routes.dark.png">
+  <source srcset="diagrams/mirroring/network-routes.light.png">
+  <img alt="Routes from the mirroring bastion during a run. Everything not in NO_PROXY goes through the corporate proxy to Red Hat: quay.io, registry.redhat.io, api.openshift.com for the update graph and registry.access.redhat.com. Local and internal traffic must go direct: oc-mirror's temporary local registry on localhost:55000 and the mirror registries in the bastion's datacenter. If localhost is sent to the proxy, the run fails on localhost:55000." src="diagrams/mirroring/network-routes.light.png">
+</picture>
+
+```text
+bastion --(everything not in NO_PROXY)--> corporate proxy --> quay.io, registry.redhat.io,
+                                                                  api.openshift.com, registry.access.redhat.com
+bastion --(direct, in NO_PROXY)--> localhost:55000 (oc-mirror's own registry), registry-lab / registry-dc1
+```
 
 If either direct route goes through the proxy instead, the run fails.
 
@@ -49,7 +79,7 @@ Create `/etc/profile.d/proxy.sh`. Replace the proxy address and registry host wi
 sudo tee /etc/profile.d/proxy.sh > /dev/null <<'EOF'
 export HTTP_PROXY=http://proxy.corp:8080
 export HTTPS_PROXY=http://proxy.corp:8080
-export NO_PROXY=localhost,127.0.0.1,.internal.repo,artifactory.internal.repo
+export NO_PROXY=localhost,127.0.0.1,registry-lab.example.com,registry-dc1.example.com
 export http_proxy=$HTTP_PROXY
 export https_proxy=$HTTPS_PROXY
 export no_proxy=$NO_PROXY
@@ -64,9 +94,9 @@ Set both upper and lower case: different tools read different spellings. Log out
 | Entry | Why |
 | --- | --- |
 | `localhost,127.0.0.1` | oc-mirror v2 runs a temporary local registry on `localhost:55000`. Sent through the proxy, the mirror fails. |
-| `artifactory.internal.repo` or `.internal.repo` | Pushes to the internal registry must go direct. |
+| `registry-lab.example.com,registry-dc1.example.com` | The registries this bastion pushes to (in DC2: `registry-dc2.example.com`). Pushes must go direct. |
 
-Use the registry **host only** in `NO_PROXY`: no port, no path. `artifactory.internal.repo` covers `artifactory.internal.repo:8443/docker-local/ocp4`.
+Use the registry **host only** in `NO_PROXY`: no port, no path. `registry-lab.example.com` covers `registry-lab.example.com:8443/ocp4v2`.
 
 The update graph build also needs `api.openshift.com` and `registry.access.redhat.com` through the proxy. Ask the network team to allow both, alongside `quay.io` and `registry.redhat.io`.
 
@@ -111,7 +141,7 @@ Install the tools and create the data directories. `dnf` does not read the shell
    ```bash
    sudo mkdir -p /data/oc-mirror
    sudo chown "$USER": /data/oc-mirror
-   mkdir -p /data/oc-mirror/{workspace,cache,private}
+   mkdir -p /data/oc-mirror/{workspace,cache,private,imagesets,cluster-resources}
    chmod 700 /data/oc-mirror/private
    df -h /data
    ```
@@ -176,7 +206,7 @@ Ansible Vault encrypts files with a password (AES-256), so secrets can sit in th
 | File | Holds | Created in |
 | --- | --- | --- |
 | `vars/redhat-pull-secret.json` | The Red Hat pull secret (JSON) for `quay.io` and `registry.redhat.io` | This section, then checked in Step 4 |
-| `vars/credentials.yml` | The internal registry service account | Step 6 |
+| `vars/credentials.yml` | The registry robot account (lab); one more file per registry, `vars/registry-*.yml` ([`PREREQUISITES.md`](../../docs/PREREQUISITES.md)) | Step 6 |
 
 `ansible-vault` comes with `ansible-core` (Step 2). Run every command below from `~/oc-mirror-ansible`.
 
@@ -328,32 +358,35 @@ The playbook mirrors the OSUS operator as package `cincinnati-operator`, channel
 
 If the Red Hat account changes, or someone resets the pull secret in the console, update the file with `ansible-vault edit vars/redhat-pull-secret.json`. Don't copy this secret into the disconnected cluster.
 
-## Step 5 — Prepare the internal registry
+## Step 5 — Prepare the registry
 
-The images land in a Docker repository on your registry. Write down three values; they become playbook variables in Step 8:
+The images land in one of the three mirror registries (mirror registry for Red Hat OpenShift 2.0.x,
+a single-host Quay). Installing them is in [`PREREQUISITES.md`](../../docs/PREREQUISITES.md),
+"Registry hosts". Write down three values for the registry this run fills; they become playbook
+variables in Step 8:
 
 | Value | Example | Playbook variable |
 | --- | --- | --- |
-| Host, with port if it uses one | `artifactory.internal.repo` or `artifactory.internal.repo:8443` | `target_registry_fqdn` |
-| Repository path under the host | `ocp4` or `docker-local/ocp4` | `target_registry_path` |
-| Login scope of the service account | the host, or the full host + path if the account only has rights on that repository | `target_auth_key` |
+| Host and port | `registry-lab.example.com:8443` (the mirror registry's default port) | `target_registry_fqdn` |
+| Organization | `ocp4v2` | `target_registry_path` |
+| Login scope | the host and port (default); Quay robot accounts log in to the whole registry | `target_auth_key` |
 
-Ask the Artifactory admin for:
+Ask the registry owner for:
 
 | Ask | Why |
 | --- | --- |
-| A Docker repository reachable at your host + path | Where oc-mirror pushes |
-| Nested paths allowed under it | oc-mirror creates `<path>/openshift/release-images`, `<path>/openshift/release`, `<path>/openshift/graph-image` and `<path>/redhat/redhat-operator-index` |
-| A service account with read, write and delete on that repository | Credentials for the Vault file in Step 6 |
-| No small upload size limit or short timeout on the load balancer in front | Release layers are large; a cap here looks like a timeout |
-| A TLS certificate the host trusts | If it's signed by an internal CA, add that CA as in Step 1; Step 10 needs it on the cluster too |
+| The `ocp4v2` organization | Where oc-mirror pushes. It creates `ocp4v2/openshift/release-images`, `ocp4v2/openshift/release`, `ocp4v2/openshift/graph-image` and `ocp4v2/redhat/redhat-operator-index` |
+| A robot account with **write** on `ocp4v2`, e.g. `ocp4v2+mirror` | Credentials for the Vault file in Step 6 |
+| A robot account with **read** on `ocp4v2`, e.g. `ocp4v2+pull` | For the clusters' pull secret in Step 10 |
+| The registry's certificate chain | Signed by our internal CA; add that CA as in Step 1. Step 10 needs it on the cluster too |
+| Free disk on the registry host | Red Hat: about 358 GB for one release stream with its Red Hat operators, "up to 1 TB per stream or more is suggested" |
 
 When you have the account, test a push to the same depth oc-mirror will use. This goes direct, not through the proxy:
 
 ```bash
-REG_HOST=artifactory.internal.repo        # add :port if used
-REG_PATH=ocp4                             # e.g. docker-local/ocp4
-podman login $REG_HOST
+REG_HOST=registry-lab.example.com:8443   # the registry for this run
+REG_PATH=ocp4v2
+podman login $REG_HOST                   # the robot account name and token
 podman pull registry.access.redhat.com/ubi9/ubi-minimal:latest
 podman tag registry.access.redhat.com/ubi9/ubi-minimal:latest \
   $REG_HOST/$REG_PATH/openshift/push-test:latest
@@ -361,22 +394,20 @@ podman push $REG_HOST/$REG_PATH/openshift/push-test:latest
 podman logout $REG_HOST
 ```
 
-The push must end with `Writing manifest to image destination`.
+The push must end with `Writing manifest to image destination`. Delete `ocp4v2/openshift/push-test` in
+the registry's web UI afterwards.
 
-If the account is limited to one repository, also test a login scoped to the path, which is what the playbook sends when `target_auth_key` is the full path. The temporary auth file goes in the private folder and is deleted at the end:
+**An existing registry, on a new path.** The same archive can also be pushed into a registry we
+already run, such as one of the three old 1.x mirror registries, under a new organization that oc-mirror v1 never
+wrote to (e.g. `ocp4v2`). Ask its owner for that organization and its two robot accounts, run the
+push test above with `REG_PATH=ocp4v2`, and list the v1 path in the registry's Vault file under
+`protected_targets` so no run can push there. Template: `vars/registry.yml.example`; rules and the
+cluster side: [`PREREQUISITES.md`](../../docs/PREREQUISITES.md), "Existing registries, on a new path".
 
-```bash
-read -rp 'Service account: ' REG_USER; read -rsp 'Password: ' REG_PASS; echo
-umask 077
-printf '{"auths":{"%s":{"auth":"%s"}}}' "$REG_HOST/$REG_PATH" \
-  "$(printf '%s:%s' "$REG_USER" "$REG_PASS" | base64 -w0)" > /data/oc-mirror/private/test-auth.json
-skopeo copy --authfile /data/oc-mirror/private/test-auth.json \
-  docker://registry.access.redhat.com/ubi9/ubi-minimal:latest \
-  docker://$REG_HOST/$REG_PATH/openshift/push-test:scoped
-rm -f /data/oc-mirror/private/test-auth.json; unset REG_USER REG_PASS
-```
-
-If this works, set `target_auth_key` to the full path in Step 8. Ask the admin to delete `openshift/push-test` afterwards.
+**Three registries, one Vault file each.** Repeat this step for every registry your bastion fills,
+and keep each robot account in its own Vault file (`vars/registry-dc1.yml` and so on, as in
+[`PREREQUISITES.md`](../../docs/PREREQUISITES.md), "One Vault file per registry"). Pass it with
+`-e @vars/registry-dc1.yml` in Step 8, together with a workspace for that registry.
 
 ## Step 6 — Create the project files
 
@@ -431,7 +462,7 @@ When this step is done, `~/oc-mirror-ansible` holds five items:
    ansible-vault create vars/credentials.yml
    ```
 
-   Type these two lines with the Artifactory service account from Step 5, then save and quit (in `vi`: `i` to type, `Esc`, then `:wq`):
+   Type these two lines with the registry robot account from Step 5, then save and quit (in `vi`: `i` to type, `Esc`, then `:wq`):
 
    ```yaml
    target_registry_user: "<service-account>"
@@ -448,7 +479,9 @@ Compared with the original article, this playbook:
 - mirrors `eus-4.18` / `4.18.17` by default, plus the update graph and the OSUS operator (`mirror_update_service`);
 - takes the proxy from the host (Step 1), not from a variable;
 - keeps all files under `/data/oc-mirror`, with the auth file in a `0700` folder instead of `/tmp`;
-- keeps the oc-mirror cache in `/data/oc-mirror/cache`, so a rerun skips images already copied;
+- runs in two halves (`oc_mirror_workflow`): **`m2d`** downloads from Red Hat into an archive on `/data`, and **`d2m`** pushes that archive into one registry, once per registry (lab first, then production). `m2m` (straight from Red Hat to a registry) stays for small top-ups;
+- keeps one oc-mirror cache in `/data/oc-mirror/cache` for the whole upgrade road. Red Hat: oc-mirror "uses the cache in the `mirror-to-disk` and `disk-to-mirror` workflows" to "perform incremental mirroring and avoids remirroring unchanged images", so each later run downloads only what changed, and a failed run picks up from the last success;
+- saves the ImageSet per archive (`/data/oc-mirror/imagesets/`), so every `d2m` uses exactly what `m2d` downloaded, and copies each registry's `cluster-resources` to its own folder (`/data/oc-mirror/cluster-resources/<archive>-<registry>-<path>/`);
 - adds timeout handling: gentler oc-mirror settings and up to 4 attempts at the mirror run; oc-mirror's own retries back off exponentially;
 - calls `oc-mirror` by full path, so it works from any directory.
 
@@ -464,19 +497,36 @@ Before the first run, compare `oc_mirror_tuning` with the flag list you saved in
     - vars/credentials.yml
   vars:
     # Internal registry: host (add :port if it uses one) and the repository path under it
-    target_registry_fqdn: "artifactory.internal.repo"
-    target_registry_path: "ocp4"                    # e.g. docker-local/ocp4
+    target_registry_fqdn: "registry-lab.example.com:8443"   # one of the three registries (docs/PREREQUISITES.md)
+    # One organization on every registry, new and old, so the cluster files differ only by host.
+    # ocp4v2 is never the path oc-mirror v1 used. Override per registry in its vars file if needed.
+    mirror_namespace: "ocp4v2"
+    target_registry_path: "{{ mirror_namespace }}"  # the Quay organization the images go into
     target_registry_url: "{{ target_registry_fqdn }}/{{ target_registry_path }}"
     # Login scope in the auth file: the host (default) or the full path,
     # if the service account only has rights on that one repository
     target_auth_key: "{{ target_registry_fqdn }}"
+    # Registry paths that must never receive a push, e.g. the old oc-mirror v1 content on an
+    # existing registry. Set them in that registry's vars file (vars/registry.yml.example).
+    protected_targets: []
 
     # Working directories on the data volume (Step 2)
     base_path: "/data/oc-mirror"
+
+    # Workflow (docs/PREREQUISITES.md, "Order of a mirroring cycle"):
+    #   m2d = Red Hat -> archive on disk; uses and fills the cache, so later runs fetch only changes
+    #   d2m = that archive -> one registry; run once per registry (lab first, then production)
+    #   m2m = Red Hat -> registry directly; no cache (kept for small top-ups)
+    oc_mirror_workflow: "m2d"
+    archive_name: "archive"                         # one per run, e.g. archive-run-a
+    archive_path: "{{ base_path }}/{{ archive_name }}"
+    target_registry_name: "{{ target_registry_fqdn.split('.')[0] }}"   # registry-lab, registry-dc1, ...
+    # one folder per registry and path, so a new path on an existing registry gets its own files
+    cluster_resources_path: "{{ base_path }}/cluster-resources/{{ archive_name if oc_mirror_workflow != 'm2m' else workspace_path | basename }}-{{ target_registry_name }}-{{ target_registry_path | replace('/', '-') }}"
     workspace_path: "{{ base_path }}/workspace"
     cache_path: "{{ base_path }}/cache"
     auth_file_path: "{{ base_path }}/private/mirroring.json"
-    imageset_path: "{{ workspace_path }}/imageset.yaml"
+    imageset_path: "{{ base_path }}/imagesets/{{ archive_name if oc_mirror_workflow != 'm2m' else workspace_path | basename }}.yaml"
 
     # Release to mirror (override with -e)
     ocp_channel: "eus-4.18"
@@ -505,6 +555,34 @@ Before the first run, compare `oc_mirror_tuning` with the flag list you saved in
     # NO_PROXY must include localhost, 127.0.0.1 and the target registry.
 
   tasks:
+    - name: Check the workflow
+      ansible.builtin.assert:
+        that:
+          - oc_mirror_workflow in ['m2d', 'd2m', 'm2m']
+        fail_msg: "oc_mirror_workflow must be m2d (Red Hat to disk), d2m (disk to a registry) or m2m (Red Hat to a registry)."
+        quiet: true
+
+    - name: Check the target is not a protected path (d2m, m2m)
+      ansible.builtin.assert:
+        that:
+          - target_registry_url not in protected_targets
+        fail_msg: "{{ target_registry_url }} is protected (protected_targets). Push to a new path, e.g. -e target_registry_path=ocp4v2."
+        quiet: true
+      when: oc_mirror_workflow != 'm2d'
+
+    - name: Check the ImageSet from the mirror-to-disk run is there (d2m)
+      ansible.builtin.stat:
+        path: "{{ imageset_path }}"
+      register: imageset_stat
+      when: oc_mirror_workflow == 'd2m'
+
+    - name: Stop if it is missing (d2m)
+      ansible.builtin.assert:
+        that: imageset_stat.stat.exists
+        fail_msg: "{{ imageset_path }} not found. Run the m2d step first with the same archive_name."
+        quiet: true
+      when: oc_mirror_workflow == 'd2m'
+
     - name: Ensure working directories exist
       ansible.builtin.file:
         path: "{{ item.path }}"
@@ -513,6 +591,8 @@ Before the first run, compare `oc_mirror_tuning` with the flag list you saved in
       loop:
         - { path: "{{ workspace_path }}", mode: '0755' }
         - { path: "{{ cache_path }}", mode: '0755' }
+        - { path: "{{ base_path }}/imagesets", mode: '0755' }
+        - { path: "{{ base_path }}/cluster-resources", mode: '0755' }
         - { path: "{{ auth_file_path | dirname }}", mode: '0700' }
 
     - name: Main Execution Block
@@ -546,22 +626,37 @@ Before the first run, compare `oc_mirror_tuning` with the flag list you saved in
             src: "./templates/imageset-config.yaml.j2"
             dest: "{{ imageset_path }}"
             mode: '0644'
+          when: oc_mirror_workflow != 'd2m'      # d2m reuses the m2d run's ImageSet
 
         - name: Execute oc-mirror v2 (retried on failure)
           ansible.builtin.command: >
             {{ playbook_dir }}/oc-mirror --v2
             --authfile {{ auth_file_path }}
-            --workspace file://{{ workspace_path }}
             --cache-dir {{ cache_path }}
             {{ oc_mirror_tuning }}
             {{ '--dry-run' if oc_mirror_dry_run | bool else '' }}
             -c {{ imageset_path }}
-            docker://{{ target_registry_url }}
+            {{ oc_mirror_destination }}
+          vars:
+            oc_mirror_destination: >-
+              {{ 'file://' + archive_path if oc_mirror_workflow == 'm2d'
+                 else '--from file://' + archive_path + ' docker://' + target_registry_url if oc_mirror_workflow == 'd2m'
+                 else '--workspace file://' + workspace_path + ' docker://' + target_registry_url }}
           register: oc_mirror_exec
           retries: "{{ oc_mirror_retries }}"
           delay: "{{ oc_mirror_retry_delay }}"
           until: oc_mirror_exec.rc == 0
           changed_when: oc_mirror_exec.rc == 0
+
+        - name: Keep this registry's cluster resources (d2m, m2m)
+          ansible.builtin.copy:
+            src: "{{ (archive_path if oc_mirror_workflow == 'd2m' else workspace_path) }}/working-dir/cluster-resources/"
+            dest: "{{ cluster_resources_path }}/"
+            remote_src: true
+            mode: preserve
+          when:
+            - oc_mirror_workflow != 'm2d'
+            - not (oc_mirror_dry_run | bool)
 
       always:
         - name: Cleanup auth file (runs even on failure)
@@ -609,19 +704,31 @@ Run inside the tmux session from Step 7, as your own user, not with `sudo`.
    cd ~/oc-mirror-ansible
    ls vars/
    ```
-2. Start the run with your registry values from Step 5. `tee` shows the output on screen and saves it to a dated log file:
+2. Start the run in two halves. `tee` shows the output on screen and saves it to a dated log file.
+
+   **Download** (mirror-to-disk): Red Hat to an archive on `/data`, through the proxy. Dry-run it first (`-e oc_mirror_dry_run=true`; the lists land in `/data/oc-mirror/archive-4.18.17/working-dir/dry-run/`: `mapping.txt` and `missing.txt`), then run it for real:
 
    ```bash
    ansible-playbook playbook.yml --ask-vault-pass \
-     -e "ocp_channel=eus-4.18" \
-     -e "ocp_version=4.18.17" \
-     -e "target_registry_fqdn=artifactory.internal.repo" \
-     -e "target_registry_path=ocp4" \
-     2>&1 | tee ~/mirror-$(date +%F-%H%M).log
+     -e oc_mirror_workflow=m2d -e archive_name=archive-4.18.17 \
+     -e ocp_channel=eus-4.18 -e ocp_version=4.18.17 \
+     2>&1 | tee ~/mirror-m2d-$(date +%F-%H%M).log
    ```
 
-   If the service account is limited to that one path (Step 5), add `-e "target_auth_key=artifactory.internal.repo/ocp4"` (your host and path). If Step 4 showed a different operator name, add `-e "osus_operator_package=<name>"`.
-3. Enter the Vault password when asked. Then detach (`Ctrl+b`, `d`) and check back later. The first run downloads the release, the operator catalog and the graph data, so expect it to take hours.
+   **Push** (disk-to-mirror): the archive into the **lab** registry first, with the lab robot account from Step 5. Pass the same version variables as the download:
+
+   ```bash
+   ansible-playbook playbook.yml --ask-vault-pass \
+     -e oc_mirror_workflow=d2m -e archive_name=archive-4.18.17 \
+     -e ocp_channel=eus-4.18 -e ocp_version=4.18.17 \
+     -e @vars/registry-lab.yml \
+     2>&1 | tee ~/mirror-d2m-lab-$(date +%F-%H%M).log
+   ```
+
+   After the lab cluster has been updated with that content, push the **same archive** into your datacenter's production registry: the same command with `-e @vars/registry-dc1.yml` (or `registry-dc2` on the DC2 bastion). Nothing is downloaded again.
+
+   If the robot account is limited to one path, add `-e "target_auth_key=<host:port>/ocp4v2"`. If Step 4 showed a different operator name, add `-e "osus_operator_package=<name>"` to both halves.
+3. Enter the Vault password when asked. Then detach (`Ctrl+b`, `d`) and check back later. The first download fetches the release, the operator catalog and the graph data, so expect it to take hours; later downloads reuse the cache and fetch only what changed.
 
 What you'll see:
 
@@ -639,13 +746,16 @@ Variables you can override with `-e`:
 | `ocp_max_version` | `ocp_version` | End of a range |
 | `shortest_path` | `false` | `true` mirrors only the releases on the update path between min and max |
 | `oc_mirror_dry_run` | `false` | `true` lists what would be mirrored and copies nothing |
-| `workspace_path` | `/data/oc-mirror/workspace` | Use one per run for upgrade paths, e.g. `workspace-run-a` |
-| `target_registry_fqdn` | `artifactory.internal.repo` | Registry host, with `:port` if it uses one |
-| `target_registry_path` | `ocp4` | Repository path under the host, e.g. `docker-local/ocp4` |
+| `oc_mirror_workflow` | `m2d` | `m2d` Red Hat → archive (uses the cache); `d2m` archive → one registry; `m2m` Red Hat → registry, no cache |
+| `archive_name` | `archive` | One per run, e.g. `archive-run-a`; the `d2m` runs name the same archive as their `m2d` |
+| `workspace_path` | `/data/oc-mirror/workspace` | Used by `m2m` only; one per run and registry |
+| `target_registry_fqdn` | `registry-lab.example.com:8443` | Registry host and port: the lab registry, or the production registry of this bastion's datacenter |
+| `mirror_namespace` | `ocp4v2` | The organization used on **every** registry, new and old; never the path oc-mirror v1 used |
+| `target_registry_path` | `mirror_namespace` | The organization for this run; set it in a registry's Vault file only if that registry needs a different one |
 | `target_auth_key` | the host | Login scope; set to host + path if the account is limited to that repository |
 | `mirror_update_service` | `true` | Build the update graph and mirror the OSUS operator |
 | `osus_operator_package` | `cincinnati-operator` | OSUS operator package name in the catalog (Step 4) |
-| `base_path` | `/data/oc-mirror` | Parent of the workspace, cache and private folders |
+| `base_path` | `/data/oc-mirror` | Parent of the archives, cache, ImageSets, cluster resources and private folder |
 | `oc_mirror_tuning` | 4 images, 4 layers, 30 min per image, 5 retries | oc-mirror's own download settings |
 | `oc_mirror_retries` | `3` | Extra full attempts after a failed run |
 | `oc_mirror_retry_delay` | `120` | Seconds to wait between attempts |
@@ -662,20 +772,25 @@ A `failed=0` recap is the first check. These confirm the result:
 2. The release, the update graph and the operator catalog are in the registry. Use your host and path from Step 5:
 
    ```bash
-   REG_HOST=artifactory.internal.repo; REG_PATH=ocp4
+   REG_HOST=registry-lab.example.com:8443; REG_PATH=ocp4v2
    podman login $REG_HOST
    skopeo list-tags docker://$REG_HOST/$REG_PATH/openshift/release-images | jq -r '.Tags[]'
    skopeo list-tags docker://$REG_HOST/$REG_PATH/openshift/graph-image | jq -r '.Tags[]'
    skopeo list-tags docker://$REG_HOST/$REG_PATH/redhat/redhat-operator-index | jq -r '.Tags[]'
+   skopeo list-tags docker://$REG_HOST/$REG_PATH/openshift/release-images | jq -r '.Tags[]' | grep '\.sig$'
    podman logout $REG_HOST
    ```
 
-   Expect `4.18.17-x86_64`, `latest` and `v4.18` respectively.
-3. oc-mirror wrote the files a cluster admin applies in Step 10:
+   Expect `4.18.17-x86_64`, `latest` and `v4.18` from the first three, and from the last one a `sha256-<digest>.sig` tag per mirrored release. Those are the release signatures; from 4.21 the cluster refuses mirrored releases without them.
+3. Each push (`d2m`) wrote the files a cluster admin applies in Step 10, kept per registry:
 
    ```bash
-   ls /data/oc-mirror/workspace/working-dir/cluster-resources/
+   ls /data/oc-mirror/cluster-resources/
+   ls /data/oc-mirror/cluster-resources/archive-4.18.17-registry-lab-ocp4v2/
+   ls /data/oc-mirror/archive-4.18.17/working-dir/logs/     # a mirroring_errors_*.txt file means some images failed
    ```
+
+   Red Hat: "Errors with mirroring Operators, Operator-related images, or additional images do not stop the mirroring process", so check that logs folder even after `failed=0`.
 
    | File | What it is |
    | --- | --- |
@@ -683,7 +798,7 @@ A `failed=0` recap is the first check. These confirm the result:
    | `cs-redhat-operator-index-*.yaml` | CatalogSource for the mirrored operator catalog |
    | `signature-configmap.yaml` | Release signatures, so the cluster can verify 4.18.17 |
    | `updateService.yaml` | The `UpdateService` resource, already pointing at your mirrored release and graph image |
-4. Copy the whole `cluster-resources` folder and the log file from Step 8 to wherever your team hands over to the cluster admin.
+4. Copy the `cluster-resources` folder **of the registry the cluster uses** and the log files from Step 8 to wherever your team hands over to the cluster admin. The lab and production folders differ only in the registry name inside them; never apply one registry's files to a cluster that pulls from another.
 
 ## Step 10 — Set up the OpenShift Update Service on the cluster
 
@@ -691,7 +806,7 @@ This step changes the disconnected cluster, so a cluster admin does it in an app
 
 You need the `cluster-resources` folder from Step 9, the registry's CA certificate (`ca.crt`) and `cluster-admin` access.
 
-1. **Let the cluster pull from your registry.** The cluster's global pull secret must include the registry's login. If it already pulls images from this registry, skip this. Otherwise ask your lead; the global pull secret is shared by every node, so a change to it is its own reviewed change.
+1. **Let the cluster pull from your registry.** The cluster's global pull secret must include the registry's login: the read robot account from Step 5 (e.g. `ocp4v2+pull`), for the registry in the cluster's own datacenter. If it already pulls images from this registry, skip this. Otherwise ask your lead; the global pull secret is shared by every node, so a change to it is its own reviewed change.
 2. **Trust the registry's CA.** One ConfigMap serves both the image pulls (key = registry host; use `host..port` if there's a port) and the Update Service (key `updateservice-registry`). Check whether one is already set first:
 
    ```bash
@@ -703,7 +818,7 @@ You need the `cluster-resources` folder from Step 9, the registry's CA certifica
    ```bash
    oc create configmap registry-ca -n openshift-config \
      --from-file=updateservice-registry=ca.crt \
-     --from-file=artifactory.internal.repo=ca.crt
+     --from-file=registry-lab.example.com..8443=ca.crt
    oc patch image.config.openshift.io cluster --type merge \
      -p '{"spec":{"additionalTrustedCA":{"name":"registry-ca"}}}'
    ```
@@ -804,12 +919,12 @@ Mirror everything from 4.18.17 to the latest 4.22.x now, in consecutive runs, **
 
 **Release images (two runs, one after the other)**
 
-| Run | Channel | From | To | Workspace |
+| Run | Channel | From | To | Archive |
 | --- | --- | --- | --- | --- |
-| A | `eus-4.20` | 4.18.17 | latest 4.20.z that is also in `eus-4.22` | `workspace-run-a` |
-| B | `eus-4.22` | that same 4.20.z | latest 4.22.z (4.22.16 when last checked) | `workspace-run-b` |
+| A | `eus-4.20` | 4.18.17 | latest 4.20.z that is also in `eus-4.22` | `archive-run-a` |
+| B | `eus-4.22` | that same 4.20.z | latest 4.22.z (4.22.16 when last checked) | `archive-run-b` |
 
-Both runs use `shortest_path=true`, so the 4.19/4.21 hops and any extra 4.18.z/4.20.z the update graph needs are included. Run B goes last, so its update graph covers the whole path. If `eus-4.22` isn't open yet, Run B becomes B1 (`stable-4.21`) and B2 (`stable-4.22`), as described below.
+Each run is downloaded once (`m2d`) and pushed into each registry (`d2m`): lab first, then production. Both runs use `shortest_path=true`, so the 4.19/4.21 hops and any extra 4.18.z/4.20.z the update graph needs are included. Run B goes last, so its update graph covers the whole path. If `eus-4.22` isn't open yet, Run B becomes B1 (`stable-4.21`) and B2 (`stable-4.22`), as described below.
 
 **Operator catalogs (catalog guide, one run per version and group)**
 
@@ -819,17 +934,17 @@ Both runs use `shortest_path=true`, so the 4.19/4.21 hops and any extra 4.18.z/4
 
 **Why the runs don't overwrite each other**
 
-- **Registry:** additive only. Each release and catalog version has its own tags, images are stored by digest, and nothing is deleted unless someone runs oc-mirror's separate `delete` command. The shared cache means each run downloads only what's new.
-- **Workspaces:** each run has its own, so their generated cluster files stay separate.
+- **Registry:** additive only. Each release and catalog version has its own tags, images are stored by digest, and nothing is deleted unless someone runs oc-mirror's separate `delete` command.
+- **Archives:** each run has its own archive, and each push its own `cluster-resources` folder per registry, so their generated cluster files stay separate. The cache is shared, so a release or layer that two runs need is downloaded once.
 - **Cluster:** nothing is applied during the mirroring, so nothing can collide. When the admin later applies the folders, each one's IDMS/ITMS and signature ConfigMap are renamed first (item 6 below), so all of them coexist on the cluster.
 
 **Before the real runs**
 
 1. **Pick the versions** with the channel listing in item 1 below. Use the latest 4.20.z that appears in both EUS channels.
 2. **Dry-run every run** (two release runs and up to six catalog runs), add up the image counts, and get the disk sized before starting. Disk is the biggest risk when mirroring the whole path at once.
-3. **Run them in tmux, one after another:** release A, release B, then the catalogs. If one fails, rerun just that one; the cache keeps what's already copied.
+3. **Run them in tmux, one after another:** download A, download B, then the catalogs; then push each into the lab registry. If one fails, rerun just that one: the cache keeps what the last successful run copied.
 
-**Keep in mind:** "latest 4.22.x" moves on before the cluster actually updates. When the update window comes, top up with one short extra run from your mirrored 4.22.z to the then-latest 4.22.z (same channel, `shortest_path=true`, a new workspace). Thanks to the cache, that run is small.
+**Keep in mind:** "latest 4.22.x" moves on before the cluster actually updates. When the update window comes, top up with one short extra run from your mirrored 4.22.z to the then-latest 4.22.z (same channel, `shortest_path=true`, a new archive). Thanks to the cache, that download is small.
 
 ### Why one channel can't do it
 
@@ -844,13 +959,23 @@ Both runs use `shortest_path=true`, so the 4.19/4.21 hops and any extra 4.18.z/4
 | A | `eus-4.20` | `4.18.17` | `4.20.<z>` | 4.18.17 → 4.19 hop(s) → 4.20 target |
 | B | `eus-4.22` | `4.20.<z>` | `4.22.<z>` | 4.20 target → 4.21 hop(s) → 4.22 target |
 
-![Upgrade path mirroring: two runs, two EUS channels](images/upgrade-path-runs.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="diagrams/mirroring/upgrade-path-runs.dark.png">
+  <source srcset="diagrams/mirroring/upgrade-path-runs.light.png">
+  <img alt="Two runs cover the path from 4.18.17 to 4.22. Run A uses eus-4.20 with shortestPath, from 4.18.17 through the 4.19 hops to the 4.20 target. Run B uses eus-4.22 from that same 4.20 target through the 4.21 hops to the 4.22 target. If eus-4.22 is not open, Run B splits into B1 on stable-4.21 and B2 on stable-4.22. Each run names one channel and has its own workspace; they share the cache." src="diagrams/mirroring/upgrade-path-runs.light.png">
+</picture>
+
+```text
+Run A (eus-4.20):  4.18.17 -> 4.19 hop(s) -> 4.20.<z>
+Run B (eus-4.22):                            4.20.<z> -> 4.21 hop(s) -> 4.22.<z>
+eus-4.22 not open: B1 stable-4.21 (4.20.<z> -> 4.21.<y>), B2 stable-4.22 (4.21.<y> -> 4.22.<z>)
+```
 
 The 4.20 target ends Run A and starts Run B, so the two mirrors join without a gap.
 
 - **`shortestPath: true`** (`-e shortest_path=true`): oc-mirror mirrors only the releases on the update path, including 4.18.17 itself. Without it, it mirrors every z-stream release in the range, which could be dozens of releases.
 - **Pin exact maximum versions, not "latest".** A pinned target gives the same result every run, and Run B's minimum must equal Run A's maximum.
-- **One workspace per run, one shared cache.** Each run writes its own cluster resources, and shared image layers download once.
+- **One archive per run, one shared cache.** Each download fetches only what the cache doesn't already hold. Each push writes that registry's cluster resources to `/data/oc-mirror/cluster-resources/<archive>-<registry>-<path>/`. Never delete or edit the cache or an archive's `working-dir`: Red Hat warns this causes "Loss of incremental mirroring data".
 - **Same pull secret for both runs.** The Red Hat pull secret from Step 4 covers `quay.io` (release images) and `registry.redhat.io` (operator catalog and the Update Service operator); no separate Quay account is needed. `registry.access.redhat.com` (the graph's base image) is public.
 
 ### Steps
@@ -867,26 +992,20 @@ The 4.20 target ends Run A and starts Run B, so the two mirrors join without a g
    Confirm `4.18.17` is in `eus-4.20`. Pick a 4.20 target that is in **both** lists (it's Run A's max and Run B's min) and a 4.22 target from `eus-4.22`. Agree both with your lead and write them down.
 
    If `eus-4.22` comes back empty, Red Hat hasn't opened it yet. A new EUS channel usually appears 45–90 days after the version's GA. For 4.22, GA was 9 June 2026, past that window, so the eus-4.22 channel should be open by now. Mirror Run A now and Run B later.
-2. **Dry-run both ranges.** Nothing is copied; oc-mirror writes the list of what it would copy. Replace the `<z>` values and your registry values:
+2. **Dry-run both downloads.** Nothing is copied; oc-mirror writes the list of what it would copy. Replace the `<z>` values:
 
    ```bash
    cd ~/oc-mirror-ansible
-   REG="-e target_registry_fqdn=artifactory.internal.repo -e target_registry_path=ocp4"
-   
-   ansible-playbook playbook.yml --ask-vault-pass $REG \
-     -e ocp_channel=eus-4.20 -e ocp_min_version=4.18.17 -e ocp_max_version=4.20.<z> \
-     -e shortest_path=true -e oc_mirror_dry_run=true \
-     -e workspace_path=/data/oc-mirror/workspace-run-a
-   
-   ansible-playbook playbook.yml --ask-vault-pass $REG \
-     -e ocp_channel=eus-4.22 -e ocp_min_version=4.20.<z> -e ocp_max_version=4.22.<z> \
-     -e shortest_path=true -e oc_mirror_dry_run=true \
-     -e workspace_path=/data/oc-mirror/workspace-run-b
+   A="-e ocp_channel=eus-4.20 -e ocp_min_version=4.18.17 -e ocp_max_version=4.20.<z> -e shortest_path=true -e archive_name=archive-run-a"
+   B="-e ocp_channel=eus-4.22 -e ocp_min_version=4.20.<z> -e ocp_max_version=4.22.<z> -e shortest_path=true -e archive_name=archive-run-b"
+
+   ansible-playbook playbook.yml --ask-vault-pass $A -e oc_mirror_workflow=m2d -e oc_mirror_dry_run=true
+   ansible-playbook playbook.yml --ask-vault-pass $B -e oc_mirror_workflow=m2d -e oc_mirror_dry_run=true
    ```
 3. **Read the dry-run results.** For each run, list the releases it will mirror and check nothing is missing:
 
    ```bash
-   for r in a b; do d=/data/oc-mirror/workspace-run-$r/working-dir/dry-run
+   for r in a b; do d=/data/oc-mirror/archive-run-$r/working-dir/dry-run
      echo "== run $r"; grep -oE 'release-images:[0-9][^ =]*' $d/mapping.txt | sort -uV
      wc -l < $d/mapping.txt; cat $d/missing.txt 2>/dev/null; done
    ```
@@ -894,13 +1013,22 @@ The 4.20 target ends Run A and starts Run B, so the two mirrors join without a g
    Run A should list 4.18.17, at least one **4.19** release and your 4.20 target; Run B your 4.20 target, at least one **4.21** release and your 4.22 target. It may also list a later 4.18.z or 4.20.z if the graph needs one first.
 
    **Stop if a run lists only its min and max with no odd-version release in between.** That means the update graph has no path between them: oc-mirror then mirrors just the two ends, and the cluster couldn't update. Pick different versions, for example a later 4.20 target, and dry-run again.
-4. **Size the disk.** The 100 GB in "Before you start" is for a single release. Several releases need far more. Use the release count and image count from item 3 to agree the `/data` size with your lead, and grow it before the real runs.
-5. **Run for real**, in tmux (Step 7), Run A first. Use the same commands as item 2 without `-e oc_mirror_dry_run=true`. Check `df -h /data` between runs.
-6. **Prepare both `cluster-resources` folders for handover** (`workspace-run-a` and `workspace-run-b`):
+4. **Size the disk.** The archives and the cache live on the bastion's `/data`, and the same images then land on each registry host. Use the release count and image count from item 3 to check both against [`PREREQUISITES.md`](../../docs/PREREQUISITES.md) (about 2 TB each) before the real runs.
+5. **Run for real**, in tmux (Step 7). Download A, then B, then push both into the lab registry:
+
+   ```bash
+   ansible-playbook playbook.yml --ask-vault-pass $A -e oc_mirror_workflow=m2d
+   ansible-playbook playbook.yml --ask-vault-pass $B -e oc_mirror_workflow=m2d
+   ansible-playbook playbook.yml --ask-vault-pass $A -e oc_mirror_workflow=d2m -e @vars/registry-lab.yml
+   ansible-playbook playbook.yml --ask-vault-pass $B -e oc_mirror_workflow=d2m -e @vars/registry-lab.yml
+   ```
+
+   After the lab cluster has taken the update, push the same archives into the production registry of your datacenter (`-e @vars/registry-dc1.yml`, or `registry-dc2` on the DC2 bastion, which runs its own downloads with the same `$A` and `$B`). Check `df -h /data` between runs.
+6. **Prepare both `cluster-resources` folders for handover**, per registry (e.g. `archive-run-a-registry-lab-ocp4v2` and `archive-run-b-registry-lab-ocp4v2` under `/data/oc-mirror/cluster-resources/`):
    - **Signatures:** each run writes a ConfigMap named `mirrored-release-signatures`, as both `signature-configmap.yaml` and `signature-configmap.json`, holding only that run's release signatures. Applying Run B's would replace Run A's. Rename Run A's and delete its JSON copy, so applying the folder can't bring the old name back. The cluster finds signature ConfigMaps by their label, not their name:
 
      ```bash
-     cd /data/oc-mirror/workspace-run-a/working-dir/cluster-resources
+     cd /data/oc-mirror/cluster-resources/archive-run-a-registry-lab-ocp4v2
      sed -i 's/name: mirrored-release-signatures$/name: mirrored-release-signatures-run-a/' signature-configmap.yaml
      rm -f signature-configmap.json
      grep 'name: mirrored-release-signatures' signature-configmap.yaml
@@ -908,7 +1036,7 @@ The 4.20 target ends Run A and starts Run B, so the two mirrors join without a g
    - **IDMS and ITMS:** oc-mirror names its mirror sets by category only (`idms-release-0`, `idms-operator-0`, and so on), so every run, release or catalog, reuses the same names. Applying one run's files would replace the previous run's mappings on the cluster. Give each run's mirror sets a unique name before handover; the cluster combines the mappings from all of them:
 
      ```bash
-     cd /data/oc-mirror/workspace-run-a/working-dir/cluster-resources
+     cd /data/oc-mirror/cluster-resources/archive-run-a-registry-lab-ocp4v2
      RUN=release-run-a          # unique per run: release-run-b, release-run-b1, …
      sed -i -E "s/^(\s*name: )(i[dt]ms-[a-z]+-[0-9]+)\s*$/\1\2-$RUN/" i[dt]ms-oc-mirror.yaml
      grep -h 'name: i' i[dt]ms-oc-mirror.yaml
@@ -923,6 +1051,12 @@ The 4.20 target ends Run A and starts Run B, so the two mirrors join without a g
    3. Switch to the **target** EUS channel while still on the old version: `oc adm upgrade channel eus-4.20` (on 4.18), later `eus-4.22` (on 4.20).
    4. Pause the worker pool: `oc patch mcp/worker --type merge --patch '{"spec":{"paused":true}}'`.
    5. Run `oc adm upgrade --to-latest` to the odd hop (4.19 or 4.21), check with `oc adm upgrade`, then run `oc adm upgrade --to-latest` again to the EUS target.
+
+      **Before the 4.20 → 4.21 hop only:** a cluster with mirror sets (IDMS/ICSP) is blocked from 4.21 with *"This cluster has mirrors configured. 4.21 will require Sigstore signatures…"*. Confirm the `.sig` tags exist (Step 9, item 2), then acknowledge:
+
+      ```bash
+      oc -n openshift-config patch configmap admin-acks --patch '{"data":{"ack-4.20-sigstore-in-4.21":"true"}}' --type=merge
+      ```
    6. Unpause the worker pool so workers update. Workers must catch up before the control plane jumps again: control plane and workers can be at most two minor versions apart.
 
 This uses the standard update method. The 4.22 release notes list a known issue for the separate *image-based* upgrade method: EUS-to-EUS image-based upgrades aren't supported on clusters with cert-manager installed ([OCPBUGS-86967](https://issues.redhat.com/browse/OCPBUGS-86967)). If your team uses image-based upgrades, check this first.
@@ -938,25 +1072,21 @@ Your team has agreed that the second jump may use stable channels if `eus-4.22` 
 | B2 | `stable-4.22` | `4.21.<y>` | `4.22.<z>` | that 4.21 release → 4.22 target |
 
 1. **Pick the versions.** Run the listing command from item 1 above with `for ch in stable-4.21 stable-4.22`. Your 4.20 target must be in `stable-4.21`, and the 4.21 release you pick must be in **both** `stable-4.21` and `stable-4.22`. The cluster gets no update recommendations on a channel that doesn't include its current version, so this matters on the cluster as well as for the mirror.
-2. **Dry-run B1 and B2**, each with its own workspace. B1 skips the Update Service content; B2 refreshes the graph last:
+2. **Dry-run B1 and B2**, each with its own archive. B1 skips the Update Service content; B2 refreshes the graph last:
 
    ```bash
-   ansible-playbook playbook.yml --ask-vault-pass $REG \
-     -e ocp_channel=stable-4.21 -e ocp_min_version=4.20.<z> -e ocp_max_version=4.21.<y> \
-     -e shortest_path=true -e mirror_update_service=false -e oc_mirror_dry_run=true \
-     -e workspace_path=/data/oc-mirror/workspace-run-b1
-   
-   ansible-playbook playbook.yml --ask-vault-pass $REG \
-     -e ocp_channel=stable-4.22 -e ocp_min_version=4.21.<y> -e ocp_max_version=4.22.<z> \
-     -e shortest_path=true -e oc_mirror_dry_run=true \
-     -e workspace_path=/data/oc-mirror/workspace-run-b2
+   B1="-e ocp_channel=stable-4.21 -e ocp_min_version=4.20.<z> -e ocp_max_version=4.21.<y> -e shortest_path=true -e mirror_update_service=false -e archive_name=archive-run-b1"
+   B2="-e ocp_channel=stable-4.22 -e ocp_min_version=4.21.<y> -e ocp_max_version=4.22.<z> -e shortest_path=true -e archive_name=archive-run-b2"
+
+   ansible-playbook playbook.yml --ask-vault-pass $B1 -e oc_mirror_workflow=m2d -e oc_mirror_dry_run=true
+   ansible-playbook playbook.yml --ask-vault-pass $B2 -e oc_mirror_workflow=m2d -e oc_mirror_dry_run=true
    ```
 
    Check the results as in item 3 (use `for r in a b1 b2`). Each run should list its min and max, plus any releases in between that the graph needs.
-3. **Run for real** in order A, B1, B2, without `-e oc_mirror_dry_run=true`.
+3. **Run for real** in order A, B1, B2: each download (`m2d`), then each push (`d2m`) into the lab registry, as in item 5.
 4. **Handover** follows item 6 with three folders. Rename the signature ConfigMap in **every folder except the last one** (Run A to `mirrored-release-signatures-run-a`, Run B1 to `-run-b1`), delete their JSON copies, and give every folder's IDMS/ITMS a unique name (item 6, e.g. `release-run-a`, `release-run-b1`, `release-run-b2`). Use `updateService.yaml` from B2.
 5. **On the cluster**, the 4.20 → 4.22 jump becomes two ordinary updates:
-   1. On 4.20: `oc adm upgrade channel stable-4.21`, check `oc adm upgrade` lists your 4.21 release, then update to it.
+   1. On 4.20: `oc adm upgrade channel stable-4.21`, check `oc adm upgrade` lists your 4.21 release, give the Sigstore acknowledgment (item 7, step 5), then update to it.
    2. On 4.21: `oc adm upgrade channel stable-4.22`, then update to your 4.22 target.
    3. Once `eus-4.22` opens, switch to it (`oc adm upgrade channel eus-4.22`) so future updates follow EUS.
 
@@ -979,7 +1109,7 @@ First find which task failed: it's the task name just above `fatal:` in the log.
 | oc-mirror errors about cross-channel upgrades | Two EUS channels in one ImageSet | Mirror one channel per run |
 | `Execute oc-mirror v2` fails on `localhost:55000` | `localhost` or `127.0.0.1` missing from `NO_PROXY` | Add both (Step 1) |
 | `Execute oc-mirror v2` times out pulling from `quay.io` or `registry.redhat.io` | Proxy too slow or dropping long downloads | Tune, see below |
-| `Execute oc-mirror v2` times out pushing to Artifactory | Registry host missing from `NO_PROXY`, or upload limit on the registry's load balancer | Check `NO_PROXY`; ask the Artifactory admin (Step 5) |
+| `Execute oc-mirror v2` times out pushing to the registry | Registry host missing from `NO_PROXY`, or the registry host is short of disk or memory | Check `NO_PROXY`; check the registry host (Step 5, [`PREREQUISITES.md`](../../docs/PREREQUISITES.md)) |
 | `x509: certificate signed by unknown authority` | Proxy or registry CA not trusted | Add the CA (Step 1) |
 | `unknown flag` from oc-mirror | Your build lacks one of the tuning flags | Remove that flag from `oc_mirror_tuning` |
 | Works by hand, fails in cron, CI or AAP | Proxy variables not set there | Set them in the job (Step 1) |
@@ -988,12 +1118,12 @@ First find which task failed: it's the task name just above `fatal:` in the log.
 | `oc adm upgrade` shows no updates or a certificate error (Step 10) | Upstream URL wrong, or the cluster doesn't trust its own route's certificate | Re-run item 6; ask your lead about the ingress CA |
 | Dry-run lists only the min and max release, no 4.19 or 4.21 in between | No update path between them in that channel's graph | Pick different versions and dry-run again (upgrade path, item 3) |
 | eus-4.22 not listed, or channel graph empty | Red Hat still rolling out the new EUS channel (usually 45–90 days after GA) | Mirror Run A now, Run B when the channel appears |
-| Push fails on tags like sha256-….sig, or the registry rejects signature artifacts | Newer oc-mirror v2 mirrors sigstore image signatures by default; the registry doesn't accept them | Ask the admin to allow them, or add --remove-signatures to oc\_mirror\_tuning. Check with your lead first if the cluster enforces sigstore image policies, which need these signatures |
+| Push fails on tags like sha256-….sig, or the registry rejects signature artifacts | Newer oc-mirror v2 mirrors sigstore image signatures by default; the registry doesn't accept them | Ask the registry admin to accept the `sha256-<digest>.sig` tags. **Never use `--remove-signatures` for release runs:** from 4.21 the cluster's default image policy requires the release signatures, and the update to 4.21 stops without them. `--remove-signatures` is only for the partner catalog runs (catalog guide) |
 | "Instructed to preserve digests" when mirroring the operator catalog | Older oc-mirror and a registry without OCI support (fixed in the 4.22 oc-mirror) | Download the latest oc-mirror (Step 3, item 4) |
 
 ### When oc-mirror times out
 
-A rerun is safe. oc-mirror reuses its cache and skips images already copied, so each run picks up where the last stopped. If retries keep failing, change one setting at a time, from the top:
+A rerun is safe. Downloads (`m2d`) and pushes (`d2m`) use the cache, which "only contains data up to the last successful mirroring operation", so a rerun skips what is already cached; an `m2m` top-up has no cache and starts over (`modules/oc-mirror-about-cache-and-workspace-dirs.adoc`, `oc-mirror-workflows-table.adoc`). If retries keep failing, change one setting at a time, from the top:
 
 1. Rerun once as is. Brief proxy trouble often clears on its own.
 2. Lower parallel downloads: `--parallel-images 2 --parallel-layers 2`.
@@ -1005,7 +1135,7 @@ To change the tuning for one run without editing the playbook:
 
 ```bash
 ansible-playbook playbook.yml --ask-vault-pass \
-  -e "target_registry_fqdn=artifactory.internal.repo" -e "target_registry_path=ocp4" \
+  -e "target_registry_fqdn=registry-lab.example.com:8443" -e "target_registry_path=ocp4v2" \
   -e "oc_mirror_tuning='--parallel-images 2 --parallel-layers 2 --image-timeout 60m --retry-times 8'"
 ```
 
@@ -1053,3 +1183,16 @@ Red Hat pages found by search but blocked from the environment this guide was wr
 - [oc-mirror v2 fails when two EUS channels are in the ImageSetConfig](https://access.redhat.com/node/7099908)
 - [OCP 4.18 release notes](https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html-single/release_notes)
 - [oc mirror does not mirror intermediate versions on EUS channels with shortestPath](https://access.redhat.com/node/7061405): in current oc-mirror v2 this happens when the graph has no path between min and max (the code then mirrors only the two ends), which the dry-run check in the upgrade-path section catches
+
+## Diagram sources
+
+The figures are drawn in [`diagrams/mirroring/source.html`](diagrams/mirroring/source.html) and rendered
+to the PNGs beside it with [diagram-kit](https://github.com/ephico2real2/diagram-kit):
+
+```sh
+# once: see PROBLEM-STATEMENT.md, Diagram sources, for installing diagram-kit into .venv
+.venv/bin/diagram-render oc-mirror-ansible/docs/diagrams/mirroring/source.html \
+  oc-mirror-ansible/docs/diagrams/mirroring run-flow,network-routes,upgrade-path-runs
+```
+
+A figure, the text beside it and the page change together.

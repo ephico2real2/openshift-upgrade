@@ -7,19 +7,36 @@
     - vars/credentials.yml
   vars:
     # Internal registry: host (add :port if it uses one) and the repository path under it
-    target_registry_fqdn: "artifactory.internal.repo"
-    target_registry_path: "ocp4"                    # e.g. docker-local/ocp4
+    target_registry_fqdn: "registry-lab.example.com:8443"   # one of the three registries (docs/PREREQUISITES.md)
+    # One organization on every registry, new and old, so the cluster files differ only by host.
+    # ocp4v2 is never the path oc-mirror v1 used. Override per registry in its vars file if needed.
+    mirror_namespace: "ocp4v2"
+    target_registry_path: "{{ mirror_namespace }}"  # the Quay organization the images go into
     target_registry_url: "{{ target_registry_fqdn }}/{{ target_registry_path }}"
     # Login scope in the auth file: the host (default) or the full path,
     # if the service account only has rights on that one repository
     target_auth_key: "{{ target_registry_fqdn }}"
+    # Registry paths that must never receive a push, e.g. the old oc-mirror v1 content on an
+    # existing registry. Set them in that registry's vars file (vars/registry.yml.example).
+    protected_targets: []
 
     # Working directories on the data volume (Step 2)
     base_path: "/data/oc-mirror"
+
+    # Workflow (docs/PREREQUISITES.md, "Order of a mirroring cycle"):
+    #   m2d = Red Hat -> archive on disk; uses and fills the cache, so later runs fetch only changes
+    #   d2m = that archive -> one registry; run once per registry (lab first, then production)
+    #   m2m = Red Hat -> registry directly; no cache (kept for small top-ups)
+    oc_mirror_workflow: "m2d"
+    archive_name: "archive-catalogs-v{{ catalog_ocp_version }}-{{ catalog_group }}"   # one per catalog version and group
+    archive_path: "{{ base_path }}/{{ archive_name }}"
+    target_registry_name: "{{ target_registry_fqdn.split('.')[0] }}"   # registry-lab, registry-dc1, ...
+    # one folder per registry and path, so a new path on an existing registry gets its own files
+    cluster_resources_path: "{{ base_path }}/cluster-resources/{{ archive_name if oc_mirror_workflow != 'm2m' else workspace_path | basename }}-{{ target_registry_name }}-{{ target_registry_path | replace('/', '-') }}"
     workspace_path: "{{ base_path }}/workspace-catalogs-v{{ catalog_ocp_version }}-{{ catalog_group }}"
     cache_path: "{{ base_path }}/cache"
     auth_file_path: "{{ base_path }}/private/mirroring.json"
-    imageset_path: "{{ workspace_path }}/imageset.yaml"
+    imageset_path: "{{ base_path }}/imagesets/{{ archive_name if oc_mirror_workflow != 'm2m' else workspace_path | basename }}.yaml"
 
     # Catalog version: the OpenShift minor version, used as the catalog tag v<version>
     catalog_ocp_version: "4.18"
@@ -42,6 +59,34 @@
     # NO_PROXY must include localhost, 127.0.0.1 and the target registry.
 
   tasks:
+    - name: Check the workflow
+      ansible.builtin.assert:
+        that:
+          - oc_mirror_workflow in ['m2d', 'd2m', 'm2m']
+        fail_msg: "oc_mirror_workflow must be m2d (Red Hat to disk), d2m (disk to a registry) or m2m (Red Hat to a registry)."
+        quiet: true
+
+    - name: Check the target is not a protected path (d2m, m2m)
+      ansible.builtin.assert:
+        that:
+          - target_registry_url not in protected_targets
+        fail_msg: "{{ target_registry_url }} is protected (protected_targets). Push to a new path, e.g. -e target_registry_path=ocp4v2."
+        quiet: true
+      when: oc_mirror_workflow != 'm2d'
+
+    - name: Check the ImageSet from the mirror-to-disk run is there (d2m)
+      ansible.builtin.stat:
+        path: "{{ imageset_path }}"
+      register: imageset_stat
+      when: oc_mirror_workflow == 'd2m'
+
+    - name: Stop if it is missing (d2m)
+      ansible.builtin.assert:
+        that: imageset_stat.stat.exists
+        fail_msg: "{{ imageset_path }} not found. Run the m2d step first with the same archive_name."
+        quiet: true
+      when: oc_mirror_workflow == 'd2m'
+
     - name: Check a catalog list was given
       ansible.builtin.assert:
         that:
@@ -49,6 +94,7 @@
           - operator_catalogs | selectattr('packages', 'undefined') | list | length == 0
         fail_msg: "Pass a catalog list, e.g. -e @vars/catalogs-redhat.yml, and give every catalog a packages list."
         quiet: true
+      when: oc_mirror_workflow != 'd2m'
 
     - name: Ensure working directories exist
       ansible.builtin.file:
@@ -58,6 +104,8 @@
       loop:
         - { path: "{{ workspace_path }}", mode: '0755' }
         - { path: "{{ cache_path }}", mode: '0755' }
+        - { path: "{{ base_path }}/imagesets", mode: '0755' }
+        - { path: "{{ base_path }}/cluster-resources", mode: '0755' }
         - { path: "{{ auth_file_path | dirname }}", mode: '0700' }
 
     - name: Main Execution Block
@@ -91,23 +139,38 @@
             src: "./templates/catalogs-imageset.yaml.j2"
             dest: "{{ imageset_path }}"
             mode: '0644'
+          when: oc_mirror_workflow != 'd2m'      # d2m reuses the m2d run's ImageSet
 
         - name: Execute oc-mirror v2 for catalogs (retried on failure)
           ansible.builtin.command: >
             {{ playbook_dir }}/oc-mirror --v2
             --authfile {{ auth_file_path }}
-            --workspace file://{{ workspace_path }}
             --cache-dir {{ cache_path }}
             {{ oc_mirror_tuning }}
             {{ '--dry-run' if oc_mirror_dry_run | bool else '' }}
             {{ oc_mirror_extra_args }}
             -c {{ imageset_path }}
-            docker://{{ target_registry_url }}
+            {{ oc_mirror_destination }}
+          vars:
+            oc_mirror_destination: >-
+              {{ 'file://' + archive_path if oc_mirror_workflow == 'm2d'
+                 else '--from file://' + archive_path + ' docker://' + target_registry_url if oc_mirror_workflow == 'd2m'
+                 else '--workspace file://' + workspace_path + ' docker://' + target_registry_url }}
           register: oc_mirror_exec
           retries: "{{ oc_mirror_retries }}"
           delay: "{{ oc_mirror_retry_delay }}"
           until: oc_mirror_exec.rc == 0
           changed_when: oc_mirror_exec.rc == 0
+
+        - name: Keep this registry's cluster resources (d2m, m2m)
+          ansible.builtin.copy:
+            src: "{{ (archive_path if oc_mirror_workflow == 'd2m' else workspace_path) }}/working-dir/cluster-resources/"
+            dest: "{{ cluster_resources_path }}/"
+            remote_src: true
+            mode: preserve
+          when:
+            - oc_mirror_workflow != 'm2d'
+            - not (oc_mirror_dry_run | bool)
 
       always:
         - name: Cleanup auth file (runs even on failure)

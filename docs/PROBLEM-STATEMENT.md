@@ -3,12 +3,14 @@
 | | |
 |---|---|
 | Measured | 2026-10-05, against OpenShift 4.18 to 4.22 |
-| Companion | [`DESIGN-DECISIONS.md`](DESIGN-DECISIONS.md) for the decisions, [`openshift-update-egress.html`](openshift-update-egress.html) for the full plan |
+| Companion | [`SOLUTIONS.md`](SOLUTIONS.md) for the three steps, [`PREREQUISITES.md`](PREREQUISITES.md) for the new bastions and registries, [`DESIGN-DECISIONS.md`](DESIGN-DECISIONS.md) for the decisions, [`openshift-update-egress.html`](openshift-update-egress.html) for the full plan |
 
 Our clusters run OpenShift 4.18 on the EUS channel and are well behind. Standard maintenance for
 4.18 ended on 25 August 2026, and the plan is to move to 4.20 and then 4.22. Every step waits for
 someone to copy images and catalogs into the local registry by hand. That sync has failed several
 times, and Red Hat has replaced the tools it relies on.
+
+**Refined (2026-10-07):** the current process now uses Ansible. The sync runs oc-mirror v2 from the playbooks in [`oc-mirror-ansible/`](../oc-mirror-ansible/README.md). A person still starts each run, so the gap described below narrows but does not close; the two designs under [Where we go instead](#where-we-go-instead) are the next steps.
 
 ## Every fix has to cross the gap by hand
 
@@ -38,7 +40,7 @@ RED HAT publishes (measured)                    | AIR GAP |  OUR NETWORK, discon
   of date today (team report)                   |         |
 
 Red Hat keeps shipping. Our clusters move only when a manual sync succeeds, and they are still on 4.18.
-Which sync tool the current process uses is not recorded here.
+Refined 2026-10-07: the current process runs oc-mirror v2 from Ansible (oc-mirror-ansible/); a person still starts it.
 ```
 
 ## The road from 4.18 to 4.22
@@ -147,48 +149,39 @@ disconnected means migrating the process as well as running it.
 Quotes are from `openshift/openshift-docs`, branch `enterprise-4.22`, commit `b9f51d8`, with
 `enterprise-4.20` (`d51f4f2`) and `enterprise-4.21` (`acdecf2`) where named.
 
+The refined current process ([`oc-mirror-ansible/`](../oc-mirror-ansible/README.md)) is built on oc-mirror v2 and `v2alpha1` ImageSetConfigurations: it generates IDMS and ITMS instead of ICSP, mirrors release signatures by default, never prunes, and lists every operator package explicitly.
+
 ## Where we go instead
 
-Our preferred position is a direct enterprise proxy with only Red Hat's documented hosts allowed.
-The alternative is a full Red Hat Quay registry on-prem, built with Red Hat Consulting and a Quay
-specialist. Neither is built or approved yet.
+The plan now has three steps (refined 2026-10-07). Step 1 modernises today's process with Ansible
+and oc-mirror v2 and is built; it still means we mirror everything ourselves. Step 2, the team's
+preferred position, is a direct enterprise proxy with only Red Hat's documented hosts allowed. Step 3,
+the alternative, is a full Red Hat Quay registry on-prem, filled on a schedule. Steps 2 and 3 are
+neither built nor approved. They are presented side by side in [`SOLUTIONS.md`](SOLUTIONS.md).
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="diagrams/disconnected-update-problem/game-plan.dark.png">
-  <source srcset="diagrams/disconnected-update-problem/game-plan.light.png">
-  <img alt="Two proposed designs. In the preferred design the cluster pulls images, the update graph and signatures from Red Hat through an enterprise proxy with an allowlist, with no mirror and no two-headed DNS. In the alternative the cluster has no egress and pulls from an on-prem Red Hat Quay that a scheduled oc-mirror v2 job fills. Both open the same Red Hat hosts and both need a plan for operator catalogs." src="diagrams/disconnected-update-problem/game-plan.light.png">
+  <source media="(prefers-color-scheme: dark)" srcset="diagrams/three-steps/three-steps.dark.png">
+  <source srcset="diagrams/three-steps/three-steps.light.png">
+  <img alt="Three steps keep the clusters current. Step 1, built: a person runs the Ansible oc-mirror v2 playbooks on the mirroring bastion of each datacenter before each update, into the lab and production mirror registries, and the cluster stays disconnected with a local Update Service. Step 2, proposed and preferred: every node reaches Red Hat's hosts through the enterprise proxy, with no mirror, no sync and no local Update Service. Step 3, proposed alternative: a scheduled job on each bastion runs the same playbooks into an on-prem Red Hat Quay, and the cluster keeps no egress with a local Update Service. All three open the same Red Hat hosts and none needs two-headed DNS." src="diagrams/three-steps/three-steps.light.png">
 </picture>
 
-*Both designs are proposals. In the preferred one, every node pulls from Red Hat through an
-enterprise proxy that allows only Red Hat's documented hosts, so there is no mirror and no sync,
-and no two-headed DNS. In the alternative, the cluster keeps no egress and pulls from an on-prem
-Red Hat Quay that a scheduled oc-mirror v2 job fills. Both open the same Red Hat hosts at the
-firewall, and both need a plan for operator catalogs.*
+*Step 1 is built; Steps 2 and 3 are proposals. Every step opens the same Red Hat hosts at the
+firewall; they differ in which machines use them: the mirroring bastions (Steps 1 and 3) or every node
+(Step 2). No step needs two-headed DNS. Each still needs a plan for operator catalogs
+([`DESIGN-DECISIONS.md`](DESIGN-DECISIONS.md), D2).*
 
 ```text
-            PREFERRED: proxy + allowlist (proposed)        ALTERNATIVE: Red Hat Quay on-prem (proposed)
-INSIDE      OpenShift cluster                              OpenShift cluster
-            cluster-wide proxy for CRI-O, the CVO, OLM     no egress; pulls from Quay through IDMS / ITMS
-            turning it on reboots every node once          update graph from a local OSUS
-              | images, graph, signatures                    ^ images, graph data
-            enterprise proxy                               Red Hat Quay, highly available
-            allowlist: Red Hat's documented hosts, 443     built with Red Hat Consulting and a Quay SME
-            nodes resolve only the proxy: no 2-headed DNS  filled by oc-mirror v2, not Quay repo mirroring
-              |                                              ^ push
-              |          (no mirror host, no sync job)     mirror host, scheduled job
-              |                                            oc-mirror v2 + ImageSetConfiguration in Git
-              |                                            the sync remains; a job runs it, not a person
-EGRESS        | every node, through the proxy                | one host, through the proxy
-RED HAT     quay.io, cdn.quay.io, cdn01-06.quay.io         the same hosts, opened to one machine
-(exists)    registry.redhat.io                             the cluster itself reaches none of them
-            api.openshift.com, mirror.openshift.com
-            + telemetry hosts only if telemetry stays on
-CATALOGS    straight from registry.redhat.io               oc-mirror v2 builds a filtered catalog from the
-            an admission policy limits installs            packages in the ImageSetConfiguration
-            allowlist on the stock catalog: no registry    every dependency has to be listed by hand
-            a filtered catalog would need one              the same admission policy enforces it
-
-Both designs open the same Red Hat hosts. They differ in who uses the opening: every node, or one mirror host.
+            STEP 1: Ansible (built)        STEP 2: enterprise proxy (proposed)   STEP 3: Quay on-prem (proposed)
+INSIDE      OpenShift cluster              OpenShift cluster                     OpenShift cluster
+            no egress; IDMS/ITMS per run   Proxy CR: CVO, CRI-O, OLM             no egress; pulls from Quay
+            graph from a local OSUS        workloads blocked from the proxy      local OSUS: required
+              ^ images, graph data           | images, graph, signatures           ^ images, graph data
+            mirror registries lab/DC1/DC2  enterprise proxy                      Red Hat Quay, HA, per datacenter
+              ^ push                       allowlist: Red Hat hosts only           ^ push
+            bastion per DC, by hand        (no mirror host, registry or OSUS)    bastion per DC, systemd timer
+            Ansible + oc-mirror v2 + Vault                                       runs the Step 1 playbooks
+EGRESS        | one host, through the proxy  | every node, through the proxy       | one host, through the proxy
+RED HAT     quay.io, registry.redhat.io, api.openshift.com, mirror.openshift.com: the same hosts for every step
 ```
 
 ## What the proposal removes, and what stays
@@ -210,14 +203,14 @@ hand.
 
 | Removed or automated | Today | Preferred: proxy | Alternative: Quay on-prem |
 |---|---|---|---|
-| Image sync | By hand, offline | Gone. Each node pulls through the proxy | A scheduled oc-mirror v2 job |
-| Catalog sync | By hand, and out of date today | Gone. Catalogs and operator images come from `registry.redhat.io` | The same scheduled job; every dependency listed by hand |
+| Image sync | Refined: oc-mirror v2 run from Ansible (`oc-mirror-ansible/`), still started by a person | Gone. Each node pulls through the proxy | A scheduled oc-mirror v2 job |
+| Catalog sync | Refined: the Ansible catalog playbook, still started by a person; catalogs stay out of date until it runs | Gone. Catalogs and operator images come from `registry.redhat.io` | The same scheduled job; every dependency listed by hand |
 | A failed sync | No update that cycle. It has happened multiple times | No sync to fail. A proxy outage stops pulls, so the proxy has to be highly available | Still possible. Red Hat lists open oc-mirror failure modes in KB 7130341, 7139982 and 7128745 |
-| Tooling migration | Owed: oc-mirror v2 and a `v2alpha1` configuration | No mirroring tool to maintain | Start on oc-mirror v2 |
+| Tooling migration | Done: oc-mirror v2 and `v2alpha1`, in `oc-mirror-ansible/` | No mirroring tool to maintain | Start on oc-mirror v2 |
 | Release signatures | Have to be mirrored, with an acknowledgment before 4.21 | Checked against Red Hat directly once the mirror sets are gone | oc-mirror v2 mirrors signatures by default |
 | Two-headed DNS | Not applicable | Not needed. Nodes resolve only the proxy | Not needed. oc-mirror v2 uses the proxy |
-| What we run | A local registry and a manual process | A highly available proxy | Highly available Quay, a mirror host, OSUS, and a proxy for the mirror host |
-| What it costs to get there | Nothing new | Security approval for node egress; one reboot of every node | A Consulting engagement, a Quay specialist, and a new registry to size and operate |
+| What we run | Today three old mirror registries 1.x (over three years old); refined: two mirroring bastions and three new mirror registries 2.0.x on RHEL 9 ([`PREREQUISITES.md`](PREREQUISITES.md)), Ansible run by hand | A highly available proxy | Highly available Quay per datacenter, the two bastions, OSUS, and the proxy for the bastions |
+| What it costs to get there | Five new RHEL 9 hosts and a cutover of every cluster to its new registry | Security approval for node egress; one reboot of every node | A Consulting engagement, a Quay specialist, and a new registry to size and operate |
 
 The team's assessment is that our backlog of fixes and our limits on upgrading come from this
 process, not from OpenShift. The measurements are consistent with that: Red Hat has shipped 156
@@ -230,16 +223,21 @@ them in is our choice.
 
 ## Still to settle
 
+- We mirror into three old mirror registries for Red Hat OpenShift 1.x, each more than three years
+  old (team report, 2026-10-07). They are replaced, not upgraded: two mirroring bastions and three new 2.0.x registries
+  on RHEL 9 ([`PREREQUISITES.md`](PREREQUISITES.md)). Which datacenter holds the lab, and how many
+  clusters each production registry serves, are still to confirm.
 - Security has not yet said whether cluster nodes may reach Red Hat through the proxy. The
   preferred design depends on that answer.
 - Order of work: the cluster-wide proxy is a documented configuration on 4.18. Enabling it before
   the updates would let the hops to 4.20 and 4.22 run without any sync. Red Hat Support should
   confirm that removing the mirror sets also removes the signature acknowledgment before 4.21.
 - The Red Hat Consulting engagement and the Quay specialist for the alternative are not arranged.
-- This document does not record which 4.18 release each cluster is on, which tool the current sync
-  uses, or how many times it has failed. Those three facts would make the case stronger.
+- This document does not record which 4.18 release each cluster is on or how many times the sync
+  has failed. Those two facts would make the case stronger. The sync tool is recorded: since
+  2026-10-07 the current process runs oc-mirror v2 from Ansible ([`oc-mirror-ansible/`](../oc-mirror-ansible/README.md)).
 - The plan also holds a third design that sits between these two: update graph and signatures from
-  Red Hat through the proxy, images from the registry we run today. Red Hat does not document that
+  Red Hat through the proxy, images from our mirror registries. Red Hat does not document that
   combination.
 
 ## How this was measured
@@ -278,7 +276,7 @@ Industry sources:
 
 ## Diagram sources
 
-The four figures are drawn in [`diagrams/disconnected-update-problem/source.html`](diagrams/disconnected-update-problem/source.html)
+The first three figures are drawn in [`diagrams/disconnected-update-problem/source.html`](diagrams/disconnected-update-problem/source.html)
 and rendered to the PNGs beside it with [diagram-kit](https://github.com/ephico2real2/diagram-kit) (MPL-2.0), which
 writes them only when its checks pass:
 
@@ -291,7 +289,10 @@ python3 -m venv .venv
 .venv/bin/diagram-render \
   docs/diagrams/disconnected-update-problem/source.html \
   docs/diagrams/disconnected-update-problem \
-  today,road,fixes-per-month,game-plan
+  today,road,fixes-per-month
 ```
+
+The three-steps figure is drawn in [`diagrams/three-steps/source.html`](diagrams/three-steps/source.html);
+its render command is in [`SOLUTIONS.md`](SOLUTIONS.md), Diagram sources.
 
 A figure, its text twin in this document and the page change together.

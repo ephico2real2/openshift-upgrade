@@ -3,6 +3,7 @@
 | | |
 |---|---|
 | Researched | 2026-09-25, against OpenShift 4.22 docs and `release-4.22` product source |
+| Hosts | Two mirroring bastions and three registries (lab, DC1, DC2) on RHEL 9, replacing the three old mirror registries 1.x: [`PREREQUISITES.md`](PREREQUISITES.md); all three steps side by side: [`SOLUTIONS.md`](SOLUTIONS.md) |
 | Evidence | [`openshift-update-egress.html`](openshift-update-egress.html) (section names are cited below as *§ name*); the problem is stated in [`PROBLEM-STATEMENT.md`](PROBLEM-STATEMENT.md) |
 | Status | **No decision is ratified yet.** The team stated its position on D1 on 2026-10-05; it still depends on security approval. Every other entry in [Decisions](#decisions) is a recommendation waiting on the input named beside it. |
 
@@ -12,6 +13,16 @@ Version-specific facts here were true on 2026-09-25. Re-check them if a newer 4.
 
 Our clusters run disconnected, so every update starts with a manual mirror. We want a partially
 connected design that lets us update on a regular schedule.
+
+### Steps
+
+| Step | What | Status | Here |
+|---|---|---|---|
+| 1 | Refine the current process (the manual sync) | **Done, 2026-10-07:** oc-mirror v2 run from Ansible playbooks, still started by hand | [`oc-mirror-ansible/`](../oc-mirror-ansible/README.md) |
+| 2 | Refine the enterprise proxy strategy | Runbook written, 2026-10-07 | Option 1 below; [`enterprise-proxy/`](enterprise-proxy/README.md) |
+| 3 | Build a full Red Hat Quay registry on-prem | Design written, 2026-10-07 | Option 2 below; [`quay-onprem/`](quay-onprem/README.md) |
+
+Step 1 keeps the manual sync but makes it repeatable. It runs on a mirroring bastion in each datacenter and fills three new mirror registries ([`PREREQUISITES.md`](PREREQUISITES.md)). Its playbooks are also a starting point for the scheduled oc-mirror v2 job that Options 2 and 3 need.
 
 Where we are (stated by the team on 2026-10-05): OpenShift 4.18 on the EUS channel, well behind.
 The plan is 4.18 to 4.20, then 4.20 to 4.22. Measured that day: 4.18 maintenance ended on
@@ -26,7 +37,7 @@ and queries are in [`PROBLEM-STATEMENT.md`](PROBLEM-STATEMENT.md).
 | **1** | Allowlist Red Hat hosts + cluster-wide proxy | Images, update graph and signatures, from every node through the proxy | An HA egress proxy |
 | **2** (as first written) | Internal Quay filled by Quay "image sync", two-headed DNS, OSUS | None | HA Quay, OSUS, split DNS |
 | **2** (as documented) | Internal Quay filled by oc-mirror v2, OSUS | None | Mirror host, HA Quay, OSUS |
-| **3** (added by the research) | Graph and signatures from Red Hat through the proxy; images from the registry we run today through IDMS, filled by a scheduled oc-mirror v2 job | Update graph and signatures only | Mirror host, our current registry, proxy |
+| **3** (added by the research) | Graph and signatures from Red Hat through the proxy; images from our mirror registries through IDMS, filled by a scheduled oc-mirror v2 job | Update graph and signatures only | Mirror host, our current registry, proxy |
 
 Every option opens `quay.io` and `registry.redhat.io` at the firewall. They differ in which machines
 use that opening: every cluster node (Option 1) or one mirror host (Options 2 and 3). *§ What the
@@ -37,7 +48,7 @@ research found*
 | ID | Question | Recommendation | Waiting on |
 |---|---|---|---|
 | D1 | Which design do we build? | **Team position, 2026-10-05:** Option 1 preferred; Option 2 (full Red Hat Quay on-prem) as the alternative | Security's answer on which machines may reach Red Hat; for the alternative, a Red Hat Consulting engagement and a Quay specialist |
-| D2 | Filtered catalog (model A) or allowlist on the stock catalog (model B)? | Model A, keeping our current registry for the catalog image alone | D1; which registry product we run today |
+| D2 | Filtered catalog (model A) or allowlist on the stock catalog (model B)? | Model A, keeping a mirror registry for the catalog image alone | D1 (the registry product is answered: mirror registry for Red Hat OpenShift, [`PREREQUISITES.md`](PREREQUISITES.md)) |
 | D3 | Keep telemetry and Insights on? | Security team's call | Security |
 | D4 | Will the proxy decrypt traffic to Red Hat hosts? | Exempt the Red Hat hosts from interception until Support answers | A Red Hat support answer |
 | D5 | How often do we update? | Monthly z-stream window; EUS-to-EUS minors for production, which matches the team's 4.18 → 4.20 → 4.22 plan | Team agreement on the z-stream window |
@@ -80,7 +91,7 @@ The choice turns on one security answer: which machines may reach Red Hat throug
 - Model B (allowlist on the stock `redhat-operators` catalog) needs no registry. The full catalog
   stays visible in the console, and every dependency has to be listed by hand.
 
-Recommendation: model A, with our current registry kept for the catalog image alone. That leaves the
+Recommendation: model A, with a mirror registry kept for the catalog image alone (the lab and production mirror registries in [`PREREQUISITES.md`](PREREQUISITES.md)). That leaves the
 admission policy one prefix to check. *§ Decisions, D2; § Limiting operator catalogs*
 
 ### D3 · Telemetry
@@ -170,7 +181,7 @@ For our team:
 
 1. Platform and number of clusters, and which 4.18 release each one is on (version answered on 2026-10-05: 4.18, EUS channel)
 2. Whether we have OpenShift Platform Plus (it includes Quay and ACM)
-3. Which registry product we mirror into today
+3. ~~Which registry product we mirror into today~~ Answered 2026-10-07: three old mirror registries for Red Hat OpenShift 1.x, each over three years old; they are replaced one for one by three new 2.0.x registries ([`PREREQUISITES.md`](PREREQUISITES.md))
 4. Whether OpenShift GitOps or ACM is already running
 5. What "set up the OpenShift console" in Option 2 refers to
 

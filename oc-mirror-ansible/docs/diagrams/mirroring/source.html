@@ -1,0 +1,244 @@
+<!-- Started from the diagram-kit template (MIT-0), https://github.com/ephico2real2/diagram-kit. Figures for the oc-mirror-ansible guides. -->
+<title>Mirroring Run Figures</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root {
+  --ground: #f5f6f8; --surface: #ffffff; --ink: #18212c; --muted: #58636f; --rule: #d7dce3;
+  --host: #a55a0b; --host-wash: #fbf1e4; --remote: #0e6f68; --remote-wash: #e3f3f1;
+  --gap: #b3261e; --gap-wash: #fbe9e7; --none: #5f6a77; --none-wash: #eef0f3;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --ground: #0e131a; --surface: #151c25; --ink: #e5e9ef; --muted: #9aa5b3; --rule: #2a3440;
+    --host: #f0a53c; --host-wash: #2a2014; --remote: #3fcfc0; --remote-wash: #122a28;
+    --gap: #f2857c; --gap-wash: #2d1614; --none: #9aa5b3; --none-wash: #1b232d;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground: #0e131a; --surface: #151c25; --ink: #e5e9ef; --muted: #9aa5b3; --rule: #2a3440;
+  --host: #f0a53c; --host-wash: #2a2014; --remote: #3fcfc0; --remote-wash: #122a28;
+  --gap: #f2857c; --gap-wash: #2d1614; --none: #9aa5b3; --none-wash: #1b232d;
+}
+* { box-sizing: border-box; }
+body { background: var(--ground); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.55; margin: 0; }
+.page { max-width: 1060px; margin: 0 auto; padding-inline: 16px; padding-block: 40px 72px; display: grid; gap: 44px; }
+header { display: grid; gap: 10px; }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font-size: clamp(26px, 4vw, 36px); line-height: 1.15; margin: 0; font-weight: 700; text-wrap: balance; }
+h2 { font-size: 20px; margin: 0 0 6px; font-weight: 600; text-wrap: balance; }
+p { margin: 0; max-width: 72ch; }
+.lede { font-size: 17px; max-width: 70ch; }
+.muted { color: var(--muted); }
+code { font-family: var(--font-mono); font-size: .9em; }
+section { display: grid; gap: 14px; }
+figure { margin: 0; display: grid; gap: 10px; }
+.fig-scroll { overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 12px; }
+.fig-scroll svg { display: block; width: 100%; min-width: 760px; height: auto; color: var(--ink); }
+figcaption { font-size: 13.5px; color: var(--muted); max-width: 80ch; }
+.tbl { overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 10px 14px; border-bottom: 1px solid var(--rule); }
+th { font-size: 12px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); background: var(--ground); }
+tr:last-child td { border-bottom: 0; }
+.yes { color: var(--remote); font-weight: 600; } .no { color: var(--gap); font-weight: 600; }
+.cell-gap { background: var(--gap-wash); }
+.decisions { display: grid; gap: 12px; }
+.decision { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 16px 20px; display: grid; gap: 8px; }
+.decision .id { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+.decision .q { font-weight: 600; }
+.decision .rec { font-size: 14px; border-left: 3px solid var(--remote); padding-left: 10px; }
+.decision .rec.warn { border-left-color: var(--host); }
+a { color: var(--remote); }
+:focus-visible { outline: 2px solid var(--remote); outline-offset: 2px; }
+</style>
+<div class="page">
+  <header>
+    <div class="eyebrow">openshift-upgrade · oc-mirror-ansible · 2026-10-07</div>
+    <h1>Step 1: how a mirroring run works</h1>
+    <p class="lede">The figures for the release and catalog mirroring guides: one run end to end, the routes the mirror host uses, and the two runs that cover 4.18.17 to 4.22.</p>
+  </header>
+
+  <section>
+    <h2>One run, end to end</h2>
+    <p class="muted">From the playbook on the mirror host to oc adm upgrade on the cluster.</p>
+    <figure>
+      <div class="fig-scroll">
+<svg viewBox="0 0 1000 720" role="img" aria-label="One Step 1 release run. On the mirroring bastion: start the playbook in tmux with the Vault password; it checks the Red Hat pull secret, writes a private auth file and renders the ImageSet. A dry-run lists what would be copied; anything in missing.txt is fixed first. The real run downloads into an archive on the bastion and then pushes that archive into the lab registry, later the production registry; it retries each image five times, then the whole run up to three more times two minutes apart, and the cache lets a rerun resume. The auth file is removed even when the run fails. Then verify the tags, the .sig tags and the cluster-resources folder. In the cluster's change window an admin trusts the registry CA, applies the renamed IDMS and ITMS, the signatures and CatalogSources, sets up the Update Service, and oc adm upgrade lists the target.">
+<defs><marker id="am1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
+<g font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="currentColor">
+<rect x="20" y="14" width="610" height="30" rx="6" fill="var(--host-wash)" stroke="var(--host)"/>
+<text x="325.0" y="34" fill="var(--host)" font-family="IBM Plex Mono, monospace" font-size="13" font-weight="600" text-anchor="middle">MIRRORING BASTION  ·  Ansible + oc-mirror v2</text>
+<rect x="660" y="14" width="320" height="30" rx="6" fill="var(--remote-wash)" stroke="var(--remote)"/>
+<text x="820.0" y="34" fill="var(--remote)" font-family="IBM Plex Mono, monospace" font-size="13" font-weight="600" text-anchor="middle">CLUSTER  ·  change window</text>
+<line x1="645" y1="14" x2="645" y2="615" stroke="var(--rule)" stroke-width="1.5" stroke-dasharray="6 5"/>
+<rect x="30" y="64" width="330" height="62" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="46" y="82.5" fill="currentColor" font-weight="600">① ansible-playbook, in tmux</text>
+<text x="46" y="99.5" fill="currentColor">--ask-vault-pass decrypts the pull secret</text>
+<text x="46" y="116.5" fill="var(--muted)">and the registry login (Ansible Vault)</text>
+<path d="M195,126 L195,144" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#am1)"/>
+<rect x="30" y="148" width="330" height="62" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="46" y="166.5" fill="currentColor" font-weight="600">② check the pull secret</text>
+<text x="46" y="183.5" fill="currentColor">it must cover quay.io and registry.redhat.io</text>
+<text x="46" y="200.5" fill="var(--muted)">then write the auth file, mode 0600</text>
+<path d="M360,179 L396,179" fill="none" stroke="var(--gap)" stroke-width="1.4" marker-end="url(#am1)"/>
+<rect x="400" y="154" width="230" height="50" rx="8" fill="var(--gap-wash)" stroke="var(--gap)" stroke-width="1.5"/>
+<text x="515.0" y="175.0" fill="var(--gap)" text-anchor="middle">missing → stop: copy it</text>
+<text x="515.0" y="192.0" fill="var(--gap)" text-anchor="middle">again from console.redhat.com</text>
+<path d="M195,210 L195,228" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#am1)"/>
+<rect x="30" y="232" width="330" height="62" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="46" y="250.5" fill="currentColor" font-weight="600">③ dry-run first</text>
+<text x="46" y="267.5" fill="currentColor">-e oc_mirror_dry_run=true copies nothing</text>
+<text x="46" y="284.5" fill="var(--muted)">mapping.txt = what it would copy</text>
+<path d="M360,263 L396,263" fill="none" stroke="var(--gap)" stroke-width="1.4" marker-end="url(#am1)"/>
+<rect x="400" y="238" width="230" height="50" rx="8" fill="var(--gap-wash)" stroke="var(--gap)" stroke-width="1.5"/>
+<text x="515.0" y="259.0" fill="var(--gap)" text-anchor="middle">missing.txt not empty →</text>
+<text x="515.0" y="276.0" fill="var(--gap)" text-anchor="middle">fix the ImageSet, dry-run again</text>
+<path d="M195,294 L195,312" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#am1)"/>
+<rect x="30" y="316" width="330" height="62" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="46" y="334.5" fill="currentColor" font-weight="600">④ download, then push</text>
+<text x="46" y="351.5" fill="currentColor">m2d: Red Hat → archive + cache</text>
+<text x="46" y="368.5" fill="var(--muted)">d2m: archive → lab, later production</text>
+<path d="M360,347 L396,347" fill="none" stroke="var(--gap)" stroke-width="1.4" marker-end="url(#am1)"/>
+<rect x="400" y="322" width="230" height="50" rx="8" fill="var(--gap-wash)" stroke="var(--gap)" stroke-width="1.5"/>
+<text x="515.0" y="343.0" fill="var(--gap)" text-anchor="middle">5 retries per image, 3 runs</text>
+<text x="515.0" y="360.0" fill="var(--gap)" text-anchor="middle">all fail → rerun; cache resumes</text>
+<path d="M195,378 L195,396" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#am1)"/>
+<rect x="30" y="400" width="330" height="62" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="46" y="418.5" fill="currentColor" font-weight="600">⑤ auth file removed</text>
+<text x="46" y="435.5" fill="currentColor">an always: block, so even on failure</text>
+<text x="46" y="452.5" fill="var(--muted)">ls -A private/ prints nothing</text>
+<path d="M195,462 L195,480" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#am1)"/>
+<rect x="30" y="484" width="330" height="62" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="46" y="502.5" fill="currentColor" font-weight="600">⑥ verify the registry</text>
+<text x="46" y="519.5" fill="currentColor">release, graph-image and catalog tags</text>
+<text x="46" y="536.5" fill="var(--muted)">.sig tags for 4.21+; cluster-resources/</text>
+<path d="M360,515 L396,515" fill="none" stroke="var(--gap)" stroke-width="1.4" marker-end="url(#am1)"/>
+<rect x="400" y="490" width="230" height="50" rx="8" fill="var(--gap-wash)" stroke="var(--gap)" stroke-width="1.5"/>
+<text x="515.0" y="511.0" fill="var(--gap)" text-anchor="middle">no .sig tags →</text>
+<text x="515.0" y="528.0" fill="var(--gap)" text-anchor="middle">4.21+ updates will stop</text>
+<path d="M195,546 L195,590 L670,590 L670,90 L686,90" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#am1)"/>
+<text x="205" y="582" fill="var(--muted)">hand over cluster-resources/ and the run log</text>
+<rect x="690" y="64" width="280" height="78" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="706" y="82.0" fill="currentColor" font-weight="600">⑦ trust and pull</text>
+<text x="706" y="99.0" fill="currentColor">registry login in the pull secret</text>
+<text x="706" y="116.0" fill="currentColor">registry CA: host..port key</text>
+<text x="706" y="133.0" fill="var(--muted)">plus updateservice-registry</text>
+<path d="M830,142 L830,166" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#am1)"/>
+<rect x="690" y="170" width="280" height="78" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="706" y="188.0" fill="currentColor" font-weight="600">⑧ apply cluster-resources</text>
+<text x="706" y="205.0" fill="currentColor">IDMS / ITMS renamed per run</text>
+<text x="706" y="222.0" fill="currentColor">signature ConfigMap, CatalogSources</text>
+<text x="706" y="239.0" fill="var(--muted)">idms-release-0 collides otherwise</text>
+<path d="M830,248 L830,272" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#am1)"/>
+<rect x="690" y="276" width="280" height="78" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="706" y="294.0" fill="currentColor" font-weight="600">⑨ OpenShift Update Service</text>
+<text x="706" y="311.0" fill="currentColor">cincinnati-operator, UpdateService</text>
+<text x="706" y="328.0" fill="currentColor">spec.upstream → its graph URL</text>
+<text x="706" y="345.0" fill="var(--muted)">rollout restart after each new graph</text>
+<path d="M830,354 L830,378" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#am1)"/>
+<rect x="690" y="382" width="280" height="62" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="706" y="400.5" fill="currentColor" font-weight="600">⑩ oc adm upgrade</text>
+<text x="706" y="417.5" fill="currentColor">lists the mirrored target</text>
+<text x="706" y="434.5" fill="var(--muted)">then the EUS update steps</text>
+<text x="20" y="650" fill="var(--muted)">One archive, pushed into each registry: lab and production get the same content. The catalog playbook follows the same shape.</text>
+<text x="20" y="672" fill="var(--muted)">Red boxes: what stops the run and what fixes it. Release runs never use --remove-signatures.</text>
+<text x="20" y="698" fill="var(--host)" font-weight="600">Solid = what the playbooks and guides do today: tested with stand-ins, not yet against our registry.</text>
+</g>
+</svg>
+      </div>
+      <figcaption>What the playbooks and the release guide do today. They were tested with stand-ins for oc-mirror and Vault, not yet against our registry.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>Which traffic uses the proxy</h2>
+    <p class="muted">Internet traffic goes through the proxy; local and internal traffic must not.</p>
+    <figure>
+      <div class="fig-scroll">
+<svg viewBox="0 0 1000 400" role="img" aria-label="Routes from the mirroring bastion during a run. Everything not in NO_PROXY goes through the corporate proxy to Red Hat: quay.io, registry.redhat.io, api.openshift.com for the update graph and registry.access.redhat.com. Local and internal traffic must go direct: oc-mirror's temporary local registry on localhost:55000 and the mirror registries in the bastion's datacenter. If localhost is sent to the proxy, the run fails on localhost:55000.">
+<defs><marker id="am2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
+<g font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="currentColor">
+<rect x="30" y="140" width="250" height="78" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="46" y="158.0" fill="currentColor" font-weight="600">mirroring bastion (RHEL 9)</text>
+<text x="46" y="175.0" fill="currentColor">Ansible, oc, oc-mirror</text>
+<text x="46" y="192.0" fill="currentColor">reads HTTPS_PROXY, NO_PROXY</text>
+<text x="46" y="209.0" fill="var(--muted)">set on the host, not in the playbook</text>
+<rect x="370" y="46" width="230" height="62" rx="8" fill="var(--none-wash)" stroke="var(--none)" stroke-width="1.5"/>
+<text x="386" y="64.5" fill="var(--none)" font-weight="600">corporate proxy</text>
+<text x="386" y="81.5" fill="currentColor" font-family="IBM Plex Mono, monospace" font-size="12">proxy.corp:8080</text>
+<text x="386" y="98.5" fill="var(--muted)">TCP 443 out</text>
+<rect x="690" y="30" width="290" height="94" rx="8" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.5"/>
+<text x="706" y="56.0" fill="var(--remote)" font-weight="600">Red Hat</text>
+<text x="706" y="73.0" fill="currentColor" font-family="IBM Plex Mono, monospace" font-size="12">quay.io · registry.redhat.io</text>
+<text x="706" y="90.0" fill="currentColor" font-family="IBM Plex Mono, monospace" font-size="12">api.openshift.com (graph)</text>
+<text x="706" y="107.0" fill="currentColor" font-family="IBM Plex Mono, monospace" font-size="12">registry.access.redhat.com</text>
+<rect x="560" y="196" width="420" height="78" rx="8" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5"/>
+<text x="576" y="214.0" fill="var(--host)" font-weight="600">direct: in NO_PROXY</text>
+<text x="576" y="231.0" fill="currentColor" font-family="IBM Plex Mono, monospace" font-size="12">localhost:55000 (oc-mirror's own registry)</text>
+<text x="576" y="248.0" fill="currentColor" font-family="IBM Plex Mono, monospace" font-size="12">registry-lab, registry-dc1 :8443</text>
+<text x="576" y="265.0" fill="var(--muted)">host only in NO_PROXY: no port, no path</text>
+<path d="M155,140 L155,77 L366,77" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#am2)"/>
+<text x="170" y="68" fill="var(--muted)">everything not in NO_PROXY</text>
+<path d="M600,77 L686,77" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#am2)"/>
+<path d="M280,200 L325,200 L325,235 L556,235" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#am2)"/>
+<text x="340" y="226" fill="var(--muted)">direct, no proxy</text>
+<rect x="30" y="300" width="520" height="46" rx="8" fill="var(--gap-wash)" stroke="var(--gap)" stroke-width="1.5"/>
+<text x="46" y="318" fill="var(--gap)">localhost sent to the proxy → the run fails on localhost:55000</text>
+<text x="46" y="335" fill="var(--gap)">fix: localhost,127.0.0.1 in NO_PROXY (release guide, Step 1)</text>
+<text x="20" y="382" fill="var(--muted)">The DC1 bastion; DC2's pushes to registry-dc2. Proxy and registry names are examples (PREREQUISITES.md).</text>
+</g>
+</svg>
+      </div>
+      <figcaption>The host setup in the release guide, Step 1. Hostnames are the guide's examples.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>Two runs cover the upgrade path</h2>
+    <p class="muted">One channel cannot reach from 4.18.17 to 4.22; two runs join at the 4.20 target.</p>
+    <figure>
+      <div class="fig-scroll">
+<svg viewBox="0 0 1000 330" role="img" aria-label="Two runs cover the path from 4.18.17 to 4.22. Run A uses eus-4.20 with shortestPath, from 4.18.17 through the 4.19 hops to the 4.20 target. Run B uses eus-4.22 from that same 4.20 target through the 4.21 hops to the 4.22 target. If eus-4.22 is not open, Run B splits into B1 on stable-4.21 and B2 on stable-4.22. Each run names one channel and has its own workspace; they share the cache.">
+<defs><marker id="am3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
+<g font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="currentColor">
+<rect x="30" y="70" width="160" height="56" rx="8" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5"/>
+<text x="110.0" y="94" fill="var(--host)" font-weight="600" text-anchor="middle">4.18.17</text>
+<text x="110.0" y="111" fill="var(--muted)" text-anchor="middle">we are here</text>
+<rect x="225" y="70" width="160" height="56" rx="8" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="5 4"/>
+<text x="305.0" y="94" fill="currentColor" font-weight="600" text-anchor="middle">4.19 hop(s)</text>
+<text x="305.0" y="111" fill="var(--muted)" text-anchor="middle">control plane only</text>
+<rect x="420" y="70" width="160" height="56" rx="8" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="500.0" y="94" fill="var(--remote)" font-weight="600" text-anchor="middle">4.20.&lt;z&gt;</text>
+<text x="500.0" y="111" fill="var(--muted)" text-anchor="middle">first EUS target</text>
+<rect x="615" y="70" width="160" height="56" rx="8" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="5 4"/>
+<text x="695.0" y="94" fill="currentColor" font-weight="600" text-anchor="middle">4.21 hop(s)</text>
+<text x="695.0" y="111" fill="var(--muted)" text-anchor="middle">control plane only</text>
+<rect x="810" y="70" width="160" height="56" rx="8" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="890.0" y="94" fill="var(--remote)" font-weight="600" text-anchor="middle">4.22.&lt;z&gt;</text>
+<text x="890.0" y="111" fill="var(--muted)" text-anchor="middle">second EUS target</text>
+<path d="M190,98 L221,98" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#am3)"/>
+<path d="M385,98 L416,98" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#am3)"/>
+<path d="M580,98 L611,98" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#am3)"/>
+<path d="M775,98 L806,98" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#am3)"/>
+<path d="M30,56 L30,46 L580,46 L580,56" fill="none" stroke="var(--muted)" stroke-width="1.2"/>
+<text x="305.0" y="36" fill="currentColor" font-weight="600" text-anchor="middle">Run A · eus-4.20 · shortest_path=true · workspace-run-a</text>
+<path d="M420,140 L420,150 L970,150 L970,140" fill="none" stroke="var(--muted)" stroke-width="1.2"/>
+<text x="695.0" y="172" fill="currentColor" font-weight="600" text-anchor="middle">Run B · eus-4.22 · shortest_path=true · workspace-run-b</text>
+<rect x="420" y="200" width="550" height="50" rx="8" fill="var(--none-wash)" stroke="var(--none)" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="436" y="220" fill="currentColor">eus-4.22 not open yet → B1 stable-4.21 (4.20.&lt;z&gt; → 4.21.&lt;y&gt;), then</text>
+<text x="436" y="237" fill="currentColor">B2 stable-4.22 (4.21.&lt;y&gt; → 4.22.&lt;z&gt;); 4.21.&lt;y&gt; must be in both channels</text>
+<text x="20" y="280" fill="var(--muted)">Pin exact versions: Run A's maximum is Run B's minimum. One workspace per run, one shared cache.</text>
+<text x="20" y="304" fill="var(--host)" font-weight="600">Dashed = planned, not mirrored yet. Each run names one channel: two EUS channels in one ImageSet hit a known oc-mirror v2 bug.</text>
+</g>
+</svg>
+      </div>
+      <figcaption>Planned runs; versions marked &lt;z&gt; are picked from the channel listing on the day.</figcaption>
+    </figure>
+  </section>
+</div>

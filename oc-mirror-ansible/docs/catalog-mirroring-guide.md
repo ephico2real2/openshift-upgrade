@@ -34,7 +34,7 @@ This guide builds on the release mirroring guide, "oc-mirror v2 with Ansible —
 - `ansible-core`, `tmux`, `podman`, `skopeo`, `jq` installed (its Step 2)
 - The **latest** `oc-mirror` in `~/oc-mirror-ansible` (its Step 3)
 - The Red Hat pull secret in `vars/redhat-pull-secret.json` and the registry login in `vars/credentials.yml`, both Vault-encrypted (its "Ansible Vault in this project" section and Step 6)
-- The registry host, path and login scope agreed with the Artifactory admin (its Step 5)
+- The registry host, organization and robot account from the release guide, Step 5 ([`PREREQUISITES.md`](../../docs/PREREQUISITES.md) lists the three registries)
 - `oc` access to the cluster, read-only is enough, for Step 1 below
 
 The Red Hat pull secret covers all four catalogs; they're all on `registry.redhat.io`. The certified and marketplace operator images themselves can come from other registries (often `registry.connect.redhat.com`); the pull secret normally covers that one too.
@@ -249,7 +249,7 @@ IBM Fusion 2.14 mirrors the same catalogs with a single `oc mirror --v2` command
 | Certified and Red Hat catalogs in one ImageSet | Two groups, the certified one with `--remove-signatures` | Red Hat: certified, marketplace and community signatures aren't guaranteed, so signature mirroring must be off for them |
 | `podman login -u <user> -p <password>` | Credentials from Ansible Vault, auth file deleted after each run | A password on the command line lands in shell history and the process list |
 | `--dest-tls-verify=false` | TLS verified; the registry's CA is trusted on the host | Turning off TLS checks hides a man-in-the-middle; fix trust instead (release guide, Step 1) |
-| `--workspace file://./` (current folder) | One fixed workspace per version and group under `/data/oc-mirror` | Runs can't overwrite each other's cluster resources |
+| `--workspace file://./` (current folder) | One archive per version and group under `/data/oc-mirror`, downloaded once and pushed into each registry | Runs can't overwrite each other's cluster resources, and lab and production get the same content |
 | Example output mentions `oc-mirror-workspace/results-…` and ICSP manifests | `working-dir/cluster-resources` with IDMS/ITMS | That output is from oc-mirror v1; v2 writes IDMS/ITMS, and ICSP is deprecated |
 | Applies the IDMS as generated (`idms-operator-0`) | Renames IDMS/ITMS per run first (Step 6) | Every run uses the same names, so one would replace another |
 | Edits the `redhat-operators` CatalogSource image | Supported as an option (Step 6, item 5) after turning off default sources | Without that, the Marketplace Operator reverts the edit |
@@ -294,8 +294,9 @@ The playbook stops before doing anything if no catalog list is passed, or if a c
 | `oc_mirror_extra_args` | empty | Extra oc-mirror flags, e.g. `--remove-signatures` for the partner group |
 | `oc_mirror_dry_run` | `false` | `true` lists what would be mirrored and copies nothing |
 | `target_registry_fqdn`, `target_registry_path`, `target_auth_key` | as in the release guide | Same registry settings as the release runs |
-| `workspace_path` | `/data/oc-mirror/workspace-catalogs-v<version>` | One workspace per catalog version |
-| `catalog_group` | `redhat` | Set in each vars file (redhat, partner); part of the workspace name |
+| `oc_mirror_workflow` | `m2d` | `m2d` downloads to the archive (uses the cache); `d2m` pushes it into one registry; `m2m` goes straight to a registry |
+| `archive_name` | `archive-catalogs-v<version>-<group>` | One archive per catalog version and group |
+| `catalog_group` | `redhat` | Set in each vars file (redhat, partner); part of the archive name |
 | `additional_images` | none | Optional non-operator images, set in a vars file; may contain `{{ catalog_ocp_version }}` |
 
 ```
@@ -308,19 +309,36 @@ The playbook stops before doing anything if no catalog list is passed, or if a c
     - vars/credentials.yml
   vars:
     # Internal registry: host (add :port if it uses one) and the repository path under it
-    target_registry_fqdn: "artifactory.internal.repo"
-    target_registry_path: "ocp4"                    # e.g. docker-local/ocp4
+    target_registry_fqdn: "registry-lab.example.com:8443"   # one of the three registries (docs/PREREQUISITES.md)
+    # One organization on every registry, new and old, so the cluster files differ only by host.
+    # ocp4v2 is never the path oc-mirror v1 used. Override per registry in its vars file if needed.
+    mirror_namespace: "ocp4v2"
+    target_registry_path: "{{ mirror_namespace }}"  # the Quay organization the images go into
     target_registry_url: "{{ target_registry_fqdn }}/{{ target_registry_path }}"
     # Login scope in the auth file: the host (default) or the full path,
     # if the service account only has rights on that one repository
     target_auth_key: "{{ target_registry_fqdn }}"
+    # Registry paths that must never receive a push, e.g. the old oc-mirror v1 content on an
+    # existing registry. Set them in that registry's vars file (vars/registry.yml.example).
+    protected_targets: []
 
     # Working directories on the data volume (Step 2)
     base_path: "/data/oc-mirror"
+
+    # Workflow (docs/PREREQUISITES.md, "Order of a mirroring cycle"):
+    #   m2d = Red Hat -> archive on disk; uses and fills the cache, so later runs fetch only changes
+    #   d2m = that archive -> one registry; run once per registry (lab first, then production)
+    #   m2m = Red Hat -> registry directly; no cache (kept for small top-ups)
+    oc_mirror_workflow: "m2d"
+    archive_name: "archive-catalogs-v{{ catalog_ocp_version }}-{{ catalog_group }}"   # one per catalog version and group
+    archive_path: "{{ base_path }}/{{ archive_name }}"
+    target_registry_name: "{{ target_registry_fqdn.split('.')[0] }}"   # registry-lab, registry-dc1, ...
+    # one folder per registry and path, so a new path on an existing registry gets its own files
+    cluster_resources_path: "{{ base_path }}/cluster-resources/{{ archive_name if oc_mirror_workflow != 'm2m' else workspace_path | basename }}-{{ target_registry_name }}-{{ target_registry_path | replace('/', '-') }}"
     workspace_path: "{{ base_path }}/workspace-catalogs-v{{ catalog_ocp_version }}-{{ catalog_group }}"
     cache_path: "{{ base_path }}/cache"
     auth_file_path: "{{ base_path }}/private/mirroring.json"
-    imageset_path: "{{ workspace_path }}/imageset.yaml"
+    imageset_path: "{{ base_path }}/imagesets/{{ archive_name if oc_mirror_workflow != 'm2m' else workspace_path | basename }}.yaml"
 
     # Catalog version: the OpenShift minor version, used as the catalog tag v<version>
     catalog_ocp_version: "4.18"
@@ -343,6 +361,34 @@ The playbook stops before doing anything if no catalog list is passed, or if a c
     # NO_PROXY must include localhost, 127.0.0.1 and the target registry.
 
   tasks:
+    - name: Check the workflow
+      ansible.builtin.assert:
+        that:
+          - oc_mirror_workflow in ['m2d', 'd2m', 'm2m']
+        fail_msg: "oc_mirror_workflow must be m2d (Red Hat to disk), d2m (disk to a registry) or m2m (Red Hat to a registry)."
+        quiet: true
+
+    - name: Check the target is not a protected path (d2m, m2m)
+      ansible.builtin.assert:
+        that:
+          - target_registry_url not in protected_targets
+        fail_msg: "{{ target_registry_url }} is protected (protected_targets). Push to a new path, e.g. -e target_registry_path=ocp4v2."
+        quiet: true
+      when: oc_mirror_workflow != 'm2d'
+
+    - name: Check the ImageSet from the mirror-to-disk run is there (d2m)
+      ansible.builtin.stat:
+        path: "{{ imageset_path }}"
+      register: imageset_stat
+      when: oc_mirror_workflow == 'd2m'
+
+    - name: Stop if it is missing (d2m)
+      ansible.builtin.assert:
+        that: imageset_stat.stat.exists
+        fail_msg: "{{ imageset_path }} not found. Run the m2d step first with the same archive_name."
+        quiet: true
+      when: oc_mirror_workflow == 'd2m'
+
     - name: Check a catalog list was given
       ansible.builtin.assert:
         that:
@@ -350,6 +396,7 @@ The playbook stops before doing anything if no catalog list is passed, or if a c
           - operator_catalogs | selectattr('packages', 'undefined') | list | length == 0
         fail_msg: "Pass a catalog list, e.g. -e @vars/catalogs-redhat.yml, and give every catalog a packages list."
         quiet: true
+      when: oc_mirror_workflow != 'd2m'
 
     - name: Ensure working directories exist
       ansible.builtin.file:
@@ -359,6 +406,8 @@ The playbook stops before doing anything if no catalog list is passed, or if a c
       loop:
         - { path: "{{ workspace_path }}", mode: '0755' }
         - { path: "{{ cache_path }}", mode: '0755' }
+        - { path: "{{ base_path }}/imagesets", mode: '0755' }
+        - { path: "{{ base_path }}/cluster-resources", mode: '0755' }
         - { path: "{{ auth_file_path | dirname }}", mode: '0700' }
 
     - name: Main Execution Block
@@ -392,23 +441,38 @@ The playbook stops before doing anything if no catalog list is passed, or if a c
             src: "./templates/catalogs-imageset.yaml.j2"
             dest: "{{ imageset_path }}"
             mode: '0644'
+          when: oc_mirror_workflow != 'd2m'      # d2m reuses the m2d run's ImageSet
 
         - name: Execute oc-mirror v2 for catalogs (retried on failure)
           ansible.builtin.command: >
             {{ playbook_dir }}/oc-mirror --v2
             --authfile {{ auth_file_path }}
-            --workspace file://{{ workspace_path }}
             --cache-dir {{ cache_path }}
             {{ oc_mirror_tuning }}
             {{ '--dry-run' if oc_mirror_dry_run | bool else '' }}
             {{ oc_mirror_extra_args }}
             -c {{ imageset_path }}
-            docker://{{ target_registry_url }}
+            {{ oc_mirror_destination }}
+          vars:
+            oc_mirror_destination: >-
+              {{ 'file://' + archive_path if oc_mirror_workflow == 'm2d'
+                 else '--from file://' + archive_path + ' docker://' + target_registry_url if oc_mirror_workflow == 'd2m'
+                 else '--workspace file://' + workspace_path + ' docker://' + target_registry_url }}
           register: oc_mirror_exec
           retries: "{{ oc_mirror_retries }}"
           delay: "{{ oc_mirror_retry_delay }}"
           until: oc_mirror_exec.rc == 0
           changed_when: oc_mirror_exec.rc == 0
+
+        - name: Keep this registry's cluster resources (d2m, m2m)
+          ansible.builtin.copy:
+            src: "{{ (archive_path if oc_mirror_workflow == 'd2m' else workspace_path) }}/working-dir/cluster-resources/"
+            dest: "{{ cluster_resources_path }}/"
+            remote_src: true
+            mode: preserve
+          when:
+            - oc_mirror_workflow != 'm2d'
+            - not (oc_mirror_dry_run | bool)
 
       always:
         - name: Cleanup auth file (runs even on failure)
@@ -421,38 +485,43 @@ The playbook stops before doing anything if no catalog list is passed, or if a c
 
 Always dry-run a catalog ImageSet first. A wrong package list is the most common way to fill a disk.
 
-1. **Dry-run each group.** Use your registry values; `$REG` keeps the commands short:
+1. **Dry-run each group's download.** `$RH` and `$PARTNER` keep the commands short:
 
    ```
    cd ~/oc-mirror-ansible
-   REG="-e target_registry_fqdn=artifactory.internal.repo -e target_registry_path=ocp4"
+   RH="-e catalog_ocp_version=4.18 -e @vars/catalogs-redhat.yml"
+   PARTNER="-e catalog_ocp_version=4.18 -e @vars/catalogs-partner.yml -e oc_mirror_extra_args=--remove-signatures"
 
-   ansible-playbook catalogs-playbook.yml --ask-vault-pass $REG \
-     -e catalog_ocp_version=4.18 -e @vars/catalogs-redhat.yml \
-     -e oc_mirror_dry_run=true
-
-   ansible-playbook catalogs-playbook.yml --ask-vault-pass $REG \
-     -e catalog_ocp_version=4.18 -e @vars/catalogs-partner.yml \
-     -e oc_mirror_extra_args=--remove-signatures -e oc_mirror_dry_run=true
+   ansible-playbook catalogs-playbook.yml --ask-vault-pass $RH -e oc_mirror_workflow=m2d -e oc_mirror_dry_run=true
+   ansible-playbook catalogs-playbook.yml --ask-vault-pass $PARTNER -e oc_mirror_workflow=m2d -e oc_mirror_dry_run=true
    ```
 2. **Read the results.** For each group, count the images and check nothing is missing:
 
    ```
-   for g in redhat partner; do d=/data/oc-mirror/workspace-catalogs-v4.18-$g/working-dir/dry-run
+   for g in redhat partner; do d=/data/oc-mirror/archive-catalogs-v4.18-$g/working-dir/dry-run
      echo "== $g: $(wc -l < $d/mapping.txt) images"; cat $d/missing.txt 2>/dev/null; done
    ```
 
    Skim `mapping.txt`. You should recognise every operator in it. A count in the thousands usually means a catalog is missing its `packages` list, or `full: true` slipped in.
-3. **Agree the disk size** with your lead from the image counts. Catalog images are cached in `/data/oc-mirror/cache` alongside the release images, so check `df -h /data` first.
-4. **Run for real** in tmux (release guide, Step 7), Red Hat group first. Use the same commands as item 1 without `-e oc_mirror_dry_run=true`. Catalog runs often take hours; the same timeout tuning and retries as the release runs apply.
+3. **Agree the disk size** with your lead from the image counts. The images land twice: in the archive and cache on the bastion's `/data`, and on each registry host. Check both against [`PREREQUISITES.md`](../../docs/PREREQUISITES.md) and `df -h /data` first.
+4. **Run for real** in tmux (release guide, Step 7), Red Hat group first: the download, then the push into the lab registry with the **same** group variables. Catalog runs often take hours; the same timeout tuning and retries as the release runs apply.
+
+   ```
+   ansible-playbook catalogs-playbook.yml --ask-vault-pass $RH -e oc_mirror_workflow=m2d
+   ansible-playbook catalogs-playbook.yml --ask-vault-pass $RH -e oc_mirror_workflow=d2m -e @vars/registry-lab.yml
+   ansible-playbook catalogs-playbook.yml --ask-vault-pass $PARTNER -e oc_mirror_workflow=m2d
+   ansible-playbook catalogs-playbook.yml --ask-vault-pass $PARTNER -e oc_mirror_workflow=d2m -e @vars/registry-lab.yml
+   ```
+
+   Once the lab cluster is fine, push the same archives into your datacenter's production registry (`-e @vars/registry-dc1.yml` or `registry-dc2`).
 5. **Check the result:**
 
    ```
-   REG_HOST=artifactory.internal.repo; REG_PATH=ocp4
+   REG_HOST=registry-lab.example.com:8443; REG_PATH=ocp4v2
    podman login $REG_HOST
    skopeo list-tags docker://$REG_HOST/$REG_PATH/redhat/redhat-operator-index | jq -r '.Tags[]'
    podman logout $REG_HOST
-   ls /data/oc-mirror/workspace-catalogs-v4.18-redhat/working-dir/cluster-resources/
+   ls /data/oc-mirror/cluster-resources/archive-catalogs-v4.18-redhat-registry-lab-ocp4v2/
    ```
 
    Expect the tag `v4.18`, and in `cluster-resources` an `idms-oc-mirror.yaml`, possibly an `itms-oc-mirror.yaml`, and one `cs-<catalog>-*.yaml` CatalogSource per catalog (plus `cc-*.yaml` ClusterCatalogs for OLM v1).
@@ -468,7 +537,7 @@ oc-mirror always names its mirror sets by category only: `idms-release-0`, `idms
 Before handover, add the run's name to every IDMS/ITMS in its folder. The cluster combines the mappings from all of them:
 
 ```
-cd /data/oc-mirror/workspace-catalogs-v4.18-redhat/working-dir/cluster-resources
+cd /data/oc-mirror/cluster-resources/archive-catalogs-v4.18-redhat-registry-lab-ocp4v2
 RUN=catalogs-v4-18-redhat
 sed -i -E "s/^(\s*name: )(i[dt]ms-[a-z]+-[0-9]+)\s*$/\1\2-$RUN/" i[dt]ms-oc-mirror.yaml
 grep -h 'name: i' i[dt]ms-oc-mirror.yaml
@@ -487,8 +556,8 @@ oc patch operatorhub cluster -p '{"spec": {"disableAllDefaultSources": true}}' -
 ### 3. Apply each folder
 
 ```
-oc apply -f /path/to/workspace-catalogs-v4.18-redhat/working-dir/cluster-resources/
-oc apply -f /path/to/workspace-catalogs-v4.18-partner/working-dir/cluster-resources/
+oc apply -f /path/to/archive-catalogs-v4.18-redhat-registry-lab-ocp4v2/
+oc apply -f /path/to/archive-catalogs-v4.18-partner-registry-lab-ocp4v2/
 ```
 
 This creates the renamed IDMS/ITMS and one CatalogSource per catalog. CatalogSource names include the catalog and its tag (for example `cs-redhat-operator-index-v4-18`), so versions don't collide.
@@ -521,7 +590,7 @@ metadata:
   namespace: openshift-marketplace
 spec:
   displayName: Red Hat Operators (mirror)
-  image: artifactory.internal.repo/ocp4/redhat/redhat-operator-index:v4.18
+  image: registry-lab.example.com:8443/ocp4v2/redhat/redhat-operator-index:v4.18
   publisher: Red Hat
   sourceType: grpc
 EOF
@@ -562,16 +631,16 @@ cp vars/catalogs-redhat.yml vars/catalogs-redhat-v4.20.yml
 cp vars/catalogs-redhat.yml vars/catalogs-redhat-v4.22.yml
 ```
 
-Then run one version at a time. The tag, workspace and CatalogSource name all follow `catalog_ocp_version`:
+Then run one version at a time. The tag, archive and CatalogSource name all follow `catalog_ocp_version`:
 
 ```
 for v in 4.20 4.22; do
-  ansible-playbook catalogs-playbook.yml --ask-vault-pass $REG \
-    -e catalog_ocp_version=$v -e @vars/catalogs-redhat-v$v.yml -e oc_mirror_dry_run=true
+  ansible-playbook catalogs-playbook.yml --ask-vault-pass \
+    -e catalog_ocp_version=$v -e @vars/catalogs-redhat-v$v.yml -e oc_mirror_workflow=m2d -e oc_mirror_dry_run=true
 done
 ```
 
-Dry-run first as in Step 5, then run for real. Remove `-e oc_mirror_dry_run=true` and run one version per tmux session, because each takes hours.
+Dry-run first as in Step 5, then run for real: remove `-e oc_mirror_dry_run=true`, then push each version with `-e oc_mirror_workflow=d2m -e @vars/registry-lab.yml`. Run one version per tmux session, because each takes hours. The shared cache means a later version downloads only the bundles and images that changed.
 
 ### On the cluster, per jump
 

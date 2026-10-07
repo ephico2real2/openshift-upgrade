@@ -4,8 +4,14 @@ How disconnected OpenShift clusters can stay current: why an offline image sync 
 release cadence, the designs that replace it, the decisions still open, and the admission policies that limit which
 operator catalogs a cluster may use. Everything is in [`docs/`](docs/README.md).
 
+The plan, in three steps: (1) refine the current manual sync, done with the Ansible playbooks in [`oc-mirror-ansible/`](oc-mirror-ansible/README.md); (2) refine the enterprise proxy strategy, next; (3) build a full Red Hat Quay registry on-prem. Details in [`docs/DESIGN-DECISIONS.md`](docs/DESIGN-DECISIONS.md#steps).
+
 | Start here | What it is |
 |---|---|
+| [`docs/PREREQUISITES.md`](docs/PREREQUISITES.md) | Build first: a mirroring bastion per datacenter and the lab and two production mirror registries (RHEL 9), replacing the three old mirror registries 1.x |
+| [`docs/SOLUTIONS.md`](docs/SOLUTIONS.md) | The three steps side by side, the recommendation and the decisions needed (Word copy: `docs/SOLUTIONS.docx`) |
+| [`docs/enterprise-proxy/`](docs/enterprise-proxy/README.md) | Step 2: runbook to retrofit a disconnected cluster to reach Red Hat through the enterprise proxy |
+| [`docs/quay-onprem/`](docs/quay-onprem/README.md) | Step 3: Red Hat Quay on-prem, filled on a schedule, with the OpenShift Update Service |
 | [`docs/PROBLEM-STATEMENT.md`](docs/PROBLEM-STATEMENT.md) | The problem, measured, and the two designs that replace the sync |
 | [`docs/DESIGN-DECISIONS.md`](docs/DESIGN-DECISIONS.md) | The options, the open decisions with their recommendations |
 | [`docs/openshift-update-egress.html`](docs/openshift-update-egress.html) | The full plan, opened directly in a browser |
