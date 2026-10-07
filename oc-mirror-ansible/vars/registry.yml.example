@@ -10,9 +10,9 @@ target_registry_user: "ocp4+mirror"
 target_registry_password: "<robot token>"
 
 # --- An existing registry, on a new path (uncomment instead of the block above) ---
-# target_registry_fqdn: "mirror-old.example.com:8443"   # the old 1.x mirror registry, or another existing registry
+# target_registry_fqdn: "mirror-old-dc1.example.com:8443"   # one of the three old 1.x mirror registries (mirror-old-lab, -dc1, -dc2)
 # target_registry_path: "ocp4v2"                        # a new organization that oc-mirror v1 never wrote to
 # target_registry_user: "ocp4v2+mirror"
 # target_registry_password: "<robot token>"
 # protected_targets:                                    # the old v1 content: never push here
-#   - "mirror-old.example.com:8443/ocp4"
+#   - "mirror-old-dc1.example.com:8443/ocp4"            # whatever path oc-mirror v1 used on that registry

@@ -9,7 +9,7 @@
 
 Before any mirroring run, we need new hosts. **One mirroring bastion in each datacenter**, where every
 Ansible and oc-mirror command runs, and **three registries**: one for the lab and one production
-registry in each datacenter. They replace the single old registry we mirror into today. This page
+registry in each datacenter. They replace the three old registries we mirror into today, one for one. This page
 says what we run now, what replaces it, and what each host needs before the guides can be followed.
 
 ## Summary
@@ -17,7 +17,7 @@ says what we run now, what replaces it, and what each host needs before the guid
 | Decision | Recommendation | Why |
 |---|---|---|
 | Registry software for Step 1 | **mirror registry for Red Hat OpenShift 2.0.x**, a fresh install on each of the three registry hosts | The current Red Hat release; it bundles Quay 3.12 and replaces PostgreSQL with SQLite |
-| Old registry | Keep it running until every cluster has moved; then retire it. Do not upgrade it in place. Meanwhile it can also take oc-mirror v2 pushes **on a new path** | We are moving to new hosts and new names anyway, and only 1.3 → 2.x is a documented upgrade (see below). A new path lets clusters use v2 content before their new registry exists |
+| Old registries (three) | Keep each running until every cluster on it has moved to its new counterpart; then retire it. Do not upgrade them in place. Meanwhile each can also take oc-mirror v2 pushes **on a new path** | We are moving to new hosts and new names anyway, and only 1.3 → 2.x is a documented upgrade (see below). A new path lets clusters use v2 content before their new registry exists |
 | Existing registries | Every push can target an existing registry too, on a new path that oc-mirror v1 never wrote to; the v1 path is protected | See "Existing registries, on a new path" |
 | Content in the new registries | **Mirror again from Red Hat with oc-mirror v2**: each bastion downloads to disk once (mirror-to-disk, with a persistent cache), then pushes that archive into lab and production (disk-to-mirror) | Red Hat documents no way to copy mirror registry data between hosts; the cache means later runs fetch only what changed; one archive gives lab and production the same content |
 | Operating system | **RHEL 9** for the bastions and the registry hosts | The mirror registry supports "RHEL 8 and 9"; `oc` and `oc-mirror` 4.22 are built for RHEL 8 and RHEL 9 only. RHEL 10 is not documented for either |
@@ -27,12 +27,13 @@ says what we run now, what replaces it, and what each host needs before the guid
 
 | Item | Today | Source |
 |---|---|---|
-| Registry | Red Hat's **mirror registry for Red Hat OpenShift**, the trimmed-down Quay installed with `mirror-registry install`, an old 1.x release (team report) | |
+| Registries | **Three** Red Hat **mirror registries for Red Hat OpenShift**, the trimmed-down Quay installed with `mirror-registry install`, each **more than three years old** (team report, 2026-10-07) | |
+| Their release | Older than October 2023, so mirror registry **1.0 to 1.3.x**, bundling **Quay 3.6 to 3.8**: 1.0 shipped in January 2022, 1.3.0 on 20 February 2023, 1.3.10 on 7 December 2023 | Mirror registry release notes (`enterprise-4.13` `modules/mirror-registry-release-notes.adoc`); `quay/mirror-registry` tags |
 | How it is filled | **oc-mirror v1** (team report), run by hand: the manual sync described in [`PROBLEM-STATEMENT.md`](PROBLEM-STATEMENT.md). Step 1 replaces it with oc-mirror v2 and Ansible | |
 | On the clusters | v1 output: `ImageContentSourcePolicy` (ICSP) objects, CatalogSources and release-signature ConfigMaps | Red Hat 4.18, "Mirroring images for a disconnected installation using the oc-mirror plugin" |
-| Hosts | One registry host; the exact 1.x version, OS and disk are to be recorded with the commands below | |
+| Hosts | Three registry hosts, assumed one per role: lab, DC1 production, DC2 production (to confirm). The exact version, OS and disk of each are to be recorded with the commands below. Mirror registry 1.x before 1.3 was documented for RHEL 8 only; 1.3.0 added RHEL 9 | 1.3.0 release notes: "now supported on RHEL 9 installations" |
 
-Record the old registry's facts before anything changes. On the registry host:
+Record each old registry's facts before anything changes. On each of the three registry hosts:
 
 ```bash
 podman ps --format '{{.Names}}  {{.Image}}'        # quay-app, quay-redis, quay-postgres (1.x) and their image tags
@@ -42,7 +43,7 @@ df -h; podman volume ls                              # quay-storage, pg-storage 
 systemctl list-units 'quay-*'
 ```
 
-The Quay image tag gives the release: Quay 3.6 is mirror registry 1.0–1.1, 3.7 is 1.2, 3.8 is 1.3, and
+The Quay image tag gives the release (expect 3.6, 3.7 or 3.8 on registries this old): Quay 3.6 is mirror registry 1.0–1.1, 3.7 is 1.2, 3.8 is 1.3, and
 3.12 is 2.0 (from the `.env` image pins of each `quay/mirror-registry` tag).
 
 ### What the old oc-mirror v1 process means for us
@@ -53,7 +54,7 @@ source `disconnected/installing-mirroring-disconnected.adoc`, `enterprise-4.18`)
 oc-mirror **v1**: "The oc-mirror v1 plugin is deprecated … migrate to the supported v2 plugin and
 use the `--v2` flag."
 
-| v1, as the old registry was filled | v2, as the new registries are filled | What it means for us |
+| v1, as the old registries were filled | v2, as the new registries are filled | What it means for us |
 |---|---|---|
 | `ImageSetConfiguration` `mirror.openshift.io/v1alpha2` with a required `storageConfig` for metadata: "You must use the same storage backend every time" | `v2alpha1`, no `storageConfig`; state lives in the cache and each archive's `working-dir` | The old metadata is not reused. The new registries start clean |
 | Mirror-to-disk writes `mirror_seq1_000000.tar`; disk-to-mirror takes `--from=<tar>` | `oc mirror -c <isc> file://<dir> --v2`, then `oc mirror -c <isc> --from file://<dir> docker://<registry> --v2` | Same idea, new commands; the playbooks run them (`m2d`, `d2m`) |
@@ -81,13 +82,16 @@ Sources: `docs422 modules/mirror-registry-release-notes-2-0.adoc`, enterprise-4.
   to SQLite, with "intermittent downtime" and a PostgreSQL backup kept under
   `$HOME/quay-install/quay-postgres-backup/` (`modules/mirror-registry-localhost-update.adoc`).
   Red Hat's CI tests that path from 1.3.10. **No path from 1.0–1.2 straight to 2.x is documented.**
-- **Our decision: a new setup.** It is the simpler path for us whichever 1.x we run:
-  - the new registries are on new RHEL 9 hosts with new names, three of them instead of one;
+- **Our three are older than October 2023**, so each is 1.0, 1.1, 1.2 or an early 1.3. Only an
+  early 1.3 has a documented path, and even that goes through PostgreSQL-to-SQLite migration on a
+  host that may still run RHEL 8.
+- **Our decision: a new setup.** It is the simpler path whichever 1.x each one runs:
+  - the new registries are on new RHEL 9 hosts with new names, one for each old one;
   - their content is mirrored fresh by oc-mirror v2, which also writes the IDMS, ITMS, signature
     ConfigMap and Update Service files the clusters need;
-  - the old registry keeps serving the clusters, untouched, until each one has switched.
-- If someone proposes upgrading the old host instead: only from 1.3, with a backup first, and it
-  still leaves one registry on the old host.
+  - the old registries keep serving the clusters, untouched, until each cluster has switched.
+- If someone proposes upgrading an old host instead: only from 1.3, with a backup first, and it
+  leaves that registry on its old host and OS.
 
 ### Limits of the mirror registry, from Red Hat
 
@@ -118,11 +122,11 @@ content is tried first.
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/prerequisites/topology.dark.png">
   <source srcset="diagrams/prerequisites/topology.light.png">
-  <img alt="Target layout. In datacenter 1 a mirroring bastion reaches Red Hat only through the enterprise proxy and pushes over TCP 8443 to two mirror registries: the lab registry and the datacenter 1 production registry. In datacenter 2 its own bastion does the same for the datacenter 2 production registry. Lab clusters pull from the lab registry and each datacenter's production clusters pull from their own registry. The old 1.x registry keeps serving until every cluster has switched, then it is retired; meanwhile the datacenter 1 bastion may also push the same content into it on a new path, never into the oc-mirror v1 path. All hosts run RHEL 9." src="diagrams/prerequisites/topology.light.png">
+  <img alt="Target layout. In datacenter 1 a mirroring bastion reaches Red Hat only through the enterprise proxy and pushes over TCP 8443 to two mirror registries: the lab registry and the datacenter 1 production registry. In datacenter 2 its own bastion does the same for the datacenter 2 production registry. Lab clusters pull from the lab registry and each datacenter's production clusters pull from their own registry. Three old 1.x mirror registries, one per role, keep serving until their clusters have switched, then they are retired; meanwhile each datacenter's bastion may also push the same content into them on a new path, never into the oc-mirror v1 path. All new hosts run RHEL 9." src="diagrams/prerequisites/topology.light.png">
 </picture>
 
 *Proposed: none of these hosts exists yet. Each bastion pushes only to registries in its own
-datacenter. The old registry stays until the last cluster has switched.*
+datacenter. Each old registry stays until the last cluster on it has switched.*
 
 ```text
              DATACENTER 1                                    DATACENTER 2
@@ -133,8 +137,8 @@ BASTION      mirror-bastion-dc1 (RHEL 9)                     mirror-bastion-dc2 
 REGISTRIES   registry-lab   registry-dc1                     registry-dc2
              (mirror registry 2.0.x on RHEL 9, one host each)
 CLUSTERS     lab clusters   production clusters, DC1         production clusters, DC2
-OLD          the 1.x registry, serving until every cluster has switched, then retired;
-             optional: the DC1 bastion pushes the same archive into it on a new path (ocp4v2)
+OLD          mirror-old-lab, mirror-old-dc1 (DC1) and mirror-old-dc2 (DC2), 1.x, serving until their clusters
+             have switched, then retired; optional: each datacenter's bastion pushes into them on a new path (ocp4v2)
 ```
 
 | Host (example name) | Datacenter | Role | Fills / serves |
@@ -144,6 +148,7 @@ OLD          the 1.x registry, serving until every cluster has switched, then re
 | `registry-lab.example.com:8443` | DC1 (to confirm) | Lab registry; new content lands here first | Lab clusters |
 | `registry-dc1.example.com:8443` | DC1 | Production registry | Production clusters in DC1 |
 | `registry-dc2.example.com:8443` | DC2 | Production registry | Production clusters in DC2 |
+| `mirror-old-lab`, `mirror-old-dc1` (DC1), `mirror-old-dc2` (DC2) | as today | The three old 1.x registries | Today's clusters, until each has switched; then retired |
 
 **Which datacenter holds the lab** is to confirm; the table assumes DC1. If the lab is elsewhere,
 the bastion of that datacenter fills it.
@@ -196,7 +201,7 @@ downloads have not.
 ### Existing registries, on a new path
 
 A push (`d2m`) is not limited to the three new registries. The same archive can go into an
-**existing registry**, such as the old 1.x mirror registry or another registry we already run,
+**existing registry**, such as one of the three old 1.x mirror registries or another registry we already run,
 under a **new path**: a new Quay organization such as `ocp4v2`, next to the content oc-mirror v1
 put there. The playbooks treat it as one more registry: its own Vault file, its own robot account,
 its own `cluster-resources` folder (`<archive>-<registry>-<path>`).
@@ -212,18 +217,18 @@ Why do it:
 |---|---|
 | Push only to a path oc-mirror v1 never wrote to, e.g. `ocp4v2`. Put the v1 path in the vars file's `protected_targets`; the playbooks then refuse to push there | v1 "Prunes images from the target mirror registry that were excluded from the image set configuration since the previous execution". One tool per path keeps either from deleting the other's images |
 | Stop the old v1 process, or keep it strictly on its own path | Red Hat: once oc-mirror fills a registry, "any further updates to the target mirror registry must be made by using the oc-mirror plugin" |
-| The registry supports Docker v2-2 manifests; for Quay, 3.6 or later | Red Hat's prerequisite. Every mirror registry 1.x qualifies: 1.0 already ships Quay 3.6.1 |
+| The registry supports Docker v2-2 manifests; for Quay, 3.6 or later | Red Hat's prerequisite. All three old registries qualify: mirror registry 1.0 already ships Quay 3.6.1. Test on the oldest one first |
 | Nested paths work on it | oc-mirror creates `<path>/openshift/release-images` and deeper. Run the push test (release guide, Step 5) on the new path; if it is refused, add `--max-nested-paths 2` to `oc_mirror_tuning` |
 | Enough free disk on that host | The content lands a second time, beside v1's. Check `df -h` on the registry host against the dry-run counts |
 | A write robot on the new organization for the bastion, a read robot for the clusters | Release guide, Step 5 |
-| Its own Vault file, e.g. `vars/registry-old.yml` | Template: `oc-mirror-ansible/vars/registry.yml.example` |
+| Its own Vault file per old registry: `vars/registry-old-lab.yml`, `-old-dc1`, `-old-dc2` | Template: `oc-mirror-ansible/vars/registry.yml.example`; each lists its own v1 path in `protected_targets` |
 
 ```bash
 ansible-playbook playbook.yml --ask-vault-pass -e oc_mirror_workflow=d2m -e archive_name=archive-run-a \
-  -e @vars/registry-old.yml          # target_registry_path: ocp4v2, protected_targets: [<old host>/ocp4]
+  -e @vars/registry-old-dc1.yml      # target_registry_path: ocp4v2, protected_targets: [<old host>/<v1 path>]
 ```
 
-**It is a bridge, not the end state.** The old registry is still a single, non-HA 1.x host. A
+**It is a bridge, not the end state.** Each old registry is still a single, non-HA 1.x host on Quay 3.6–3.8, a stream Red Hat no longer ships in the mirror registry. A
 cluster that moves to it first and to its new registry later goes through two cutovers, and each
 deletes mirror objects, which drains the nodes. Use it when a new registry is late, or to take a
 cluster off v1 content sooner; otherwise move clusters straight to their new registry.
@@ -347,7 +352,9 @@ organization's read robot in the pull secret (step 1), the new IDMS/ITMS, Catalo
 Service (steps 3 to 5), an update (6), and the removal of the old ICSPs (7). The table below is the
 full cutover to a new registry host.
 
-Each cluster moves from the old registry to its datacenter's new one in a change window, after the
+Each old registry has a new counterpart (assumed: `mirror-old-lab` → `registry-lab`, `mirror-old-dc1` →
+`registry-dc1`, `mirror-old-dc2` → `registry-dc2`; to confirm). Do the lab pair first. Each cluster
+moves from its old registry to its new one in a change window, after the
 new registry holds the content for the cluster's current version and its next target.
 
 | Order | Change | Node effect |
@@ -359,18 +366,18 @@ new registry holds the content for the cluster's current version and its next ta
 | 4 | Create the new CatalogSources; move Subscriptions to them | None |
 | 5 | Point the Update Service at the new registry's release and graph images | None |
 | 6 | Run an update with both registries configured | Normal update |
-| 7 | Delete the old registry's ICSP/IDMS/ITMS and CatalogSources | **Drain, plan for a reboot**: "If you delete an ITMS, IDMS, or ICSP CR object, the MCO drains and reboots the node" |
+| 7 | Delete its old registry's ICSP/IDMS/ITMS and CatalogSources | **Drain, plan for a reboot**: "If you delete an ITMS, IDMS, or ICSP CR object, the MCO drains and reboots the node" |
 | 8 | Remove the old login and CA | None |
 
 Sources: `docs422 modules/images-configuration-registry-mirror.adoc`,
 `snippets/node-icsp-no-drain.adoc` ("The node drain does not happen for … the addition of a mirror with the
-`pull-from-mirror = "digest-only"` parameter"). Steps 3b and 7 each drain the nodes; plan a window for each. The old registry was filled with oc-mirror v1, so its cluster objects are ICSPs, which oc-mirror v2
+`pull-from-mirror = "digest-only"` parameter"). Steps 3b and 7 each drain the nodes; plan a window for each. The old registries were filled with oc-mirror v1, so their cluster objects are ICSPs, which oc-mirror v2
 replaces with IDMS/ITMS (`modules/oc-mirror-migration-differences.adoc`). List them before the
 cutover with `oc get imagecontentsourcepolicy`; step 7 deletes those.
 
 ## Checklist
 
-- [ ] Old registry recorded: mirror registry version (Quay tag), OS, disk, which clusters use it, and each cluster's ICSPs (`oc get imagecontentsourcepolicy`; filled by oc-mirror v1)
+- [ ] All three old registries recorded: mirror registry version (Quay tag), OS, disk, v1 path, which clusters use each, and each cluster's ICSPs (`oc get imagecontentsourcepolicy`; filled by oc-mirror v1)
 - [ ] Lab datacenter confirmed; five hostnames agreed and in DNS
 - [ ] Five RHEL 9 hosts built and registered; 2 TB backed-up `/data` on each bastion for the cache and archives
 - [ ] Internal-CA certificates issued for the three registry FQDNs
@@ -390,8 +397,8 @@ cutover with `oc get imagecontentsourcepolicy`; step 7 deletes those.
   for several clusters; if that is our case, Step 3 (full Quay) is the long-term answer.
 - Whether the bastions may reach Red Hat through the enterprise proxy (security approval, as for the
   current mirror host).
-- The old registry's exact version; if it is 1.3, an in-place upgrade remains possible but is not
-  our plan.
+- Each old registry's exact version and OS, and which new registry replaces it (assumed lab → lab,
+  DC1 → DC1, DC2 → DC2). An early 1.3 could be upgraded in place, but that is not our plan.
 - Red Hat Support: support end of the Quay 3.12 stream that mirror registry 2.0 ships; RHEL 10 plans
   for the mirror registry and `oc-mirror`.
 

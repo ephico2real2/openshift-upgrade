@@ -209,7 +209,7 @@ hand.
 | Tooling migration | Done: oc-mirror v2 and `v2alpha1`, in `oc-mirror-ansible/` | No mirroring tool to maintain | Start on oc-mirror v2 |
 | Release signatures | Have to be mirrored, with an acknowledgment before 4.21 | Checked against Red Hat directly once the mirror sets are gone | oc-mirror v2 mirrors signatures by default |
 | Two-headed DNS | Not applicable | Not needed. Nodes resolve only the proxy | Not needed. oc-mirror v2 uses the proxy |
-| What we run | Today one old mirror registry 1.x; refined: two mirroring bastions and three new mirror registries 2.0.x on RHEL 9 ([`PREREQUISITES.md`](PREREQUISITES.md)), Ansible run by hand | A highly available proxy | Highly available Quay per datacenter, the two bastions, OSUS, and the proxy for the bastions |
+| What we run | Today three old mirror registries 1.x (over three years old); refined: two mirroring bastions and three new mirror registries 2.0.x on RHEL 9 ([`PREREQUISITES.md`](PREREQUISITES.md)), Ansible run by hand | A highly available proxy | Highly available Quay per datacenter, the two bastions, OSUS, and the proxy for the bastions |
 | What it costs to get there | Five new RHEL 9 hosts and a cutover of every cluster to its new registry | Security approval for node egress; one reboot of every node | A Consulting engagement, a Quay specialist, and a new registry to size and operate |
 
 The team's assessment is that our backlog of fixes and our limits on upgrading come from this
@@ -223,8 +223,8 @@ them in is our choice.
 
 ## Still to settle
 
-- The registry we mirror into is an old mirror registry for Red Hat OpenShift 1.x (team report,
-  2026-10-07). It is replaced, not upgraded: two mirroring bastions and three new 2.0.x registries
+- We mirror into three old mirror registries for Red Hat OpenShift 1.x, each more than three years
+  old (team report, 2026-10-07). They are replaced, not upgraded: two mirroring bastions and three new 2.0.x registries
   on RHEL 9 ([`PREREQUISITES.md`](PREREQUISITES.md)). Which datacenter holds the lab, and how many
   clusters each production registry serves, are still to confirm.
 - Security has not yet said whether cluster nodes may reach Red Hat through the proxy. The

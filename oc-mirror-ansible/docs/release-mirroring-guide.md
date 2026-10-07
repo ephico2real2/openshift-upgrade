@@ -398,7 +398,7 @@ The push must end with `Writing manifest to image destination`. Delete `ocp4/ope
 the registry's web UI afterwards.
 
 **An existing registry, on a new path.** The same archive can also be pushed into a registry we
-already run, such as the old 1.x mirror registry, under a new organization that oc-mirror v1 never
+already run, such as one of the three old 1.x mirror registries, under a new organization that oc-mirror v1 never
 wrote to (e.g. `ocp4v2`). Ask its owner for that organization and its two robot accounts, run the
 push test above with `REG_PATH=ocp4v2`, and list the v1 path in the registry's Vault file under
 `protected_targets` so no run can push there. Template: `vars/registry.yml.example`; rules and the

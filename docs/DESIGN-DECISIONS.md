@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Researched | 2026-09-25, against OpenShift 4.22 docs and `release-4.22` product source |
-| Hosts | Two mirroring bastions and three registries (lab, DC1, DC2) on RHEL 9, replacing the old mirror registry 1.x: [`PREREQUISITES.md`](PREREQUISITES.md); all three steps side by side: [`SOLUTIONS.md`](SOLUTIONS.md) |
+| Hosts | Two mirroring bastions and three registries (lab, DC1, DC2) on RHEL 9, replacing the three old mirror registries 1.x: [`PREREQUISITES.md`](PREREQUISITES.md); all three steps side by side: [`SOLUTIONS.md`](SOLUTIONS.md) |
 | Evidence | [`openshift-update-egress.html`](openshift-update-egress.html) (section names are cited below as *§ name*); the problem is stated in [`PROBLEM-STATEMENT.md`](PROBLEM-STATEMENT.md) |
 | Status | **No decision is ratified yet.** The team stated its position on D1 on 2026-10-05; it still depends on security approval. Every other entry in [Decisions](#decisions) is a recommendation waiting on the input named beside it. |
 
@@ -181,7 +181,7 @@ For our team:
 
 1. Platform and number of clusters, and which 4.18 release each one is on (version answered on 2026-10-05: 4.18, EUS channel)
 2. Whether we have OpenShift Platform Plus (it includes Quay and ACM)
-3. ~~Which registry product we mirror into today~~ Answered 2026-10-07: an old mirror registry for Red Hat OpenShift 1.x; it is replaced by three new 2.0.x registries ([`PREREQUISITES.md`](PREREQUISITES.md))
+3. ~~Which registry product we mirror into today~~ Answered 2026-10-07: three old mirror registries for Red Hat OpenShift 1.x, each over three years old; they are replaced one for one by three new 2.0.x registries ([`PREREQUISITES.md`](PREREQUISITES.md))
 4. Whether OpenShift GitOps or ACM is already running
 5. What "set up the OpenShift console" in Option 2 refers to
 
