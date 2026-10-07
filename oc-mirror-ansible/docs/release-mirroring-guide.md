@@ -16,6 +16,26 @@ The playbook runs these steps on the mirror host, keeping all its files under /d
 
 Steps 1–9 run on the mirror host. Step 10 is done on the disconnected cluster by a cluster admin.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="diagrams/mirroring/run-flow.dark.png">
+  <source srcset="diagrams/mirroring/run-flow.light.png">
+  <img alt="One Step 1 release run. On the mirror host: start the playbook in tmux with the Vault password; it checks the Red Hat pull secret, writes a private auth file and renders the ImageSet. A dry-run lists what would be copied; anything in missing.txt is fixed first. The real run retries each image five times, then the whole run up to three more times two minutes apart, and the cache keeps what was copied. The auth file is removed even when the run fails. Then verify the tags, the .sig tags and the cluster-resources folder. In the cluster's change window an admin trusts the registry CA, applies the renamed IDMS and ITMS, the signatures and CatalogSources, sets up the Update Service, and oc adm upgrade lists the target." src="diagrams/mirroring/run-flow.light.png">
+</picture>
+
+*One release run, end to end. The circled numbers are the order of a run, not this guide's step
+numbers: ① to ⑥ happen in Steps 8 and 9, ⑦ to ⑩ in Step 10. Red boxes are what stops a run and what
+fixes it.*
+
+```text
+MIRROR HOST                                             CLUSTER, change window
+1 ansible-playbook in tmux, Vault password              7 registry login + CA trust
+2 check pull secret (quay.io, registry.redhat.io)       8 apply cluster-resources (IDMS/ITMS renamed per run,
+3 dry-run: mapping.txt; fix anything in missing.txt       signature ConfigMap, CatalogSources)
+4 real run: 5 retries per image, up to 3 more runs      9 Update Service, spec.upstream, restart on new graph
+5 auth file removed, even on failure                    10 oc adm upgrade lists the target
+6 verify tags, .sig tags, cluster-resources/  --hand over-->
+```
+
 The proxy is set on the host, not in the playbook. `oc` and `oc-mirror` inherit `HTTPS_PROXY` and `NO_PROXY` from the shell that starts `ansible-playbook`. This guide adapts Fabio Reis's article *Automating OpenShift oc-mirror v2 with Ansible* (Medium, Aug 18). The article passes the proxy as a playbook variable instead.
 
 ## Before you start
@@ -39,7 +59,17 @@ All commands below run on the mirror host as your own user unless they start wit
 
 Internet traffic goes through the proxy. Local and internal traffic must bypass it, so `NO_PROXY` matters as much as `HTTPS_PROXY`.
 
-![Network routes from the mirror host: proxy vs direct](images/network-routes.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="diagrams/mirroring/network-routes.dark.png">
+  <source srcset="diagrams/mirroring/network-routes.light.png">
+  <img alt="Routes from the mirror host during a run. Everything not in NO_PROXY goes through the corporate proxy to Red Hat: quay.io, registry.redhat.io, api.openshift.com for the update graph and registry.access.redhat.com. Local and internal traffic must go direct: oc-mirror's temporary local registry on localhost:55000 and the internal registry. If localhost is sent to the proxy, the run fails on localhost:55000." src="diagrams/mirroring/network-routes.light.png">
+</picture>
+
+```text
+mirror host --(everything not in NO_PROXY)--> corporate proxy --> quay.io, registry.redhat.io,
+                                                                  api.openshift.com, registry.access.redhat.com
+mirror host --(direct, in NO_PROXY)--> localhost:55000 (oc-mirror's own registry), artifactory.internal.repo
+```
 
 If either direct route goes through the proxy instead, the run fails.
 
@@ -844,7 +874,17 @@ Both runs use `shortest_path=true`, so the 4.19/4.21 hops and any extra 4.18.z/4
 | A | `eus-4.20` | `4.18.17` | `4.20.<z>` | 4.18.17 → 4.19 hop(s) → 4.20 target |
 | B | `eus-4.22` | `4.20.<z>` | `4.22.<z>` | 4.20 target → 4.21 hop(s) → 4.22 target |
 
-![Upgrade path mirroring: two runs, two EUS channels](images/upgrade-path-runs.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="diagrams/mirroring/upgrade-path-runs.dark.png">
+  <source srcset="diagrams/mirroring/upgrade-path-runs.light.png">
+  <img alt="Two runs cover the path from 4.18.17 to 4.22. Run A uses eus-4.20 with shortestPath, from 4.18.17 through the 4.19 hops to the 4.20 target. Run B uses eus-4.22 from that same 4.20 target through the 4.21 hops to the 4.22 target. If eus-4.22 is not open, Run B splits into B1 on stable-4.21 and B2 on stable-4.22. Each run names one channel and has its own workspace; they share the cache." src="diagrams/mirroring/upgrade-path-runs.light.png">
+</picture>
+
+```text
+Run A (eus-4.20):  4.18.17 -> 4.19 hop(s) -> 4.20.<z>
+Run B (eus-4.22):                            4.20.<z> -> 4.21 hop(s) -> 4.22.<z>
+eus-4.22 not open: B1 stable-4.21 (4.20.<z> -> 4.21.<y>), B2 stable-4.22 (4.21.<y> -> 4.22.<z>)
+```
 
 The 4.20 target ends Run A and starts Run B, so the two mirrors join without a gap.
 
@@ -1053,3 +1093,15 @@ Red Hat pages found by search but blocked from the environment this guide was wr
 - [oc-mirror v2 fails when two EUS channels are in the ImageSetConfig](https://access.redhat.com/node/7099908)
 - [OCP 4.18 release notes](https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html-single/release_notes)
 - [oc mirror does not mirror intermediate versions on EUS channels with shortestPath](https://access.redhat.com/node/7061405): in current oc-mirror v2 this happens when the graph has no path between min and max (the code then mirrors only the two ends), which the dry-run check in the upgrade-path section catches
+
+## Diagram sources
+
+The figures are drawn in [`diagrams/mirroring/source.html`](diagrams/mirroring/source.html) and rendered
+to the PNGs beside it with [diagram-kit](https://github.com/ephico2real2/diagram-kit):
+
+```sh
+diagram-render oc-mirror-ansible/docs/diagrams/mirroring/source.html \
+  oc-mirror-ansible/docs/diagrams/mirroring run-flow,network-routes,upgrade-path-runs
+```
+
+A figure, the text beside it and the page change together.

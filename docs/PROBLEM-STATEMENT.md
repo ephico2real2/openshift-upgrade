@@ -149,46 +149,35 @@ Quotes are from `openshift/openshift-docs`, branch `enterprise-4.22`, commit `b9
 
 ## Where we go instead
 
-Our preferred position is a direct enterprise proxy with only Red Hat's documented hosts allowed.
-The alternative is a full Red Hat Quay registry on-prem, built with Red Hat Consulting and a Quay
-specialist. Neither is built or approved yet.
+The plan now has three steps (refined 2026-10-07). Step 1 modernises today's process with Ansible
+and oc-mirror v2 and is built; it still means we mirror everything ourselves. Step 2, the team's
+preferred position, is a direct enterprise proxy with only Red Hat's documented hosts allowed. Step 3,
+the alternative, is a full Red Hat Quay registry on-prem, filled on a schedule. Steps 2 and 3 are
+neither built nor approved. They are presented side by side in [`SOLUTIONS.md`](SOLUTIONS.md).
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="diagrams/disconnected-update-problem/game-plan.dark.png">
-  <source srcset="diagrams/disconnected-update-problem/game-plan.light.png">
-  <img alt="Two proposed designs. In the preferred design the cluster pulls images, the update graph and signatures from Red Hat through an enterprise proxy with an allowlist, with no mirror and no two-headed DNS. In the alternative the cluster has no egress and pulls from an on-prem Red Hat Quay that a scheduled oc-mirror v2 job fills. Both open the same Red Hat hosts and both need a plan for operator catalogs." src="diagrams/disconnected-update-problem/game-plan.light.png">
+  <source media="(prefers-color-scheme: dark)" srcset="diagrams/three-steps/three-steps.dark.png">
+  <source srcset="diagrams/three-steps/three-steps.light.png">
+  <img alt="Three steps keep the clusters current. Step 1, built: a person runs the Ansible oc-mirror v2 playbooks on a mirror host before each update, and the cluster stays disconnected with a local Update Service. Step 2, proposed and preferred: every node reaches Red Hat's hosts through the enterprise proxy, with no mirror, no sync and no local Update Service. Step 3, proposed alternative: a scheduled job runs the same playbooks into an on-prem Red Hat Quay, and the cluster keeps no egress with a local Update Service. All three open the same Red Hat hosts and none needs two-headed DNS." src="diagrams/three-steps/three-steps.light.png">
 </picture>
 
-*Both designs are proposals. In the preferred one, every node pulls from Red Hat through an
-enterprise proxy that allows only Red Hat's documented hosts, so there is no mirror and no sync,
-and no two-headed DNS. In the alternative, the cluster keeps no egress and pulls from an on-prem
-Red Hat Quay that a scheduled oc-mirror v2 job fills. Both open the same Red Hat hosts at the
-firewall, and both need a plan for operator catalogs.*
+*Step 1 is built; Steps 2 and 3 are proposals. Every step opens the same Red Hat hosts at the
+firewall; they differ in which machines use them: one mirror host (Steps 1 and 3) or every node
+(Step 2). No step needs two-headed DNS. Each still needs a plan for operator catalogs
+([`DESIGN-DECISIONS.md`](DESIGN-DECISIONS.md), D2).*
 
 ```text
-            PREFERRED: proxy + allowlist (proposed)        ALTERNATIVE: Red Hat Quay on-prem (proposed)
-INSIDE      OpenShift cluster                              OpenShift cluster
-            cluster-wide proxy for CRI-O, the CVO, OLM     no egress; pulls from Quay through IDMS / ITMS
-            turning it on reboots every node once          update graph from a local OSUS
-              | images, graph, signatures                    ^ images, graph data
-            enterprise proxy                               Red Hat Quay, highly available
-            allowlist: Red Hat's documented hosts, 443     built with Red Hat Consulting and a Quay SME
-            nodes resolve only the proxy: no 2-headed DNS  filled by oc-mirror v2, not Quay repo mirroring
-              |                                              ^ push
-              |          (no mirror host, no sync job)     mirror host, scheduled job
-              |                                            oc-mirror v2 + ImageSetConfiguration in Git
-              |                                            the sync remains; a job runs it, not a person
-EGRESS        | every node, through the proxy                | one host, through the proxy
-RED HAT     quay.io, cdn.quay.io, cdn01-06.quay.io         the same hosts, opened to one machine
-(exists)    registry.redhat.io                             the cluster itself reaches none of them
-            api.openshift.com, mirror.openshift.com
-            + telemetry hosts only if telemetry stays on
-CATALOGS    straight from registry.redhat.io               oc-mirror v2 builds a filtered catalog from the
-            an admission policy limits installs            packages in the ImageSetConfiguration
-            allowlist on the stock catalog: no registry    every dependency has to be listed by hand
-            a filtered catalog would need one              the same admission policy enforces it
-
-Both designs open the same Red Hat hosts. They differ in who uses the opening: every node, or one mirror host.
+            STEP 1: Ansible (built)        STEP 2: enterprise proxy (proposed)   STEP 3: Quay on-prem (proposed)
+INSIDE      OpenShift cluster              OpenShift cluster                     OpenShift cluster
+            no egress; IDMS/ITMS per run   Proxy CR: CVO, CRI-O, OLM             no egress; pulls from Quay
+            graph from a local OSUS        workloads blocked from the proxy      local OSUS: required
+              ^ images, graph data           | images, graph, signatures           ^ images, graph data
+            today's registry               enterprise proxy                      Red Hat Quay, HA
+              ^ push                       allowlist: Red Hat hosts only           ^ push
+            mirror host, run by a person   (no mirror host, registry or OSUS)    mirror host, systemd timer
+            Ansible + oc-mirror v2 + Vault                                       runs the Step 1 playbooks
+EGRESS        | one host, through the proxy  | every node, through the proxy       | one host, through the proxy
+RED HAT     quay.io, registry.redhat.io, api.openshift.com, mirror.openshift.com: the same hosts for every step
 ```
 
 ## What the proposal removes, and what stays
@@ -278,14 +267,15 @@ Industry sources:
 
 ## Diagram sources
 
-The four figures are drawn in [`diagrams/disconnected-update-problem/source.html`](diagrams/disconnected-update-problem/source.html)
-and rendered to the PNGs beside it:
+The first three figures are drawn in [`diagrams/disconnected-update-problem/source.html`](diagrams/disconnected-update-problem/source.html)
+and rendered to the PNGs beside it with [diagram-kit](https://github.com/ephico2real2/diagram-kit):
 
 ```sh
-python3 ~/.claude/skills/visual/render.py \
-  docs/diagrams/disconnected-update-problem/source.html \
-  docs/diagrams/disconnected-update-problem \
-  today,road,fixes-per-month,game-plan
+diagram-render docs/diagrams/disconnected-update-problem/source.html \
+  docs/diagrams/disconnected-update-problem today,road,fixes-per-month
 ```
+
+The three-steps figure is drawn in [`diagrams/three-steps/source.html`](diagrams/three-steps/source.html);
+its render command is in [`SOLUTIONS.md`](SOLUTIONS.md), Diagram sources.
 
 A figure, its text twin in this document and the page change together.

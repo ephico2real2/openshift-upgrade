@@ -9,7 +9,8 @@
 | [`DESIGN-DECISIONS.md`](DESIGN-DECISIONS.md) | The options, the five open decisions with their recommendations, and what is still unanswered |
 | [`openshift-update-egress.html`](openshift-update-egress.html) | The full plan: research findings, line-by-line check of the original plan, host allowlist, security controls, rollout, sources. It is a page fragment (starts at `<title>`); a browser opens it directly |
 | [`diagrams/`](diagrams/) | The plan page's four figures as light and dark PNGs |
-| [`diagrams/disconnected-update-problem/`](diagrams/disconnected-update-problem/) | Source page and PNGs for the four figures in the problem statement |
+| [`diagrams/disconnected-update-problem/`](diagrams/disconnected-update-problem/) | Source page and PNGs for the first three figures in the problem statement |
+| [`diagrams/three-steps/`](diagrams/three-steps/) | Source page and PNGs for the three steps, the decision flow, the Step 2 retrofit flow and the Step 3 scheduled sync |
 | [`catalog-policies/`](catalog-policies/) | Admission policies that limit operator catalogs, and the scripts that test them |
 | `SOLUTIONS.docx`, `PROBLEM-STATEMENT.docx`, `DESIGN-DECISIONS.docx` | Word copies of the three Markdown documents, with the light figures embedded. Generated; edit the Markdown and rebuild |
 | [`tools/md2docx.js`](tools/md2docx.js) | Builds the Word copies: `npm install docx`, then `node tools/md2docx.js PROBLEM-STATEMENT.md PROBLEM-STATEMENT.docx` |

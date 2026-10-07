@@ -128,7 +128,26 @@ and `target_registry_path=ocp4`.
 For scheduled runs, keep **one fixed workspace per channel** and the same ImageSet each time.
 Red Hat: the next run generates "an image set that only contains new and updated images"
 (`modules/oc-mirror-updating-registry-about.adoc`). Red Hat gives no scheduling guidance; a systemd
-timer on the mirror host is a simple choice:
+timer on the mirror host is a simple choice.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../diagrams/three-steps/quay-sync.dark.png">
+  <source srcset="../diagrams/three-steps/quay-sync.light.png">
+  <img alt="Step 3's scheduled sync. A systemd timer on the mirror host fires; flock skips the run if the last one is still going. The Step 1 playbooks run oc-mirror v2 with the same workspace per channel, so only new and updated images are pushed to Quay; a run that fails after its retries raises an alert and the next run catches up. The Update Service is restarted to load the new graph image. A cluster admin applies the run's cluster resources in a change window, and the cluster then lists the new versions." src="../diagrams/three-steps/quay-sync.light.png">
+</picture>
+
+*One run of the proposed schedule. Steps ① to ③ use the Step 1 playbooks, which exist today; Quay
+and the timer are not built.*
+
+```text
+MIRROR HOST                         QUAY                          CLUSTERS
+1 timer fires                       4 org ocp4: release, .sig,    5 restart the OSUS (new graph)
+2 flock: busy -> skip this run        catalogs, graph-image       6 admin applies cluster-resources
+3 Step 1 playbooks; fail -> alert,                                7 oc adm upgrade lists new versions
+  the next run catches up   --push-->
+```
+
+The two units:
 
 ```ini
 # /etc/systemd/system/oc-mirror-release.service
@@ -251,3 +270,10 @@ Read directly from source on 2026-10-07:
   - Update Service: `update-service-create-service-cli.adoc`, `config-access-for-sec-reg-osus.adoc`, `disconnected-osus-overview.adoc`
   - Mirror registry: `disconnected/installing-mirroring-creating-registry.adoc`
 - [`openshift/cincinnati-operator`](https://github.com/openshift/cincinnati-operator): `controllers/new.go` (graph data init container)
+
+## Diagram sources
+
+The figure is drawn in [`../diagrams/three-steps/source.html`](../diagrams/three-steps/source.html) and
+rendered with [diagram-kit](https://github.com/ephico2real2/diagram-kit); the render command is in
+[`../SOLUTIONS.md`](../SOLUTIONS.md), Diagram sources. The figure, the text beside it and the page
+change together.
