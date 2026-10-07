@@ -202,8 +202,9 @@ downloads have not.
 
 A push (`d2m`) is not limited to the three new registries. The same archive can go into an
 **existing registry**, such as one of the three old 1.x mirror registries or another registry we already run,
-under a **new path**: a new Quay organization such as `ocp4v2`, next to the content oc-mirror v1
-put there. The playbooks treat it as one more registry: its own Vault file, its own robot account,
+under a **new path**: the Quay organization `ocp4v2` (the playbooks' `mirror_namespace`), next to
+the content oc-mirror v1 put there. Using the same organization on all six registries means the
+IDMS/ITMS, CatalogSources and Update Service files differ only by host. The playbooks treat it as one more registry: its own Vault file, its own robot account,
 its own `cluster-resources` folder (`<archive>-<registry>-<path>`).
 
 Why do it:
@@ -305,9 +306,9 @@ the bastion, then install remotely from the bastion:
 The installer prints the `init` user's password at the end; put it straight into the team's
 password vault. Then, in the registry's web UI (`https://registry-dc1.example.com:8443`):
 
-1. Create the organization **`ocp4`** (the playbooks' `target_registry_path`).
-2. Create a robot account with **write** to `ocp4` for the bastion, e.g. `ocp4+mirror`.
-3. Create a robot account with **read** for the clusters' pull secret, e.g. `ocp4+pull`.
+1. Create the organization **`ocp4v2`**: the playbooks' `mirror_namespace`, the same on every registry.
+2. Create a robot account with **write** to `ocp4v2` for the bastion, e.g. `ocp4v2+mirror`.
+3. Create a robot account with **read** for the clusters' pull secret, e.g. `ocp4v2+pull`.
 4. Run the push test in the release guide, Step 5.
 
 ### One Vault file per registry
@@ -318,7 +319,7 @@ pass it with `-e @`; extra variables win over `vars_files`:
 ```bash
 ansible-vault create vars/registry-dc1.yml
 #   target_registry_fqdn: "registry-dc1.example.com:8443"
-#   target_registry_user: "ocp4+mirror"
+#   target_registry_user: "ocp4v2+mirror"
 #   target_registry_password: "<robot token>"
 
 # download once (Red Hat credentials only), then push into each registry with its own file
@@ -384,7 +385,7 @@ cutover with `oc get imagecontentsourcepolicy`; step 7 deletes those.
 - [ ] Firewall: bastions → proxy 443; bastions → registries 8443 and 22; clusters → their registry 8443
 - [ ] Proxy allowlist for the bastions approved (release guide, Step 1)
 - [ ] Red Hat pull secret (Registry Service Account) in Vault on both bastions
-- [ ] Mirror registry 2.0.x installed on the three hosts; `ocp4` org, write and read robots created
+- [ ] Mirror registry 2.0.x installed on the three hosts; `ocp4v2` org, write and read robots created
 - [ ] One Vault file per registry on the bastions that push to it
 - [ ] Push test passed from each bastion to each of its registries, including any existing registry on its new path (and its v1 path listed in `protected_targets`)
 - [ ] Backups scheduled for the registry storage and the bastions' `/data`

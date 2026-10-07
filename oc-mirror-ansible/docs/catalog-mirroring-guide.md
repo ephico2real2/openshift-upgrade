@@ -310,7 +310,10 @@ The playbook stops before doing anything if no catalog list is passed, or if a c
   vars:
     # Internal registry: host (add :port if it uses one) and the repository path under it
     target_registry_fqdn: "registry-lab.example.com:8443"   # one of the three registries (docs/PREREQUISITES.md)
-    target_registry_path: "ocp4"                    # the Quay organization
+    # One organization on every registry, new and old, so the cluster files differ only by host.
+    # ocp4v2 is never the path oc-mirror v1 used. Override per registry in its vars file if needed.
+    mirror_namespace: "ocp4v2"
+    target_registry_path: "{{ mirror_namespace }}"  # the Quay organization the images go into
     target_registry_url: "{{ target_registry_fqdn }}/{{ target_registry_path }}"
     # Login scope in the auth file: the host (default) or the full path,
     # if the service account only has rights on that one repository
@@ -514,11 +517,11 @@ Always dry-run a catalog ImageSet first. A wrong package list is the most common
 5. **Check the result:**
 
    ```
-   REG_HOST=registry-lab.example.com:8443; REG_PATH=ocp4
+   REG_HOST=registry-lab.example.com:8443; REG_PATH=ocp4v2
    podman login $REG_HOST
    skopeo list-tags docker://$REG_HOST/$REG_PATH/redhat/redhat-operator-index | jq -r '.Tags[]'
    podman logout $REG_HOST
-   ls /data/oc-mirror/cluster-resources/archive-catalogs-v4.18-redhat-registry-lab-ocp4/
+   ls /data/oc-mirror/cluster-resources/archive-catalogs-v4.18-redhat-registry-lab-ocp4v2/
    ```
 
    Expect the tag `v4.18`, and in `cluster-resources` an `idms-oc-mirror.yaml`, possibly an `itms-oc-mirror.yaml`, and one `cs-<catalog>-*.yaml` CatalogSource per catalog (plus `cc-*.yaml` ClusterCatalogs for OLM v1).
@@ -534,7 +537,7 @@ oc-mirror always names its mirror sets by category only: `idms-release-0`, `idms
 Before handover, add the run's name to every IDMS/ITMS in its folder. The cluster combines the mappings from all of them:
 
 ```
-cd /data/oc-mirror/cluster-resources/archive-catalogs-v4.18-redhat-registry-lab-ocp4
+cd /data/oc-mirror/cluster-resources/archive-catalogs-v4.18-redhat-registry-lab-ocp4v2
 RUN=catalogs-v4-18-redhat
 sed -i -E "s/^(\s*name: )(i[dt]ms-[a-z]+-[0-9]+)\s*$/\1\2-$RUN/" i[dt]ms-oc-mirror.yaml
 grep -h 'name: i' i[dt]ms-oc-mirror.yaml
@@ -553,8 +556,8 @@ oc patch operatorhub cluster -p '{"spec": {"disableAllDefaultSources": true}}' -
 ### 3. Apply each folder
 
 ```
-oc apply -f /path/to/archive-catalogs-v4.18-redhat-registry-lab-ocp4/
-oc apply -f /path/to/archive-catalogs-v4.18-partner-registry-lab-ocp4/
+oc apply -f /path/to/archive-catalogs-v4.18-redhat-registry-lab-ocp4v2/
+oc apply -f /path/to/archive-catalogs-v4.18-partner-registry-lab-ocp4v2/
 ```
 
 This creates the renamed IDMS/ITMS and one CatalogSource per catalog. CatalogSource names include the catalog and its tag (for example `cs-redhat-operator-index-v4-18`), so versions don't collide.
@@ -587,7 +590,7 @@ metadata:
   namespace: openshift-marketplace
 spec:
   displayName: Red Hat Operators (mirror)
-  image: registry-lab.example.com:8443/ocp4/redhat/redhat-operator-index:v4.18
+  image: registry-lab.example.com:8443/ocp4v2/redhat/redhat-operator-index:v4.18
   publisher: Red Hat
   sourceType: grpc
 EOF

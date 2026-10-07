@@ -8,7 +8,10 @@
   vars:
     # Internal registry: host (add :port if it uses one) and the repository path under it
     target_registry_fqdn: "registry-lab.example.com:8443"   # one of the three registries (docs/PREREQUISITES.md)
-    target_registry_path: "ocp4"                    # the Quay organization
+    # One organization on every registry, new and old, so the cluster files differ only by host.
+    # ocp4v2 is never the path oc-mirror v1 used. Override per registry in its vars file if needed.
+    mirror_namespace: "ocp4v2"
+    target_registry_path: "{{ mirror_namespace }}"  # the Quay organization the images go into
     target_registry_url: "{{ target_registry_fqdn }}/{{ target_registry_path }}"
     # Login scope in the auth file: the host (default) or the full path,
     # if the service account only has rights on that one repository

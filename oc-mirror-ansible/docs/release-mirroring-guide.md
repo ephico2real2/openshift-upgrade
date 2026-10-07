@@ -47,7 +47,7 @@ Get these from other teams before you touch the host. Each later step assumes yo
 - [ ] **Red Hat account**: the login your team uses for console.redhat.com (ask your lead which one; don't use a personal account unless told to)
 - [ ] **Proxy**: the address and port (e.g. `proxy.corp:8080`), and whether it needs a username
 - [ ] **Proxy CA certificate**: only if the proxy re-signs HTTPS traffic; ask the network team for the `.crt` file
-- [ ] **Registry**: which of the three registries this run fills (`registry-lab`, `registry-dc1` or `registry-dc2`, port 8443), its `ocp4` organization, and a robot account that can write to it (Step 5)
+- [ ] **Registry**: which of the three registries this run fills (`registry-lab`, `registry-dc1` or `registry-dc2`, port 8443), its `ocp4v2` organization, and a robot account that can write to it (Step 5)
 - [ ] **Release**: `eus-4.18` channel, version `4.18.17` (this guide's defaults)
 - [ ] **Cluster admin for Step 10**: someone with `cluster-admin` on the disconnected cluster to install the Update Service
 
@@ -96,7 +96,7 @@ Set both upper and lower case: different tools read different spellings. Log out
 | `localhost,127.0.0.1` | oc-mirror v2 runs a temporary local registry on `localhost:55000`. Sent through the proxy, the mirror fails. |
 | `registry-lab.example.com,registry-dc1.example.com` | The registries this bastion pushes to (in DC2: `registry-dc2.example.com`). Pushes must go direct. |
 
-Use the registry **host only** in `NO_PROXY`: no port, no path. `registry-lab.example.com` covers `registry-lab.example.com:8443/ocp4`.
+Use the registry **host only** in `NO_PROXY`: no port, no path. `registry-lab.example.com` covers `registry-lab.example.com:8443/ocp4v2`.
 
 The update graph build also needs `api.openshift.com` and `registry.access.redhat.com` through the proxy. Ask the network team to allow both, alongside `quay.io` and `registry.redhat.io`.
 
@@ -368,16 +368,16 @@ variables in Step 8:
 | Value | Example | Playbook variable |
 | --- | --- | --- |
 | Host and port | `registry-lab.example.com:8443` (the mirror registry's default port) | `target_registry_fqdn` |
-| Organization | `ocp4` | `target_registry_path` |
+| Organization | `ocp4v2` | `target_registry_path` |
 | Login scope | the host and port (default); Quay robot accounts log in to the whole registry | `target_auth_key` |
 
 Ask the registry owner for:
 
 | Ask | Why |
 | --- | --- |
-| The `ocp4` organization | Where oc-mirror pushes. It creates `ocp4/openshift/release-images`, `ocp4/openshift/release`, `ocp4/openshift/graph-image` and `ocp4/redhat/redhat-operator-index` |
-| A robot account with **write** on `ocp4`, e.g. `ocp4+mirror` | Credentials for the Vault file in Step 6 |
-| A robot account with **read** on `ocp4`, e.g. `ocp4+pull` | For the clusters' pull secret in Step 10 |
+| The `ocp4v2` organization | Where oc-mirror pushes. It creates `ocp4v2/openshift/release-images`, `ocp4v2/openshift/release`, `ocp4v2/openshift/graph-image` and `ocp4v2/redhat/redhat-operator-index` |
+| A robot account with **write** on `ocp4v2`, e.g. `ocp4v2+mirror` | Credentials for the Vault file in Step 6 |
+| A robot account with **read** on `ocp4v2`, e.g. `ocp4v2+pull` | For the clusters' pull secret in Step 10 |
 | The registry's certificate chain | Signed by our internal CA; add that CA as in Step 1. Step 10 needs it on the cluster too |
 | Free disk on the registry host | Red Hat: about 358 GB for one release stream with its Red Hat operators, "up to 1 TB per stream or more is suggested" |
 
@@ -385,7 +385,7 @@ When you have the account, test a push to the same depth oc-mirror will use. Thi
 
 ```bash
 REG_HOST=registry-lab.example.com:8443   # the registry for this run
-REG_PATH=ocp4
+REG_PATH=ocp4v2
 podman login $REG_HOST                   # the robot account name and token
 podman pull registry.access.redhat.com/ubi9/ubi-minimal:latest
 podman tag registry.access.redhat.com/ubi9/ubi-minimal:latest \
@@ -394,7 +394,7 @@ podman push $REG_HOST/$REG_PATH/openshift/push-test:latest
 podman logout $REG_HOST
 ```
 
-The push must end with `Writing manifest to image destination`. Delete `ocp4/openshift/push-test` in
+The push must end with `Writing manifest to image destination`. Delete `ocp4v2/openshift/push-test` in
 the registry's web UI afterwards.
 
 **An existing registry, on a new path.** The same archive can also be pushed into a registry we
@@ -498,7 +498,10 @@ Before the first run, compare `oc_mirror_tuning` with the flag list you saved in
   vars:
     # Internal registry: host (add :port if it uses one) and the repository path under it
     target_registry_fqdn: "registry-lab.example.com:8443"   # one of the three registries (docs/PREREQUISITES.md)
-    target_registry_path: "ocp4"                    # the Quay organization
+    # One organization on every registry, new and old, so the cluster files differ only by host.
+    # ocp4v2 is never the path oc-mirror v1 used. Override per registry in its vars file if needed.
+    mirror_namespace: "ocp4v2"
+    target_registry_path: "{{ mirror_namespace }}"  # the Quay organization the images go into
     target_registry_url: "{{ target_registry_fqdn }}/{{ target_registry_path }}"
     # Login scope in the auth file: the host (default) or the full path,
     # if the service account only has rights on that one repository
@@ -724,7 +727,7 @@ Run inside the tmux session from Step 7, as your own user, not with `sudo`.
 
    After the lab cluster has been updated with that content, push the **same archive** into your datacenter's production registry: the same command with `-e @vars/registry-dc1.yml` (or `registry-dc2` on the DC2 bastion). Nothing is downloaded again.
 
-   If the robot account is limited to one path, add `-e "target_auth_key=<host:port>/ocp4"`. If Step 4 showed a different operator name, add `-e "osus_operator_package=<name>"` to both halves.
+   If the robot account is limited to one path, add `-e "target_auth_key=<host:port>/ocp4v2"`. If Step 4 showed a different operator name, add `-e "osus_operator_package=<name>"` to both halves.
 3. Enter the Vault password when asked. Then detach (`Ctrl+b`, `d`) and check back later. The first download fetches the release, the operator catalog and the graph data, so expect it to take hours; later downloads reuse the cache and fetch only what changed.
 
 What you'll see:
@@ -747,7 +750,8 @@ Variables you can override with `-e`:
 | `archive_name` | `archive` | One per run, e.g. `archive-run-a`; the `d2m` runs name the same archive as their `m2d` |
 | `workspace_path` | `/data/oc-mirror/workspace` | Used by `m2m` only; one per run and registry |
 | `target_registry_fqdn` | `registry-lab.example.com:8443` | Registry host and port: the lab registry, or the production registry of this bastion's datacenter |
-| `target_registry_path` | `ocp4` | The Quay organization the images go into |
+| `mirror_namespace` | `ocp4v2` | The organization used on **every** registry, new and old; never the path oc-mirror v1 used |
+| `target_registry_path` | `mirror_namespace` | The organization for this run; set it in a registry's Vault file only if that registry needs a different one |
 | `target_auth_key` | the host | Login scope; set to host + path if the account is limited to that repository |
 | `mirror_update_service` | `true` | Build the update graph and mirror the OSUS operator |
 | `osus_operator_package` | `cincinnati-operator` | OSUS operator package name in the catalog (Step 4) |
@@ -768,7 +772,7 @@ A `failed=0` recap is the first check. These confirm the result:
 2. The release, the update graph and the operator catalog are in the registry. Use your host and path from Step 5:
 
    ```bash
-   REG_HOST=registry-lab.example.com:8443; REG_PATH=ocp4
+   REG_HOST=registry-lab.example.com:8443; REG_PATH=ocp4v2
    podman login $REG_HOST
    skopeo list-tags docker://$REG_HOST/$REG_PATH/openshift/release-images | jq -r '.Tags[]'
    skopeo list-tags docker://$REG_HOST/$REG_PATH/openshift/graph-image | jq -r '.Tags[]'
@@ -782,7 +786,7 @@ A `failed=0` recap is the first check. These confirm the result:
 
    ```bash
    ls /data/oc-mirror/cluster-resources/
-   ls /data/oc-mirror/cluster-resources/archive-4.18.17-registry-lab-ocp4/
+   ls /data/oc-mirror/cluster-resources/archive-4.18.17-registry-lab-ocp4v2/
    ls /data/oc-mirror/archive-4.18.17/working-dir/logs/     # a mirroring_errors_*.txt file means some images failed
    ```
 
@@ -802,7 +806,7 @@ This step changes the disconnected cluster, so a cluster admin does it in an app
 
 You need the `cluster-resources` folder from Step 9, the registry's CA certificate (`ca.crt`) and `cluster-admin` access.
 
-1. **Let the cluster pull from your registry.** The cluster's global pull secret must include the registry's login: the read robot account from Step 5 (e.g. `ocp4+pull`), for the registry in the cluster's own datacenter. If it already pulls images from this registry, skip this. Otherwise ask your lead; the global pull secret is shared by every node, so a change to it is its own reviewed change.
+1. **Let the cluster pull from your registry.** The cluster's global pull secret must include the registry's login: the read robot account from Step 5 (e.g. `ocp4v2+pull`), for the registry in the cluster's own datacenter. If it already pulls images from this registry, skip this. Otherwise ask your lead; the global pull secret is shared by every node, so a change to it is its own reviewed change.
 2. **Trust the registry's CA.** One ConfigMap serves both the image pulls (key = registry host; use `host..port` if there's a port) and the Update Service (key `updateservice-registry`). Check whether one is already set first:
 
    ```bash
@@ -1020,11 +1024,11 @@ The 4.20 target ends Run A and starts Run B, so the two mirrors join without a g
    ```
 
    After the lab cluster has taken the update, push the same archives into the production registry of your datacenter (`-e @vars/registry-dc1.yml`, or `registry-dc2` on the DC2 bastion, which runs its own downloads with the same `$A` and `$B`). Check `df -h /data` between runs.
-6. **Prepare both `cluster-resources` folders for handover**, per registry (e.g. `archive-run-a-registry-lab-ocp4` and `archive-run-b-registry-lab-ocp4` under `/data/oc-mirror/cluster-resources/`):
+6. **Prepare both `cluster-resources` folders for handover**, per registry (e.g. `archive-run-a-registry-lab-ocp4v2` and `archive-run-b-registry-lab-ocp4v2` under `/data/oc-mirror/cluster-resources/`):
    - **Signatures:** each run writes a ConfigMap named `mirrored-release-signatures`, as both `signature-configmap.yaml` and `signature-configmap.json`, holding only that run's release signatures. Applying Run B's would replace Run A's. Rename Run A's and delete its JSON copy, so applying the folder can't bring the old name back. The cluster finds signature ConfigMaps by their label, not their name:
 
      ```bash
-     cd /data/oc-mirror/cluster-resources/archive-run-a-registry-lab-ocp4
+     cd /data/oc-mirror/cluster-resources/archive-run-a-registry-lab-ocp4v2
      sed -i 's/name: mirrored-release-signatures$/name: mirrored-release-signatures-run-a/' signature-configmap.yaml
      rm -f signature-configmap.json
      grep 'name: mirrored-release-signatures' signature-configmap.yaml
@@ -1032,7 +1036,7 @@ The 4.20 target ends Run A and starts Run B, so the two mirrors join without a g
    - **IDMS and ITMS:** oc-mirror names its mirror sets by category only (`idms-release-0`, `idms-operator-0`, and so on), so every run, release or catalog, reuses the same names. Applying one run's files would replace the previous run's mappings on the cluster. Give each run's mirror sets a unique name before handover; the cluster combines the mappings from all of them:
 
      ```bash
-     cd /data/oc-mirror/cluster-resources/archive-run-a-registry-lab-ocp4
+     cd /data/oc-mirror/cluster-resources/archive-run-a-registry-lab-ocp4v2
      RUN=release-run-a          # unique per run: release-run-b, release-run-b1, …
      sed -i -E "s/^(\s*name: )(i[dt]ms-[a-z]+-[0-9]+)\s*$/\1\2-$RUN/" i[dt]ms-oc-mirror.yaml
      grep -h 'name: i' i[dt]ms-oc-mirror.yaml
@@ -1131,7 +1135,7 @@ To change the tuning for one run without editing the playbook:
 
 ```bash
 ansible-playbook playbook.yml --ask-vault-pass \
-  -e "target_registry_fqdn=registry-lab.example.com:8443" -e "target_registry_path=ocp4" \
+  -e "target_registry_fqdn=registry-lab.example.com:8443" -e "target_registry_path=ocp4v2" \
   -e "oc_mirror_tuning='--parallel-images 2 --parallel-layers 2 --image-timeout 60m --retry-times 8'"
 ```
 

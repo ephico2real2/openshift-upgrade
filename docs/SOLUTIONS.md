@@ -230,7 +230,7 @@ One instance can serve every cluster. It must be restarted after each sync to lo
 
 ```text
 BASTION (per datacenter)            QUAY                          CLUSTERS
-1 timer fires                       4 org ocp4: release, .sig,    5 restart the OSUS (new graph)
+1 timer fires                       4 org ocp4v2: release, .sig,    5 restart the OSUS (new graph)
 2 flock: busy -> skip this run        catalogs, graph-image       6 admin applies cluster-resources
 3 Step 1 playbooks; fail -> alert,                                7 oc adm upgrade lists new versions
   next run resumes (cache) --push-->
