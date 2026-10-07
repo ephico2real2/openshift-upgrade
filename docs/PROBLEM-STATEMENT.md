@@ -285,7 +285,7 @@ writes them only when its checks pass:
 ```sh
 # once: the kit, pinned, and its Chromium
 python3 -m venv .venv
-.venv/bin/pip install "diagram-kit @ git+https://github.com/ephico2real2/diagram-kit@v0.2.1"
+.venv/bin/pip install "diagram-kit @ git+https://github.com/ephico2real2/diagram-kit@v0.2.2"
 .venv/bin/playwright install chromium
 
 .venv/bin/diagram-render \
