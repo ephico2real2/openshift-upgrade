@@ -667,10 +667,11 @@ A `failed=0` recap is the first check. These confirm the result:
    skopeo list-tags docker://$REG_HOST/$REG_PATH/openshift/release-images | jq -r '.Tags[]'
    skopeo list-tags docker://$REG_HOST/$REG_PATH/openshift/graph-image | jq -r '.Tags[]'
    skopeo list-tags docker://$REG_HOST/$REG_PATH/redhat/redhat-operator-index | jq -r '.Tags[]'
+   skopeo list-tags docker://$REG_HOST/$REG_PATH/openshift/release-images | jq -r '.Tags[]' | grep '\.sig$'
    podman logout $REG_HOST
    ```
 
-   Expect `4.18.17-x86_64`, `latest` and `v4.18` respectively.
+   Expect `4.18.17-x86_64`, `latest` and `v4.18` from the first three, and from the last one a `sha256-<digest>.sig` tag per mirrored release. Those are the release signatures; from 4.21 the cluster refuses mirrored releases without them.
 3. oc-mirror wrote the files a cluster admin applies in Step 10:
 
    ```bash
@@ -923,6 +924,12 @@ The 4.20 target ends Run A and starts Run B, so the two mirrors join without a g
    3. Switch to the **target** EUS channel while still on the old version: `oc adm upgrade channel eus-4.20` (on 4.18), later `eus-4.22` (on 4.20).
    4. Pause the worker pool: `oc patch mcp/worker --type merge --patch '{"spec":{"paused":true}}'`.
    5. Run `oc adm upgrade --to-latest` to the odd hop (4.19 or 4.21), check with `oc adm upgrade`, then run `oc adm upgrade --to-latest` again to the EUS target.
+
+      **Before the 4.20 → 4.21 hop only:** a cluster with mirror sets (IDMS/ICSP) is blocked from 4.21 with *"This cluster has mirrors configured. 4.21 will require Sigstore signatures…"*. Confirm the `.sig` tags exist (Step 9, item 2), then acknowledge:
+
+      ```bash
+      oc -n openshift-config patch configmap admin-acks --patch '{"data":{"ack-4.20-sigstore-in-4.21":"true"}}' --type=merge
+      ```
    6. Unpause the worker pool so workers update. Workers must catch up before the control plane jumps again: control plane and workers can be at most two minor versions apart.
 
 This uses the standard update method. The 4.22 release notes list a known issue for the separate *image-based* upgrade method: EUS-to-EUS image-based upgrades aren't supported on clusters with cert-manager installed ([OCPBUGS-86967](https://issues.redhat.com/browse/OCPBUGS-86967)). If your team uses image-based upgrades, check this first.
@@ -956,7 +963,7 @@ Your team has agreed that the second jump may use stable channels if `eus-4.22` 
 3. **Run for real** in order A, B1, B2, without `-e oc_mirror_dry_run=true`.
 4. **Handover** follows item 6 with three folders. Rename the signature ConfigMap in **every folder except the last one** (Run A to `mirrored-release-signatures-run-a`, Run B1 to `-run-b1`), delete their JSON copies, and give every folder's IDMS/ITMS a unique name (item 6, e.g. `release-run-a`, `release-run-b1`, `release-run-b2`). Use `updateService.yaml` from B2.
 5. **On the cluster**, the 4.20 → 4.22 jump becomes two ordinary updates:
-   1. On 4.20: `oc adm upgrade channel stable-4.21`, check `oc adm upgrade` lists your 4.21 release, then update to it.
+   1. On 4.20: `oc adm upgrade channel stable-4.21`, check `oc adm upgrade` lists your 4.21 release, give the Sigstore acknowledgment (item 7, step 5), then update to it.
    2. On 4.21: `oc adm upgrade channel stable-4.22`, then update to your 4.22 target.
    3. Once `eus-4.22` opens, switch to it (`oc adm upgrade channel eus-4.22`) so future updates follow EUS.
 
@@ -988,7 +995,7 @@ First find which task failed: it's the task name just above `fatal:` in the log.
 | `oc adm upgrade` shows no updates or a certificate error (Step 10) | Upstream URL wrong, or the cluster doesn't trust its own route's certificate | Re-run item 6; ask your lead about the ingress CA |
 | Dry-run lists only the min and max release, no 4.19 or 4.21 in between | No update path between them in that channel's graph | Pick different versions and dry-run again (upgrade path, item 3) |
 | eus-4.22 not listed, or channel graph empty | Red Hat still rolling out the new EUS channel (usually 45–90 days after GA) | Mirror Run A now, Run B when the channel appears |
-| Push fails on tags like sha256-….sig, or the registry rejects signature artifacts | Newer oc-mirror v2 mirrors sigstore image signatures by default; the registry doesn't accept them | Ask the admin to allow them, or add --remove-signatures to oc\_mirror\_tuning. Check with your lead first if the cluster enforces sigstore image policies, which need these signatures |
+| Push fails on tags like sha256-….sig, or the registry rejects signature artifacts | Newer oc-mirror v2 mirrors sigstore image signatures by default; the registry doesn't accept them | Ask the registry admin to accept the `sha256-<digest>.sig` tags. **Never use `--remove-signatures` for release runs:** from 4.21 the cluster's default image policy requires the release signatures, and the update to 4.21 stops without them. `--remove-signatures` is only for the partner catalog runs (catalog guide) |
 | "Instructed to preserve digests" when mirroring the operator catalog | Older oc-mirror and a registry without OCI support (fixed in the 4.22 oc-mirror) | Download the latest oc-mirror (Step 3, item 4) |
 
 ### When oc-mirror times out
