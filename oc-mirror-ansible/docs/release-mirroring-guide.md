@@ -68,7 +68,7 @@ Internet traffic goes through the proxy. Local and internal traffic must bypass 
 ```text
 mirror host --(everything not in NO_PROXY)--> corporate proxy --> quay.io, registry.redhat.io,
                                                                   api.openshift.com, registry.access.redhat.com
-mirror host --(direct, in NO_PROXY)--> localhost:55000 (oc-mirror's own registry), artifactory.internal.repo
+mirror host --(direct, in NO_PROXY)--> localhost:55000 (oc-mirror's own registry), registry-lab / registry-dc1
 ```
 
 If either direct route goes through the proxy instead, the run fails.
@@ -79,7 +79,7 @@ Create `/etc/profile.d/proxy.sh`. Replace the proxy address and registry host wi
 sudo tee /etc/profile.d/proxy.sh > /dev/null <<'EOF'
 export HTTP_PROXY=http://proxy.corp:8080
 export HTTPS_PROXY=http://proxy.corp:8080
-export NO_PROXY=localhost,127.0.0.1,.internal.repo,artifactory.internal.repo
+export NO_PROXY=localhost,127.0.0.1,registry-lab.example.com,registry-dc1.example.com
 export http_proxy=$HTTP_PROXY
 export https_proxy=$HTTPS_PROXY
 export no_proxy=$NO_PROXY
@@ -94,9 +94,9 @@ Set both upper and lower case: different tools read different spellings. Log out
 | Entry | Why |
 | --- | --- |
 | `localhost,127.0.0.1` | oc-mirror v2 runs a temporary local registry on `localhost:55000`. Sent through the proxy, the mirror fails. |
-| `artifactory.internal.repo` or `.internal.repo` | Pushes to the internal registry must go direct. |
+| `registry-lab.example.com,registry-dc1.example.com` | The registries this bastion pushes to (in DC2: `registry-dc2.example.com`). Pushes must go direct. |
 
-Use the registry **host only** in `NO_PROXY`: no port, no path. `artifactory.internal.repo` covers `artifactory.internal.repo:8443/docker-local/ocp4`.
+Use the registry **host only** in `NO_PROXY`: no port, no path. `registry-lab.example.com` covers `registry-lab.example.com:8443/ocp4`.
 
 The update graph build also needs `api.openshift.com` and `registry.access.redhat.com` through the proxy. Ask the network team to allow both, alongside `quay.io` and `registry.redhat.io`.
 
@@ -461,7 +461,7 @@ When this step is done, `~/oc-mirror-ansible` holds five items:
    ansible-vault create vars/credentials.yml
    ```
 
-   Type these two lines with the Artifactory service account from Step 5, then save and quit (in `vi`: `i` to type, `Esc`, then `:wq`):
+   Type these two lines with the registry robot account from Step 5, then save and quit (in `vi`: `i` to type, `Esc`, then `:wq`):
 
    ```yaml
    target_registry_user: "<service-account>"
@@ -494,8 +494,8 @@ Before the first run, compare `oc_mirror_tuning` with the flag list you saved in
     - vars/credentials.yml
   vars:
     # Internal registry: host (add :port if it uses one) and the repository path under it
-    target_registry_fqdn: "artifactory.internal.repo"
-    target_registry_path: "ocp4"                    # e.g. docker-local/ocp4
+    target_registry_fqdn: "registry-lab.example.com:8443"   # one of the three registries (docs/PREREQUISITES.md)
+    target_registry_path: "ocp4"                    # the Quay organization
     target_registry_url: "{{ target_registry_fqdn }}/{{ target_registry_path }}"
     # Login scope in the auth file: the host (default) or the full path,
     # if the service account only has rights on that one repository
@@ -645,12 +645,12 @@ Run inside the tmux session from Step 7, as your own user, not with `sudo`.
    ansible-playbook playbook.yml --ask-vault-pass \
      -e "ocp_channel=eus-4.18" \
      -e "ocp_version=4.18.17" \
-     -e "target_registry_fqdn=artifactory.internal.repo" \
+     -e "target_registry_fqdn=registry-lab.example.com:8443" \
      -e "target_registry_path=ocp4" \
      2>&1 | tee ~/mirror-$(date +%F-%H%M).log
    ```
 
-   If the service account is limited to that one path (Step 5), add `-e "target_auth_key=artifactory.internal.repo/ocp4"` (your host and path). If Step 4 showed a different operator name, add `-e "osus_operator_package=<name>"`.
+   If the service account is limited to that one path (Step 5), add `-e "target_auth_key=registry-lab.example.com:8443/ocp4"` (your host and path). If Step 4 showed a different operator name, add `-e "osus_operator_package=<name>"`.
 3. Enter the Vault password when asked. Then detach (`Ctrl+b`, `d`) and check back later. The first run downloads the release, the operator catalog and the graph data, so expect it to take hours.
 
 What you'll see:
@@ -670,8 +670,8 @@ Variables you can override with `-e`:
 | `shortest_path` | `false` | `true` mirrors only the releases on the update path between min and max |
 | `oc_mirror_dry_run` | `false` | `true` lists what would be mirrored and copies nothing |
 | `workspace_path` | `/data/oc-mirror/workspace` | Use one per run for upgrade paths, e.g. `workspace-run-a` |
-| `target_registry_fqdn` | `artifactory.internal.repo` | Registry host, with `:port` if it uses one |
-| `target_registry_path` | `ocp4` | Repository path under the host, e.g. `docker-local/ocp4` |
+| `target_registry_fqdn` | `registry-lab.example.com:8443` | Registry host and port: the lab registry, or the production registry of this bastion's datacenter |
+| `target_registry_path` | `ocp4` | The Quay organization the images go into |
 | `target_auth_key` | the host | Login scope; set to host + path if the account is limited to that repository |
 | `mirror_update_service` | `true` | Build the update graph and mirror the OSUS operator |
 | `osus_operator_package` | `cincinnati-operator` | OSUS operator package name in the catalog (Step 4) |
@@ -692,7 +692,7 @@ A `failed=0` recap is the first check. These confirm the result:
 2. The release, the update graph and the operator catalog are in the registry. Use your host and path from Step 5:
 
    ```bash
-   REG_HOST=artifactory.internal.repo; REG_PATH=ocp4
+   REG_HOST=registry-lab.example.com:8443; REG_PATH=ocp4
    podman login $REG_HOST
    skopeo list-tags docker://$REG_HOST/$REG_PATH/openshift/release-images | jq -r '.Tags[]'
    skopeo list-tags docker://$REG_HOST/$REG_PATH/openshift/graph-image | jq -r '.Tags[]'
@@ -734,7 +734,7 @@ You need the `cluster-resources` folder from Step 9, the registry's CA certifica
    ```bash
    oc create configmap registry-ca -n openshift-config \
      --from-file=updateservice-registry=ca.crt \
-     --from-file=artifactory.internal.repo=ca.crt
+     --from-file=registry-lab.example.com..8443=ca.crt
    oc patch image.config.openshift.io cluster --type merge \
      -p '{"spec":{"additionalTrustedCA":{"name":"registry-ca"}}}'
    ```
@@ -912,7 +912,7 @@ The 4.20 target ends Run A and starts Run B, so the two mirrors join without a g
 
    ```bash
    cd ~/oc-mirror-ansible
-   REG="-e target_registry_fqdn=artifactory.internal.repo -e target_registry_path=ocp4"
+   REG="-e target_registry_fqdn=registry-lab.example.com:8443 -e target_registry_path=ocp4"
    
    ansible-playbook playbook.yml --ask-vault-pass $REG \
      -e ocp_channel=eus-4.20 -e ocp_min_version=4.18.17 -e ocp_max_version=4.20.<z> \
@@ -1026,7 +1026,7 @@ First find which task failed: it's the task name just above `fatal:` in the log.
 | oc-mirror errors about cross-channel upgrades | Two EUS channels in one ImageSet | Mirror one channel per run |
 | `Execute oc-mirror v2` fails on `localhost:55000` | `localhost` or `127.0.0.1` missing from `NO_PROXY` | Add both (Step 1) |
 | `Execute oc-mirror v2` times out pulling from `quay.io` or `registry.redhat.io` | Proxy too slow or dropping long downloads | Tune, see below |
-| `Execute oc-mirror v2` times out pushing to Artifactory | Registry host missing from `NO_PROXY`, or upload limit on the registry's load balancer | Check `NO_PROXY`; ask the Artifactory admin (Step 5) |
+| `Execute oc-mirror v2` times out pushing to the registry | Registry host missing from `NO_PROXY`, or the registry host is short of disk or memory | Check `NO_PROXY`; check the registry host (Step 5, [`PREREQUISITES.md`](../../docs/PREREQUISITES.md)) |
 | `x509: certificate signed by unknown authority` | Proxy or registry CA not trusted | Add the CA (Step 1) |
 | `unknown flag` from oc-mirror | Your build lacks one of the tuning flags | Remove that flag from `oc_mirror_tuning` |
 | Works by hand, fails in cron, CI or AAP | Proxy variables not set there | Set them in the job (Step 1) |
@@ -1052,7 +1052,7 @@ To change the tuning for one run without editing the playbook:
 
 ```bash
 ansible-playbook playbook.yml --ask-vault-pass \
-  -e "target_registry_fqdn=artifactory.internal.repo" -e "target_registry_path=ocp4" \
+  -e "target_registry_fqdn=registry-lab.example.com:8443" -e "target_registry_path=ocp4" \
   -e "oc_mirror_tuning='--parallel-images 2 --parallel-layers 2 --image-timeout 60m --retry-times 8'"
 ```
 

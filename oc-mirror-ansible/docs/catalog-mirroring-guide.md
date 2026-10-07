@@ -34,7 +34,7 @@ This guide builds on the release mirroring guide, "oc-mirror v2 with Ansible —
 - `ansible-core`, `tmux`, `podman`, `skopeo`, `jq` installed (its Step 2)
 - The **latest** `oc-mirror` in `~/oc-mirror-ansible` (its Step 3)
 - The Red Hat pull secret in `vars/redhat-pull-secret.json` and the registry login in `vars/credentials.yml`, both Vault-encrypted (its "Ansible Vault in this project" section and Step 6)
-- The registry host, path and login scope agreed with the Artifactory admin (its Step 5)
+- The registry host, organization and robot account from the release guide, Step 5 ([`PREREQUISITES.md`](../../docs/PREREQUISITES.md) lists the three registries)
 - `oc` access to the cluster, read-only is enough, for Step 1 below
 
 The Red Hat pull secret covers all four catalogs; they're all on `registry.redhat.io`. The certified and marketplace operator images themselves can come from other registries (often `registry.connect.redhat.com`); the pull secret normally covers that one too.
@@ -308,8 +308,8 @@ The playbook stops before doing anything if no catalog list is passed, or if a c
     - vars/credentials.yml
   vars:
     # Internal registry: host (add :port if it uses one) and the repository path under it
-    target_registry_fqdn: "artifactory.internal.repo"
-    target_registry_path: "ocp4"                    # e.g. docker-local/ocp4
+    target_registry_fqdn: "registry-lab.example.com:8443"   # one of the three registries (docs/PREREQUISITES.md)
+    target_registry_path: "ocp4"                    # the Quay organization
     target_registry_url: "{{ target_registry_fqdn }}/{{ target_registry_path }}"
     # Login scope in the auth file: the host (default) or the full path,
     # if the service account only has rights on that one repository
@@ -425,7 +425,7 @@ Always dry-run a catalog ImageSet first. A wrong package list is the most common
 
    ```
    cd ~/oc-mirror-ansible
-   REG="-e target_registry_fqdn=artifactory.internal.repo -e target_registry_path=ocp4"
+   REG="-e target_registry_fqdn=registry-lab.example.com:8443 -e target_registry_path=ocp4"
 
    ansible-playbook catalogs-playbook.yml --ask-vault-pass $REG \
      -e catalog_ocp_version=4.18 -e @vars/catalogs-redhat.yml \
@@ -448,7 +448,7 @@ Always dry-run a catalog ImageSet first. A wrong package list is the most common
 5. **Check the result:**
 
    ```
-   REG_HOST=artifactory.internal.repo; REG_PATH=ocp4
+   REG_HOST=registry-lab.example.com:8443; REG_PATH=ocp4
    podman login $REG_HOST
    skopeo list-tags docker://$REG_HOST/$REG_PATH/redhat/redhat-operator-index | jq -r '.Tags[]'
    podman logout $REG_HOST
@@ -521,7 +521,7 @@ metadata:
   namespace: openshift-marketplace
 spec:
   displayName: Red Hat Operators (mirror)
-  image: artifactory.internal.repo/ocp4/redhat/redhat-operator-index:v4.18
+  image: registry-lab.example.com:8443/ocp4/redhat/redhat-operator-index:v4.18
   publisher: Red Hat
   sourceType: grpc
 EOF

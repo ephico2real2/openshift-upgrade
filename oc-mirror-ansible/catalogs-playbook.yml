@@ -7,8 +7,8 @@
     - vars/credentials.yml
   vars:
     # Internal registry: host (add :port if it uses one) and the repository path under it
-    target_registry_fqdn: "artifactory.internal.repo"
-    target_registry_path: "ocp4"                    # e.g. docker-local/ocp4
+    target_registry_fqdn: "registry-lab.example.com:8443"   # one of the three registries (docs/PREREQUISITES.md)
+    target_registry_path: "ocp4"                    # the Quay organization
     target_registry_url: "{{ target_registry_fqdn }}/{{ target_registry_path }}"
     # Login scope in the auth file: the host (default) or the full path,
     # if the service account only has rights on that one repository
