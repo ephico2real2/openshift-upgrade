@@ -18,7 +18,7 @@ says what we run now, what replaces it, and what each host needs before the guid
 |---|---|---|
 | Registry software for Step 1 | **mirror registry for Red Hat OpenShift 2.0.x**, a fresh install on each of the three registry hosts | The current Red Hat release; it bundles Quay 3.12 and replaces PostgreSQL with SQLite |
 | Old registry | Keep it running until every cluster has moved; then retire it. Do not upgrade it in place | We are moving to new hosts and new names anyway, and only 1.3 → 2.x is a documented upgrade (see below) |
-| Content in the new registries | **Mirror again from Red Hat with oc-mirror v2**, pinned versions, lab first | Red Hat documents no way to copy mirror registry data between hosts; a fresh oc-mirror v2 run also writes the IDMS/ITMS and signatures the clusters need |
+| Content in the new registries | **Mirror again from Red Hat with oc-mirror v2**: each bastion downloads to disk once (mirror-to-disk, with a persistent cache), then pushes that archive into lab and production (disk-to-mirror) | Red Hat documents no way to copy mirror registry data between hosts; the cache means later runs fetch only what changed; one archive gives lab and production the same content |
 | Operating system | **RHEL 9** for the bastions and the registry hosts | The mirror registry supports "RHEL 8 and 9"; `oc` and `oc-mirror` 4.22 are built for RHEL 8 and RHEL 9 only. RHEL 10 is not documented for either |
 | Bastions | One per datacenter, RHEL 9, reaching Red Hat only through the enterprise proxy | Each bastion fills the registries in its own datacenter; no cross-datacenter pushes |
 
@@ -27,7 +27,8 @@ says what we run now, what replaces it, and what each host needs before the guid
 | Item | Today | Source |
 |---|---|---|
 | Registry | Red Hat's **mirror registry for Red Hat OpenShift**, the trimmed-down Quay installed with `mirror-registry install`, an old 1.x release (team report) | |
-| How it is filled | The manual sync described in [`PROBLEM-STATEMENT.md`](PROBLEM-STATEMENT.md); Step 1 replaces it with oc-mirror v2 and Ansible | |
+| How it is filled | **oc-mirror v1** (team report), run by hand: the manual sync described in [`PROBLEM-STATEMENT.md`](PROBLEM-STATEMENT.md). Step 1 replaces it with oc-mirror v2 and Ansible | |
+| On the clusters | v1 output: `ImageContentSourcePolicy` (ICSP) objects, CatalogSources and release-signature ConfigMaps | Red Hat 4.18, "Mirroring images for a disconnected installation using the oc-mirror plugin" |
 | Hosts | One registry host; the exact 1.x version, OS and disk are to be recorded with the commands below | |
 
 Record the old registry's facts before anything changes. On the registry host:
@@ -42,6 +43,24 @@ systemctl list-units 'quay-*'
 
 The Quay image tag gives the release: Quay 3.6 is mirror registry 1.0–1.1, 3.7 is 1.2, 3.8 is 1.3, and
 3.12 is 2.0 (from the `.env` image pins of each `quay/mirror-registry` tag).
+
+### What the old oc-mirror v1 process means for us
+
+Red Hat's 4.18 page for the tool we used ([Mirroring images for a disconnected installation using
+the oc-mirror plugin](https://docs.redhat.com/en/documentation/openshift_container_platform/4.18/html/disconnected_environments/installing-mirroring-disconnected),
+source `disconnected/installing-mirroring-disconnected.adoc`, `enterprise-4.18`) describes
+oc-mirror **v1**: "The oc-mirror v1 plugin is deprecated … migrate to the supported v2 plugin and
+use the `--v2` flag."
+
+| v1, as the old registry was filled | v2, as the new registries are filled | What it means for us |
+|---|---|---|
+| `ImageSetConfiguration` `mirror.openshift.io/v1alpha2` with a required `storageConfig` for metadata: "You must use the same storage backend every time" | `v2alpha1`, no `storageConfig`; state lives in the cache and each archive's `working-dir` | The old metadata is not reused. The new registries start clean |
+| Mirror-to-disk writes `mirror_seq1_000000.tar`; disk-to-mirror takes `--from=<tar>` | `oc mirror -c <isc> file://<dir> --v2`, then `oc mirror -c <isc> --from file://<dir> docker://<registry> --v2` | Same idea, new commands; the playbooks run them (`m2d`, `d2m`) |
+| Incremental: "you only download the images that changed since the last time" | Incremental through the cache, used by mirror-to-disk and disk-to-mirror | Why we keep one cache per bastion |
+| **Prunes** images dropped from the ImageSet ("Replacing by `stable-4.13` prunes all the images of `stable-4.12`"); `--dry-run` writes `pruning-plan.json` | Never prunes on its own; deleting is a separate `oc mirror delete` workflow | Old versions stay in the new registries until someone deletes them on purpose |
+| Writes ICSP, CatalogSources and `release-signatures/` under `oc-mirror-workspace/results-*` | Writes IDMS, ITMS, CatalogSources, ClusterCatalogs, signature ConfigMaps and `updateService.yaml` under `working-dir/cluster-resources` | The clusters carry ICSPs today; moving to the new registries adds IDMS/ITMS and later removes the ICSPs (cutover below) |
+| "Use the latest available version of the oc-mirror plugin regardless of which versions of OpenShift you need to mirror"; Quay "version 3.6 or later" | Same | Install the newest `oc-mirror` on the bastions; mirror registry 2.0 is Quay 3.12 |
+| "any further updates to the target mirror registry must be made by using the oc-mirror plugin" | Same | Nothing else writes into the new registries |
 
 ### What changed in the new release
 
@@ -129,24 +148,48 @@ the bastion of that datacenter fills it.
 
 ### Order of a mirroring cycle
 
-1. Dry-run on the DC1 bastion; size and agree the pinned versions (release guide, "Mirroring an
-   upgrade path").
-2. Mirror into **`registry-lab`** and update a lab cluster with that content.
-3. With the **same pinned versions and ImageSets**, mirror into **`registry-dc1`** (DC1 bastion) and
-   **`registry-dc2`** (DC2 bastion).
-4. Production clusters in each datacenter use their own registry's `cluster-resources`.
+Each bastion downloads once and pushes the same archive into every registry it fills. The
+playbooks do this with `oc_mirror_workflow=m2d` (Red Hat → archive) and `oc_mirror_workflow=d2m`
+(archive → one registry).
 
-Each run is a mirror-to-mirror run straight from Red Hat, with **its own workspace per registry** (e.g. `/data/oc-mirror/workspace-dc1-run-a`): Red Hat ties incremental updates to the same image set configuration and destination registry (`modules/oc-mirror-updating-registry-about.adoc`). Release images are pinned by digest, so
-the three registries hold the same release content. Operator catalogs are rebuilt by each run from
-the catalog image of the day; for byte-identical catalogs across the three, mirror on the same day,
-or move to oc-mirror's mirror-to-disk / disk-to-mirror workflow (one archive, pushed three times),
-which the playbooks do not do yet.
+| Step | DC1 bastion | DC2 bastion |
+|---|---|---|
+| 1 | Dry-run the download; size it; agree the pinned versions (release guide, "Mirroring an upgrade path") | |
+| 2 | **Download** (`m2d`) into `/data/oc-mirror/archive-<run>`, filling the cache | |
+| 3 | **Push** (`d2m`) into `registry-lab`; update a lab cluster with that content | |
+| 4 | **Push** the same archive into `registry-dc1` | **Download** with the same pinned ImageSet into its own archive and cache, then **push** into `registry-dc2` |
+| 5 | Production clusters in DC1 apply `registry-dc1`'s `cluster-resources` | Production clusters in DC2 apply `registry-dc2`'s |
 
-**Mirror-to-mirror has no cache.** Red Hat: the mirror-to-mirror workflow "does not use a cache,
-restarts from the beginning after a failure, and requires no additional disk space"
-(`modules/oc-mirror-workflows-table.adoc`). A rerun after a failure starts over; image layers
-already in the registry are not uploaded again (our reading of how `containers/image` checks the
-destination, not a Red Hat statement).
+- **Same content in lab and DC1:** one archive, pushed twice.
+- **DC2 downloads for itself** (team decision, 2026-10-07): no copy between datacenters. Release
+  images are pinned by digest, so DC2 gets the same releases. Operator catalogs are built from the
+  catalog image of the day, so run DC2's download soon after DC1's and compare the catalog digests
+  before pushing:
+
+  ```bash
+  skopeo inspect --format '{{.Digest}}' docker://registry.redhat.io/redhat/redhat-operator-index:v4.18
+  ```
+
+- **Each push writes that registry's cluster resources** to
+  `/data/oc-mirror/cluster-resources/<archive>-<registry>/`. Hand a cluster only the folder of the
+  registry it pulls from.
+
+### The cache
+
+The cache is what makes the road from 4.18 to 4.22 cheap: each download fetches only what earlier
+downloads have not.
+
+- Red Hat: "The oc-mirror plugin uses the cache in the `mirror-to-disk` and `disk-to-mirror`
+  workflows … to perform incremental mirroring and avoids remirroring unchanged images". It "only
+  contains data up to the last successful mirroring operation", so a failed run resumes from there
+  (`modules/oc-mirror-about-cache-and-workspace-dirs.adoc`).
+- **One cache per bastion, on `/data`, for the whole road.** Never delete it between runs: "If you
+  delete or corrupt the cache directory, the oc-mirror plugin pulls the image blobs and manifests
+  again, which can force a full remirror". Do not edit an archive's `working-dir` either.
+- **Back it up:** "Place the cache and workspace directories on reliable and backed-up storage."
+- Straight registry-to-registry runs (`m2m`) skip the cache entirely: "does not use a cache,
+  restarts from the beginning after a failure" (`modules/oc-mirror-workflows-table.adoc`). Keep
+  them for small top-ups only.
 
 ## Operating system: RHEL 9
 
@@ -178,7 +221,7 @@ Everything the release and catalog guides do on "the mirror host" runs here.
 |---|---|---|
 | OS | RHEL 9, registered (packages through the proxy) | See above |
 | CPU, memory | 4 vCPU, 16 GB RAM | Our sizing for parallel pulls (`--parallel-images 4`); Red Hat gives no figure for an oc-mirror host |
-| Disk | `/data` volume, 500 GB to start, on backed-up storage | Mirror-to-mirror needs little: workspace, logs, `cluster-resources`. Size it to 1 TB or more if the team adopts mirror-to-disk ("requires additional disk space"); Red Hat says to put cache and workspace "on reliable and backed-up storage" |
+| Disk | `/data` volume, **2 TB**, on backed-up storage | Holds the cache for the whole road plus the archives (each run's images again, as tar files) and `cluster-resources`. Red Hat: mirror-to-disk "uses an internal cache to resume after failures but requires additional disk space", and "might download several hundreds of gigabytes"; size from the dry-runs. Archives can be deleted once every registry the bastion fills has been pushed; the cache stays |
 | Packages | `podman`, `skopeo`, `jq`, `tmux`, `ansible-core`, `git`, `openssl` | Release guide, Step 2 |
 | Binaries | `oc` and `oc-mirror` from the RHEL 9 tarballs (`openshift-client-linux-amd64-rhel9-*.tar.gz`, `oc-mirror.rhel9.tar.gz`), the newest 4.22 | "Installing `oc` by using an RPM package is not supported on RHEL 9"; release guide, Step 3 |
 | Proxy | `HTTPS_PROXY`/`NO_PROXY` set on the host, `NO_PROXY` listing `localhost,127.0.0.1` and this datacenter's registries | Release guide, Step 1 |
@@ -236,12 +279,15 @@ ansible-vault create vars/registry-dc1.yml
 #   target_registry_user: "ocp4+mirror"
 #   target_registry_password: "<robot token>"
 
-ansible-playbook playbook.yml --ask-vault-pass -e @vars/registry-dc1.yml \
-  -e workspace_path=/data/oc-mirror/workspace-dc1 -e oc_mirror_dry_run=true
+# download once (Red Hat credentials only), then push into each registry with its own file
+ansible-playbook playbook.yml --ask-vault-pass -e oc_mirror_workflow=m2d -e archive_name=archive-run-a
+ansible-playbook playbook.yml --ask-vault-pass -e oc_mirror_workflow=d2m -e archive_name=archive-run-a -e @vars/registry-lab.yml
+ansible-playbook playbook.yml --ask-vault-pass -e oc_mirror_workflow=d2m -e archive_name=archive-run-a -e @vars/registry-dc1.yml
 ```
 
-Keep `vars/credentials.yml` as the lab registry's file. Add `vars/registry-*.yml` to `.gitignore`
-before creating them.
+`vars/credentials.yml` must still exist, because the playbooks load it; keep the lab registry's
+robot there and always pass the registry's own file with `-e @`. `vars/registry-*.yml` is in
+`oc-mirror-ansible/.gitignore`.
 
 ## Network flows
 
@@ -275,15 +321,15 @@ new registry holds the content for the cluster's current version and its next ta
 
 Sources: `docs422 modules/images-configuration-registry-mirror.adoc`,
 `snippets/node-icsp-no-drain.adoc` ("The node drain does not happen for … the addition of a mirror with the
-`pull-from-mirror = "digest-only"` parameter"). Steps 3b and 7 each drain the nodes; plan a window for each. If the old registry was filled with oc-mirror v1 or
-`oc adm release mirror`, its cluster objects are ICSPs, which oc-mirror v2 replaces with IDMS/ITMS
-(`modules/oc-mirror-migration-differences.adoc`).
+`pull-from-mirror = "digest-only"` parameter"). Steps 3b and 7 each drain the nodes; plan a window for each. The old registry was filled with oc-mirror v1, so its cluster objects are ICSPs, which oc-mirror v2
+replaces with IDMS/ITMS (`modules/oc-mirror-migration-differences.adoc`). List them before the
+cutover with `oc get imagecontentsourcepolicy`; step 7 deletes those.
 
 ## Checklist
 
-- [ ] Old registry recorded: mirror registry version (Quay tag), OS, disk, which clusters use it
+- [ ] Old registry recorded: mirror registry version (Quay tag), OS, disk, which clusters use it, and each cluster's ICSPs (`oc get imagecontentsourcepolicy`; filled by oc-mirror v1)
 - [ ] Lab datacenter confirmed; five hostnames agreed and in DNS
-- [ ] Five RHEL 9 hosts built and registered; `/data` volumes attached
+- [ ] Five RHEL 9 hosts built and registered; 2 TB backed-up `/data` on each bastion for the cache and archives
 - [ ] Internal-CA certificates issued for the three registry FQDNs
 - [ ] Firewall: bastions → proxy 443; bastions → registries 8443 and 22; clusters → their registry 8443
 - [ ] Proxy allowlist for the bastions approved (release guide, Step 1)

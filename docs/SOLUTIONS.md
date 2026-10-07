@@ -98,7 +98,7 @@ disconnected mirroring from 4.18 to 4.22.
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../oc-mirror-ansible/docs/diagrams/mirroring/run-flow.dark.png">
   <source srcset="../oc-mirror-ansible/docs/diagrams/mirroring/run-flow.light.png">
-  <img alt="One Step 1 release run. On the mirroring bastion: start the playbook in tmux with the Vault password; it checks the Red Hat pull secret, writes a private auth file and renders the ImageSet. A dry-run lists what would be copied; anything in missing.txt is fixed first. The real run retries each image five times, then the whole run up to three more times two minutes apart; a mirror-to-mirror run uses no cache, so each attempt starts over. The auth file is removed even when the run fails. Then verify the tags, the .sig tags and the cluster-resources folder. In the cluster's change window an admin trusts the registry CA, applies the renamed IDMS and ITMS, the signatures and CatalogSources, sets up the Update Service, and oc adm upgrade lists the target." src="../oc-mirror-ansible/docs/diagrams/mirroring/run-flow.light.png">
+  <img alt="One Step 1 release run. On the mirroring bastion: start the playbook in tmux with the Vault password; it checks the Red Hat pull secret, writes a private auth file and renders the ImageSet. A dry-run lists what would be copied; anything in missing.txt is fixed first. The real run downloads into an archive on the bastion and then pushes that archive into the lab registry, later the production registry; it retries each image five times, then the whole run up to three more times two minutes apart, and the cache lets a rerun resume. The auth file is removed even when the run fails. Then verify the tags, the .sig tags and the cluster-resources folder. In the cluster's change window an admin trusts the registry CA, applies the renamed IDMS and ITMS, the signatures and CatalogSources, sets up the Update Service, and oc adm upgrade lists the target." src="../oc-mirror-ansible/docs/diagrams/mirroring/run-flow.light.png">
 </picture>
 
 *One Step 1 release run, as the playbooks and guide do it today. Red boxes are what stops a run and
@@ -109,7 +109,7 @@ MIRRORING BASTION                                       CLUSTER, change window
 1 ansible-playbook in tmux, Vault password              7 registry login + CA trust
 2 check pull secret (quay.io, registry.redhat.io)       8 apply cluster-resources (IDMS/ITMS renamed per run,
 3 dry-run: mapping.txt; fix anything in missing.txt       signature ConfigMap, CatalogSources)
-4 real run: 5 retries per image, up to 3 more runs      9 Update Service, spec.upstream, restart on new graph
+4 download (m2d) + cache, push (d2m) per registry   9 Update Service, spec.upstream, restart on new graph
 5 auth file removed, even on failure                    10 oc adm upgrade lists the target
 6 verify tags, .sig tags, cluster-resources/  --hand over-->
 ```
@@ -123,8 +123,9 @@ MIRRORING BASTION                                       CLUSTER, change window
   and never written in plain text to the playbook folder.
 - **The corporate proxy on the bastions only:** the clusters stay disconnected.
 - **Fewer failed syncs:** a dry-run first to size the run, retries and longer timeouts for the
-  failures we saw, and a fixed workspace per registry and run. A failed run starts again from the
-  beginning: Red Hat's mirror-to-mirror workflow uses no cache.
+  failures we saw, and a persistent cache: each bastion downloads to disk once (oc-mirror's
+  mirror-to-disk), so a failed run resumes and later runs fetch only what changed, then pushes the
+  same archive into lab and production (disk-to-mirror).
 - **The whole road at once:** the playbooks can mirror 4.18 → 4.20 → 4.22 back to back, before any
   cluster updates, using the shortest path in each EUS channel.
 - **A local OpenShift Update Service:** the clusters see the same recommended update paths as a
@@ -220,7 +221,7 @@ One instance can serve every cluster. It must be restarted after each sync to lo
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/three-steps/quay-sync.dark.png">
   <source srcset="diagrams/three-steps/quay-sync.light.png">
-  <img alt="Step 3's scheduled sync. A systemd timer on the datacenter's mirroring bastion fires; flock skips the run if the last one is still going. The Step 1 playbooks run oc-mirror v2 mirror-to-mirror with a fixed workspace per channel and per Quay; a run that fails after its retries raises an alert, and the next run starts again from the beginning. The Update Service is restarted to load the new graph image. A cluster admin applies the run's cluster resources in a change window, and the cluster then lists the new versions." src="diagrams/three-steps/quay-sync.light.png">
+  <img alt="Step 3's scheduled sync. A systemd timer on the datacenter's mirroring bastion fires; flock skips the run if the last one is still going. The Step 1 playbooks download to disk with a persistent cache, then push the archive into Quay; a run that fails after its retries raises an alert, and the next run resumes from the cache. The Update Service is restarted to load the new graph image. A cluster admin applies the run's cluster resources in a change window, and the cluster then lists the new versions." src="diagrams/three-steps/quay-sync.light.png">
 </picture>
 
 *One run of the proposed Step 3 schedule, from a bastion's timer to the clusters.*
@@ -230,7 +231,7 @@ BASTION (per datacenter)            QUAY                          CLUSTERS
 1 timer fires                       4 org ocp4: release, .sig,    5 restart the OSUS (new graph)
 2 flock: busy -> skip this run        catalogs, graph-image       6 admin applies cluster-resources
 3 Step 1 playbooks; fail -> alert,                                7 oc adm upgrade lists new versions
-  the next run starts over  --push-->
+  next run resumes (cache) --push-->
 ```
 
 **Where Quay runs:** not on a cluster it serves. Either the Quay Operator on a separate infra or hub

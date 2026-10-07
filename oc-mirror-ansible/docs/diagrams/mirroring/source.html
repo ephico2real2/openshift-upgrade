@@ -69,7 +69,7 @@ a { color: var(--remote); }
     <p class="muted">From the playbook on the mirror host to oc adm upgrade on the cluster.</p>
     <figure>
       <div class="fig-scroll">
-<svg viewBox="0 0 1000 720" role="img" aria-label="One Step 1 release run. On the mirroring bastion: start the playbook in tmux with the Vault password; it checks the Red Hat pull secret, writes a private auth file and renders the ImageSet. A dry-run lists what would be copied; anything in missing.txt is fixed first. The real run retries each image five times, then the whole run up to three more times two minutes apart; a mirror-to-mirror run uses no cache, so each attempt starts over. The auth file is removed even when the run fails. Then verify the tags, the .sig tags and the cluster-resources folder. In the cluster's change window an admin trusts the registry CA, applies the renamed IDMS and ITMS, the signatures and CatalogSources, sets up the Update Service, and oc adm upgrade lists the target.">
+<svg viewBox="0 0 1000 720" role="img" aria-label="One Step 1 release run. On the mirroring bastion: start the playbook in tmux with the Vault password; it checks the Red Hat pull secret, writes a private auth file and renders the ImageSet. A dry-run lists what would be copied; anything in missing.txt is fixed first. The real run downloads into an archive on the bastion and then pushes that archive into the lab registry, later the production registry; it retries each image five times, then the whole run up to three more times two minutes apart, and the cache lets a rerun resume. The auth file is removed even when the run fails. Then verify the tags, the .sig tags and the cluster-resources folder. In the cluster's change window an admin trusts the registry CA, applies the renamed IDMS and ITMS, the signatures and CatalogSources, sets up the Update Service, and oc adm upgrade lists the target.">
 <defs><marker id="am1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
 <g font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="currentColor">
 <rect x="20" y="14" width="610" height="30" rx="6" fill="var(--host-wash)" stroke="var(--host)"/>
@@ -101,13 +101,13 @@ a { color: var(--remote); }
 <text x="515.0" y="276.0" fill="var(--gap)" text-anchor="middle">fix the ImageSet, dry-run again</text>
 <path d="M195,294 L195,312" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#am1)"/>
 <rect x="30" y="316" width="330" height="62" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
-<text x="46" y="334.5" fill="currentColor" font-weight="600">④ the real run: oc-mirror --v2</text>
-<text x="46" y="351.5" fill="currentColor">5 retries per image, then up to 3 more</text>
-<text x="46" y="368.5" fill="var(--muted)">runs, 2 min apart; each starts over</text>
+<text x="46" y="334.5" fill="currentColor" font-weight="600">④ download, then push</text>
+<text x="46" y="351.5" fill="currentColor">m2d: Red Hat → archive + cache</text>
+<text x="46" y="368.5" fill="var(--muted)">d2m: archive → lab, later production</text>
 <path d="M360,347 L396,347" fill="none" stroke="var(--gap)" stroke-width="1.4" marker-end="url(#am1)"/>
 <rect x="400" y="322" width="230" height="50" rx="8" fill="var(--gap-wash)" stroke="var(--gap)" stroke-width="1.5"/>
-<text x="515.0" y="343.0" fill="var(--gap)" text-anchor="middle">every attempt fails → rerun</text>
-<text x="515.0" y="360.0" fill="var(--gap)" text-anchor="middle">later, same workspace</text>
+<text x="515.0" y="343.0" fill="var(--gap)" text-anchor="middle">5 retries per image, 3 runs</text>
+<text x="515.0" y="360.0" fill="var(--gap)" text-anchor="middle">all fail → rerun; cache resumes</text>
 <path d="M195,378 L195,396" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#am1)"/>
 <rect x="30" y="400" width="330" height="62" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
 <text x="46" y="418.5" fill="currentColor" font-weight="600">⑤ auth file removed</text>
@@ -146,7 +146,7 @@ a { color: var(--remote); }
 <text x="706" y="400.5" fill="currentColor" font-weight="600">⑩ oc adm upgrade</text>
 <text x="706" y="417.5" fill="currentColor">lists the mirrored target</text>
 <text x="706" y="434.5" fill="var(--muted)">then the EUS update steps</text>
-<text x="20" y="650" fill="var(--muted)">The same playbook mirrors a range (min, max, shortest_path) for the upgrade path; the catalog playbook follows the same shape.</text>
+<text x="20" y="650" fill="var(--muted)">One archive, pushed into each registry: lab and production get the same content. The catalog playbook follows the same shape.</text>
 <text x="20" y="672" fill="var(--muted)">Red boxes: what stops the run and what fixes it. Release runs never use --remove-signatures.</text>
 <text x="20" y="698" fill="var(--host)" font-weight="600">Solid = what the playbooks and guides do today: tested with stand-ins, not yet against our registry.</text>
 </g>

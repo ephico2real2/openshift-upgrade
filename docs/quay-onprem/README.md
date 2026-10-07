@@ -130,17 +130,18 @@ under `metadata`; corrected here).
 Run the step 1 playbooks against Quay from the mirror host, with `target_registry_fqdn` set to Quay
 and `target_registry_path=ocp4`.
 
-For scheduled runs, keep **one fixed workspace per channel and per Quay** and the same ImageSet each
-time. Red Hat ties incremental updates to the same "image set configuration", "destination
-registry" and "storage configuration" (`modules/oc-mirror-updating-registry-about.adoc`). The runs
-are mirror-to-mirror, which "does not use a cache, restarts from the beginning after a failure"
-(`modules/oc-mirror-workflows-table.adoc`). Red Hat gives no scheduling guidance; a systemd
+Each scheduled run downloads to disk (`oc_mirror_workflow=m2d`) and then pushes that archive into
+Quay (`d2m`), with the same ImageSet each time and one persistent cache on the bastion's `/data`.
+Red Hat: the cache is used "in the `mirror-to-disk` and `disk-to-mirror` workflows" to "perform
+incremental mirroring and avoids remirroring unchanged images"
+(`modules/oc-mirror-about-cache-and-workspace-dirs.adoc`), so a weekly run fetches only what changed
+and a failed run resumes from the last success ([`PREREQUISITES.md`](../PREREQUISITES.md), "The cache"). Red Hat gives no scheduling guidance; a systemd
 timer on the mirror host is a simple choice.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../diagrams/three-steps/quay-sync.dark.png">
   <source srcset="../diagrams/three-steps/quay-sync.light.png">
-  <img alt="Step 3's scheduled sync. A systemd timer on the datacenter's mirroring bastion fires; flock skips the run if the last one is still going. The Step 1 playbooks run oc-mirror v2 mirror-to-mirror with a fixed workspace per channel and per Quay; a run that fails after its retries raises an alert, and the next run starts again from the beginning. The Update Service is restarted to load the new graph image. A cluster admin applies the run's cluster resources in a change window, and the cluster then lists the new versions." src="../diagrams/three-steps/quay-sync.light.png">
+  <img alt="Step 3's scheduled sync. A systemd timer on the datacenter's mirroring bastion fires; flock skips the run if the last one is still going. The Step 1 playbooks download to disk with a persistent cache, then push the archive into Quay; a run that fails after its retries raises an alert, and the next run resumes from the cache. The Update Service is restarted to load the new graph image. A cluster admin applies the run's cluster resources in a change window, and the cluster then lists the new versions." src="../diagrams/three-steps/quay-sync.light.png">
 </picture>
 
 *One run of the proposed schedule. Steps ① to ③ use the Step 1 playbooks, which exist today; Quay
@@ -151,10 +152,10 @@ BASTION (per datacenter)            QUAY                          CLUSTERS
 1 timer fires                       4 org ocp4: release, .sig,    5 restart the OSUS (new graph)
 2 flock: busy -> skip this run        catalogs, graph-image       6 admin applies cluster-resources
 3 Step 1 playbooks; fail -> alert,                                7 oc adm upgrade lists new versions
-  the next run starts over  --push-->
+  next run resumes (cache) --push-->
 ```
 
-The two units:
+The service, the script it runs, and the timer:
 
 ```ini
 # /etc/systemd/system/oc-mirror-release.service
@@ -166,11 +167,21 @@ Type=oneshot
 User=ocmirror
 WorkingDirectory=/home/ocmirror/openshift-upgrade/oc-mirror-ansible
 EnvironmentFile=/etc/profile.d/proxy.sh
-ExecStart=/usr/bin/flock -n /data/oc-mirror/.lock \
-  /usr/bin/ansible-playbook playbook.yml --vault-password-file /home/ocmirror/.vault-pass-oc-mirror \
-  -e target_registry_fqdn=quay.example.com -e target_registry_path=ocp4 \
-  -e ocp_channel=eus-4.22 -e ocp_min_version=<current> -e ocp_max_version=<target> -e shortest_path=true \
-  -e workspace_path=/data/oc-mirror/workspace-eus-4.22
+ExecStart=/usr/bin/flock -n /data/oc-mirror/.lock /home/ocmirror/bin/sync-eus-4.22.sh
+```
+
+The script downloads, then pushes into this datacenter's Quay, with the same ImageSet each week:
+
+```bash
+#!/bin/bash
+# /home/ocmirror/bin/sync-eus-4.22.sh
+set -euo pipefail
+cd /home/ocmirror/openshift-upgrade/oc-mirror-ansible
+RUN="--vault-password-file /home/ocmirror/.vault-pass-oc-mirror
+  -e ocp_channel=eus-4.22 -e ocp_min_version=<current> -e ocp_max_version=<target>
+  -e shortest_path=true -e archive_name=archive-eus-4.22"
+ansible-playbook playbook.yml $RUN -e oc_mirror_workflow=m2d                                  # Red Hat -> /data, uses the cache
+ansible-playbook playbook.yml $RUN -e oc_mirror_workflow=d2m -e @vars/registry-quay-dc1.yml  # /data -> Quay
 ```
 
 ```ini
