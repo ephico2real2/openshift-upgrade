@@ -1100,7 +1100,8 @@ The figures are drawn in [`diagrams/mirroring/source.html`](diagrams/mirroring/s
 to the PNGs beside it with [diagram-kit](https://github.com/ephico2real2/diagram-kit):
 
 ```sh
-diagram-render oc-mirror-ansible/docs/diagrams/mirroring/source.html \
+# once: see PROBLEM-STATEMENT.md, Diagram sources, for installing diagram-kit into .venv
+.venv/bin/diagram-render oc-mirror-ansible/docs/diagrams/mirroring/source.html \
   oc-mirror-ansible/docs/diagrams/mirroring run-flow,network-routes,upgrade-path-runs
 ```
 

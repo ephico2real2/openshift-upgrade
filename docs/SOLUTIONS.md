@@ -272,9 +272,10 @@ The figures are drawn in [`diagrams/three-steps/source.html`](diagrams/three-ste
 and rendered to the PNGs beside them with [diagram-kit](https://github.com/ephico2real2/diagram-kit):
 
 ```sh
-diagram-render docs/diagrams/three-steps/source.html docs/diagrams/three-steps \
+# once: see PROBLEM-STATEMENT.md, Diagram sources, for installing diagram-kit into .venv
+.venv/bin/diagram-render docs/diagrams/three-steps/source.html docs/diagrams/three-steps \
   three-steps,decision,retrofit,quay-sync
-diagram-render oc-mirror-ansible/docs/diagrams/mirroring/source.html oc-mirror-ansible/docs/diagrams/mirroring \
+.venv/bin/diagram-render oc-mirror-ansible/docs/diagrams/mirroring/source.html oc-mirror-ansible/docs/diagrams/mirroring \
   run-flow,network-routes,upgrade-path-runs
 ```
 

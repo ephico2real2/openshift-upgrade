@@ -268,11 +268,19 @@ Industry sources:
 ## Diagram sources
 
 The first three figures are drawn in [`diagrams/disconnected-update-problem/source.html`](diagrams/disconnected-update-problem/source.html)
-and rendered to the PNGs beside it with [diagram-kit](https://github.com/ephico2real2/diagram-kit):
+and rendered to the PNGs beside it with [diagram-kit](https://github.com/ephico2real2/diagram-kit) (MPL-2.0), which
+writes them only when its checks pass:
 
 ```sh
-diagram-render docs/diagrams/disconnected-update-problem/source.html \
-  docs/diagrams/disconnected-update-problem today,road,fixes-per-month
+# once: the kit, pinned, and its Chromium
+python3 -m venv .venv
+.venv/bin/pip install "diagram-kit @ git+https://github.com/ephico2real2/diagram-kit@v0.2.0"
+.venv/bin/playwright install chromium
+
+.venv/bin/diagram-render \
+  docs/diagrams/disconnected-update-problem/source.html \
+  docs/diagrams/disconnected-update-problem \
+  today,road,fixes-per-month
 ```
 
 The three-steps figure is drawn in [`diagrams/three-steps/source.html`](diagrams/three-steps/source.html);
