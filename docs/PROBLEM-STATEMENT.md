@@ -279,10 +279,16 @@ Industry sources:
 ## Diagram sources
 
 The four figures are drawn in [`diagrams/disconnected-update-problem/source.html`](diagrams/disconnected-update-problem/source.html)
-and rendered to the PNGs beside it:
+and rendered to the PNGs beside it with [diagram-kit](https://github.com/ephico2real2/diagram-kit) (MPL-2.0), which
+writes them only when its checks pass:
 
 ```sh
-python3 ~/.claude/skills/visual/render.py \
+# once: the kit, pinned, and its Chromium
+python3 -m venv .venv
+.venv/bin/pip install "diagram-kit @ git+https://github.com/ephico2real2/diagram-kit@v0.2.0"
+.venv/bin/playwright install chromium
+
+.venv/bin/diagram-render \
   docs/diagrams/disconnected-update-problem/source.html \
   docs/diagrams/disconnected-update-problem \
   today,road,fixes-per-month,game-plan
