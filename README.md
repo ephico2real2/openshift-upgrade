@@ -8,6 +8,7 @@ The plan, in three steps: (1) refine the current manual sync, done with the Ansi
 
 | Start here | What it is |
 |---|---|
+| [`docs/PREREQUISITES.md`](docs/PREREQUISITES.md) | Build first: a mirroring bastion per datacenter and the lab and two production mirror registries (RHEL 9), replacing the old mirror registry 1.x |
 | [`docs/SOLUTIONS.md`](docs/SOLUTIONS.md) | The three steps side by side, the recommendation and the decisions needed (Word copy: `docs/SOLUTIONS.docx`) |
 | [`docs/enterprise-proxy/`](docs/enterprise-proxy/README.md) | Step 2: runbook to retrofit a disconnected cluster to reach Red Hat through the enterprise proxy |
 | [`docs/quay-onprem/`](docs/quay-onprem/README.md) | Step 3: Red Hat Quay on-prem, filled on a schedule, with the OpenShift Update Service |

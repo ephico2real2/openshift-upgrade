@@ -19,7 +19,7 @@ Steps 1–9 run on the mirror host. Step 10 is done on the disconnected cluster 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/mirroring/run-flow.dark.png">
   <source srcset="diagrams/mirroring/run-flow.light.png">
-  <img alt="One Step 1 release run. On the mirror host: start the playbook in tmux with the Vault password; it checks the Red Hat pull secret, writes a private auth file and renders the ImageSet. A dry-run lists what would be copied; anything in missing.txt is fixed first. The real run retries each image five times, then the whole run up to three more times two minutes apart, and the cache keeps what was copied. The auth file is removed even when the run fails. Then verify the tags, the .sig tags and the cluster-resources folder. In the cluster's change window an admin trusts the registry CA, applies the renamed IDMS and ITMS, the signatures and CatalogSources, sets up the Update Service, and oc adm upgrade lists the target." src="diagrams/mirroring/run-flow.light.png">
+  <img alt="One Step 1 release run. On the mirroring bastion: start the playbook in tmux with the Vault password; it checks the Red Hat pull secret, writes a private auth file and renders the ImageSet. A dry-run lists what would be copied; anything in missing.txt is fixed first. The real run retries each image five times, then the whole run up to three more times two minutes apart; a mirror-to-mirror run uses no cache, so each attempt starts over. The auth file is removed even when the run fails. Then verify the tags, the .sig tags and the cluster-resources folder. In the cluster's change window an admin trusts the registry CA, applies the renamed IDMS and ITMS, the signatures and CatalogSources, sets up the Update Service, and oc adm upgrade lists the target." src="diagrams/mirroring/run-flow.light.png">
 </picture>
 
 *One release run, end to end. The circled numbers are the order of a run, not this guide's step
@@ -27,7 +27,7 @@ numbers: ① to ⑥ happen in Steps 8 and 9, ⑦ to ⑩ in Step 10. Red boxes ar
 fixes it.*
 
 ```text
-MIRROR HOST                                             CLUSTER, change window
+MIRRORING BASTION                                       CLUSTER, change window
 1 ansible-playbook in tmux, Vault password              7 registry login + CA trust
 2 check pull secret (quay.io, registry.redhat.io)       8 apply cluster-resources (IDMS/ITMS renamed per run,
 3 dry-run: mapping.txt; fix anything in missing.txt       signature ConfigMap, CatalogSources)
@@ -40,14 +40,14 @@ The proxy is set on the host, not in the playbook. `oc` and `oc-mirror` inherit 
 
 ## Before you start
 
-Get these from other teams before you touch the host. Each later step assumes you have them.
+Get these from other teams before you touch the host. Each later step assumes you have them. The hosts themselves (one mirroring bastion per datacenter, and the lab and two production registries) are specified in [`PREREQUISITES.md`](../../docs/PREREQUISITES.md); build them first.
 
-- [ ] **Mirror host**: a RHEL 9 VM you can SSH to, with `sudo` rights and a registered subscription (`sudo subscription-manager status`)
-- [ ] **Disk**: at least 100 GB free on a data volume, e.g. mounted at `/data` (one release is tens of GB, and the cache is kept between runs)
+- [ ] **Mirror host**: the mirroring bastion of your datacenter, RHEL 9, that you can SSH to, with `sudo` rights and a registered subscription (`sudo subscription-manager status`). In this guide "mirror host" means that bastion
+- [ ] **Disk**: a data volume mounted at `/data`, sized as in [`PREREQUISITES.md`](../../docs/PREREQUISITES.md) (workspaces, logs and `cluster-resources`; the images themselves land on the registry host)
 - [ ] **Red Hat account**: the login your team uses for console.redhat.com (ask your lead which one; don't use a personal account unless told to)
 - [ ] **Proxy**: the address and port (e.g. `proxy.corp:8080`), and whether it needs a username
 - [ ] **Proxy CA certificate**: only if the proxy re-signs HTTPS traffic; ask the network team for the `.crt` file
-- [ ] **Internal registry**: the exact **host** (with `:port` if it uses one), the **repository path** under it (e.g. `ocp4` or `docker-local/ocp4`), a service account that can push, and whether that account is limited to that one path (Step 5)
+- [ ] **Registry**: which of the three registries this run fills (`registry-lab`, `registry-dc1` or `registry-dc2`, port 8443), its `ocp4` organization, and a robot account that can write to it (Step 5)
 - [ ] **Release**: `eus-4.18` channel, version `4.18.17` (this guide's defaults)
 - [ ] **Cluster admin for Step 10**: someone with `cluster-admin` on the disconnected cluster to install the Update Service
 
@@ -62,13 +62,13 @@ Internet traffic goes through the proxy. Local and internal traffic must bypass 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/mirroring/network-routes.dark.png">
   <source srcset="diagrams/mirroring/network-routes.light.png">
-  <img alt="Routes from the mirror host during a run. Everything not in NO_PROXY goes through the corporate proxy to Red Hat: quay.io, registry.redhat.io, api.openshift.com for the update graph and registry.access.redhat.com. Local and internal traffic must go direct: oc-mirror's temporary local registry on localhost:55000 and the internal registry. If localhost is sent to the proxy, the run fails on localhost:55000." src="diagrams/mirroring/network-routes.light.png">
+  <img alt="Routes from the mirroring bastion during a run. Everything not in NO_PROXY goes through the corporate proxy to Red Hat: quay.io, registry.redhat.io, api.openshift.com for the update graph and registry.access.redhat.com. Local and internal traffic must go direct: oc-mirror's temporary local registry on localhost:55000 and the mirror registries in the bastion's datacenter. If localhost is sent to the proxy, the run fails on localhost:55000." src="diagrams/mirroring/network-routes.light.png">
 </picture>
 
 ```text
-mirror host --(everything not in NO_PROXY)--> corporate proxy --> quay.io, registry.redhat.io,
+bastion --(everything not in NO_PROXY)--> corporate proxy --> quay.io, registry.redhat.io,
                                                                   api.openshift.com, registry.access.redhat.com
-mirror host --(direct, in NO_PROXY)--> localhost:55000 (oc-mirror's own registry), registry-lab / registry-dc1
+bastion --(direct, in NO_PROXY)--> localhost:55000 (oc-mirror's own registry), registry-lab / registry-dc1
 ```
 
 If either direct route goes through the proxy instead, the run fails.
@@ -206,7 +206,7 @@ Ansible Vault encrypts files with a password (AES-256), so secrets can sit in th
 | File | Holds | Created in |
 | --- | --- | --- |
 | `vars/redhat-pull-secret.json` | The Red Hat pull secret (JSON) for `quay.io` and `registry.redhat.io` | This section, then checked in Step 4 |
-| `vars/credentials.yml` | The internal registry service account | Step 6 |
+| `vars/credentials.yml` | The registry robot account (lab); one more file per registry, `vars/registry-*.yml` ([`PREREQUISITES.md`](../../docs/PREREQUISITES.md)) | Step 6 |
 
 `ansible-vault` comes with `ansible-core` (Step 2). Run every command below from `~/oc-mirror-ansible`.
 
@@ -358,32 +358,35 @@ The playbook mirrors the OSUS operator as package `cincinnati-operator`, channel
 
 If the Red Hat account changes, or someone resets the pull secret in the console, update the file with `ansible-vault edit vars/redhat-pull-secret.json`. Don't copy this secret into the disconnected cluster.
 
-## Step 5 — Prepare the internal registry
+## Step 5 — Prepare the registry
 
-The images land in a Docker repository on your registry. Write down three values; they become playbook variables in Step 8:
+The images land in one of the three mirror registries (mirror registry for Red Hat OpenShift 2.0.x,
+a single-host Quay). Installing them is in [`PREREQUISITES.md`](../../docs/PREREQUISITES.md),
+"Registry hosts". Write down three values for the registry this run fills; they become playbook
+variables in Step 8:
 
 | Value | Example | Playbook variable |
 | --- | --- | --- |
-| Host, with port if it uses one | `artifactory.internal.repo` or `artifactory.internal.repo:8443` | `target_registry_fqdn` |
-| Repository path under the host | `ocp4` or `docker-local/ocp4` | `target_registry_path` |
-| Login scope of the service account | the host, or the full host + path if the account only has rights on that repository | `target_auth_key` |
+| Host and port | `registry-lab.example.com:8443` (the mirror registry's default port) | `target_registry_fqdn` |
+| Organization | `ocp4` | `target_registry_path` |
+| Login scope | the host and port (default); Quay robot accounts log in to the whole registry | `target_auth_key` |
 
-Ask the Artifactory admin for:
+Ask the registry owner for:
 
 | Ask | Why |
 | --- | --- |
-| A Docker repository reachable at your host + path | Where oc-mirror pushes |
-| Nested paths allowed under it | oc-mirror creates `<path>/openshift/release-images`, `<path>/openshift/release`, `<path>/openshift/graph-image` and `<path>/redhat/redhat-operator-index` |
-| A service account with read, write and delete on that repository | Credentials for the Vault file in Step 6 |
-| No small upload size limit or short timeout on the load balancer in front | Release layers are large; a cap here looks like a timeout |
-| A TLS certificate the host trusts | If it's signed by an internal CA, add that CA as in Step 1; Step 10 needs it on the cluster too |
+| The `ocp4` organization | Where oc-mirror pushes. It creates `ocp4/openshift/release-images`, `ocp4/openshift/release`, `ocp4/openshift/graph-image` and `ocp4/redhat/redhat-operator-index` |
+| A robot account with **write** on `ocp4`, e.g. `ocp4+mirror` | Credentials for the Vault file in Step 6 |
+| A robot account with **read** on `ocp4`, e.g. `ocp4+pull` | For the clusters' pull secret in Step 10 |
+| The registry's certificate chain | Signed by our internal CA; add that CA as in Step 1. Step 10 needs it on the cluster too |
+| Free disk on the registry host | Red Hat: about 358 GB for one release stream with its Red Hat operators, "up to 1 TB per stream or more is suggested" |
 
 When you have the account, test a push to the same depth oc-mirror will use. This goes direct, not through the proxy:
 
 ```bash
-REG_HOST=artifactory.internal.repo        # add :port if used
-REG_PATH=ocp4                             # e.g. docker-local/ocp4
-podman login $REG_HOST
+REG_HOST=registry-lab.example.com:8443   # the registry for this run
+REG_PATH=ocp4
+podman login $REG_HOST                   # the robot account name and token
 podman pull registry.access.redhat.com/ubi9/ubi-minimal:latest
 podman tag registry.access.redhat.com/ubi9/ubi-minimal:latest \
   $REG_HOST/$REG_PATH/openshift/push-test:latest
@@ -391,22 +394,13 @@ podman push $REG_HOST/$REG_PATH/openshift/push-test:latest
 podman logout $REG_HOST
 ```
 
-The push must end with `Writing manifest to image destination`.
+The push must end with `Writing manifest to image destination`. Delete `ocp4/openshift/push-test` in
+the registry's web UI afterwards.
 
-If the account is limited to one repository, also test a login scoped to the path, which is what the playbook sends when `target_auth_key` is the full path. The temporary auth file goes in the private folder and is deleted at the end:
-
-```bash
-read -rp 'Service account: ' REG_USER; read -rsp 'Password: ' REG_PASS; echo
-umask 077
-printf '{"auths":{"%s":{"auth":"%s"}}}' "$REG_HOST/$REG_PATH" \
-  "$(printf '%s:%s' "$REG_USER" "$REG_PASS" | base64 -w0)" > /data/oc-mirror/private/test-auth.json
-skopeo copy --authfile /data/oc-mirror/private/test-auth.json \
-  docker://registry.access.redhat.com/ubi9/ubi-minimal:latest \
-  docker://$REG_HOST/$REG_PATH/openshift/push-test:scoped
-rm -f /data/oc-mirror/private/test-auth.json; unset REG_USER REG_PASS
-```
-
-If this works, set `target_auth_key` to the full path in Step 8. Ask the admin to delete `openshift/push-test` afterwards.
+**Three registries, one Vault file each.** Repeat this step for every registry your bastion fills,
+and keep each robot account in its own Vault file (`vars/registry-dc1.yml` and so on, as in
+[`PREREQUISITES.md`](../../docs/PREREQUISITES.md), "One Vault file per registry"). Pass it with
+`-e @vars/registry-dc1.yml` in Step 8, together with a workspace for that registry.
 
 ## Step 6 — Create the project files
 
@@ -478,7 +472,7 @@ Compared with the original article, this playbook:
 - mirrors `eus-4.18` / `4.18.17` by default, plus the update graph and the OSUS operator (`mirror_update_service`);
 - takes the proxy from the host (Step 1), not from a variable;
 - keeps all files under `/data/oc-mirror`, with the auth file in a `0700` folder instead of `/tmp`;
-- keeps the oc-mirror cache in `/data/oc-mirror/cache`, so a rerun skips images already copied;
+- passes `--cache-dir /data/oc-mirror/cache`. oc-mirror uses the cache only for mirror-to-disk and disk-to-mirror, not for this mirror-to-mirror run, so a failed run starts again from the beginning;
 - adds timeout handling: gentler oc-mirror settings and up to 4 attempts at the mirror run; oc-mirror's own retries back off exponentially;
 - calls `oc-mirror` by full path, so it works from any directory.
 
@@ -722,7 +716,7 @@ This step changes the disconnected cluster, so a cluster admin does it in an app
 
 You need the `cluster-resources` folder from Step 9, the registry's CA certificate (`ca.crt`) and `cluster-admin` access.
 
-1. **Let the cluster pull from your registry.** The cluster's global pull secret must include the registry's login. If it already pulls images from this registry, skip this. Otherwise ask your lead; the global pull secret is shared by every node, so a change to it is its own reviewed change.
+1. **Let the cluster pull from your registry.** The cluster's global pull secret must include the registry's login: the read robot account from Step 5 (e.g. `ocp4+pull`), for the registry in the cluster's own datacenter. If it already pulls images from this registry, skip this. Otherwise ask your lead; the global pull secret is shared by every node, so a change to it is its own reviewed change.
 2. **Trust the registry's CA.** One ConfigMap serves both the image pulls (key = registry host; use `host..port` if there's a port) and the Update Service (key `updateservice-registry`). Check whether one is already set first:
 
    ```bash
@@ -850,7 +844,7 @@ Both runs use `shortest_path=true`, so the 4.19/4.21 hops and any extra 4.18.z/4
 
 **Why the runs don't overwrite each other**
 
-- **Registry:** additive only. Each release and catalog version has its own tags, images are stored by digest, and nothing is deleted unless someone runs oc-mirror's separate `delete` command. The shared cache means each run downloads only what's new.
+- **Registry:** additive only. Each release and catalog version has its own tags, images are stored by digest, and nothing is deleted unless someone runs oc-mirror's separate `delete` command.
 - **Workspaces:** each run has its own, so their generated cluster files stay separate.
 - **Cluster:** nothing is applied during the mirroring, so nothing can collide. When the admin later applies the folders, each one's IDMS/ITMS and signature ConfigMap are renamed first (item 6 below), so all of them coexist on the cluster.
 
@@ -858,7 +852,7 @@ Both runs use `shortest_path=true`, so the 4.19/4.21 hops and any extra 4.18.z/4
 
 1. **Pick the versions** with the channel listing in item 1 below. Use the latest 4.20.z that appears in both EUS channels.
 2. **Dry-run every run** (two release runs and up to six catalog runs), add up the image counts, and get the disk sized before starting. Disk is the biggest risk when mirroring the whole path at once.
-3. **Run them in tmux, one after another:** release A, release B, then the catalogs. If one fails, rerun just that one; the cache keeps what's already copied.
+3. **Run them in tmux, one after another:** release A, release B, then the catalogs. If one fails, rerun just that one. It starts from the beginning: mirror-to-mirror uses no cache.
 
 **Keep in mind:** "latest 4.22.x" moves on before the cluster actually updates. When the update window comes, top up with one short extra run from your mirrored 4.22.z to the then-latest 4.22.z (same channel, `shortest_path=true`, a new workspace). Thanks to the cache, that run is small.
 
@@ -891,7 +885,7 @@ The 4.20 target ends Run A and starts Run B, so the two mirrors join without a g
 
 - **`shortestPath: true`** (`-e shortest_path=true`): oc-mirror mirrors only the releases on the update path, including 4.18.17 itself. Without it, it mirrors every z-stream release in the range, which could be dozens of releases.
 - **Pin exact maximum versions, not "latest".** A pinned target gives the same result every run, and Run B's minimum must equal Run A's maximum.
-- **One workspace per run, one shared cache.** Each run writes its own cluster resources, and shared image layers download once.
+- **One workspace per run and per registry.** Each run writes its own cluster resources. Red Hat ties incremental updates to the same image set configuration and the same destination registry, so the lab, DC1 and DC2 registries each get their own workspaces, e.g. `workspace-dc1-run-a`.
 - **Same pull secret for both runs.** The Red Hat pull secret from Step 4 covers `quay.io` (release images) and `registry.redhat.io` (operator catalog and the Update Service operator); no separate Quay account is needed. `registry.access.redhat.com` (the graph's base image) is public.
 
 ### Steps
@@ -1040,7 +1034,7 @@ First find which task failed: it's the task name just above `fatal:` in the log.
 
 ### When oc-mirror times out
 
-A rerun is safe. oc-mirror reuses its cache and skips images already copied, so each run picks up where the last stopped. If retries keep failing, change one setting at a time, from the top:
+A rerun is safe, but it starts over. Red Hat: the mirror-to-mirror workflow "does not use a cache, restarts from the beginning after a failure" (`modules/oc-mirror-workflows-table.adoc`). If retries keep failing, change one setting at a time, from the top:
 
 1. Rerun once as is. Brief proxy trouble often clears on its own.
 2. Lower parallel downloads: `--parallel-images 2 --parallel-layers 2`.

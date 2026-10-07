@@ -4,6 +4,10 @@ Mirrors OpenShift release images and operator catalogs into an internal registry
 disconnected cluster, using oc-mirror v2 and Ansible. The Red Hat pull secret and registry
 login come from Ansible Vault; the proxy comes from the mirror host.
 
+Before the first run, build the hosts in [`docs/PREREQUISITES.md`](../docs/PREREQUISITES.md): one
+mirroring bastion per datacenter (RHEL 9), where these playbooks run, and the lab and two
+production mirror registries they push to.
+
 | Guide | Covers |
 | --- | --- |
 | [docs/release-mirroring-guide.md](docs/release-mirroring-guide.md) | Host setup, proxy, Ansible Vault, release mirroring (4.18.17, EUS), OpenShift Update Service, upgrade path 4.18 → 4.20 → 4.22 |
@@ -21,7 +25,7 @@ login come from Ansible Vault; the proxy comes from the mirror host.
 | `docs/diagrams/mirroring/` | Source page and light/dark PNGs for the guides' figures: a run end to end, the proxy routes, the two upgrade-path runs |
 | `vars/credentials.yml.example` | Shape of the registry login; create the real file with `ansible-vault create` |
 
-Not in Git (see `.gitignore`): `vars/credentials.yml`, `vars/redhat-pull-secret.json`, the
+Not in Git (see `.gitignore`): `vars/credentials.yml`, `vars/registry-*.yml`, `vars/redhat-pull-secret.json`, the
 `oc-mirror` binary. Create them on the mirror host as the release guide describes.
 
 ## Quick start

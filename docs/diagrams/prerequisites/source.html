@@ -1,0 +1,140 @@
+<!-- Started from the diagram-kit template (MIT-0), https://github.com/ephico2real2/diagram-kit. Figure for docs/PREREQUISITES.md. -->
+<title>Mirroring Hosts Layout</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root {
+  --ground: #f5f6f8; --surface: #ffffff; --ink: #18212c; --muted: #58636f; --rule: #d7dce3;
+  --host: #a55a0b; --host-wash: #fbf1e4; --remote: #0e6f68; --remote-wash: #e3f3f1;
+  --gap: #b3261e; --gap-wash: #fbe9e7; --none: #5f6a77; --none-wash: #eef0f3;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --ground: #0e131a; --surface: #151c25; --ink: #e5e9ef; --muted: #9aa5b3; --rule: #2a3440;
+    --host: #f0a53c; --host-wash: #2a2014; --remote: #3fcfc0; --remote-wash: #122a28;
+    --gap: #f2857c; --gap-wash: #2d1614; --none: #9aa5b3; --none-wash: #1b232d;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground: #0e131a; --surface: #151c25; --ink: #e5e9ef; --muted: #9aa5b3; --rule: #2a3440;
+  --host: #f0a53c; --host-wash: #2a2014; --remote: #3fcfc0; --remote-wash: #122a28;
+  --gap: #f2857c; --gap-wash: #2d1614; --none: #9aa5b3; --none-wash: #1b232d;
+}
+* { box-sizing: border-box; }
+body { background: var(--ground); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.55; margin: 0; }
+.page { max-width: 1060px; margin: 0 auto; padding-inline: 16px; padding-block: 40px 72px; display: grid; gap: 44px; }
+header { display: grid; gap: 10px; }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font-size: clamp(26px, 4vw, 36px); line-height: 1.15; margin: 0; font-weight: 700; text-wrap: balance; }
+h2 { font-size: 20px; margin: 0 0 6px; font-weight: 600; text-wrap: balance; }
+p { margin: 0; max-width: 72ch; }
+.lede { font-size: 17px; max-width: 70ch; }
+.muted { color: var(--muted); }
+code { font-family: var(--font-mono); font-size: .9em; }
+section { display: grid; gap: 14px; }
+figure { margin: 0; display: grid; gap: 10px; }
+.fig-scroll { overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 12px; }
+.fig-scroll svg { display: block; width: 100%; min-width: 760px; height: auto; color: var(--ink); }
+figcaption { font-size: 13.5px; color: var(--muted); max-width: 80ch; }
+.tbl { overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 10px 14px; border-bottom: 1px solid var(--rule); }
+th { font-size: 12px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); background: var(--ground); }
+tr:last-child td { border-bottom: 0; }
+.yes { color: var(--remote); font-weight: 600; } .no { color: var(--gap); font-weight: 600; }
+.cell-gap { background: var(--gap-wash); }
+.decisions { display: grid; gap: 12px; }
+.decision { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 16px 20px; display: grid; gap: 8px; }
+.decision .id { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+.decision .q { font-weight: 600; }
+.decision .rec { font-size: 14px; border-left: 3px solid var(--remote); padding-left: 10px; }
+.decision .rec.warn { border-left-color: var(--host); }
+a { color: var(--remote); }
+:focus-visible { outline: 2px solid var(--remote); outline-offset: 2px; }
+</style>
+<div class="page">
+  <header>
+    <div class="eyebrow">openshift-upgrade · prerequisites · 2026-10-07</div>
+    <h1>Two mirroring bastions and three registries</h1>
+    <p class="lede">The target layout from docs/PREREQUISITES.md: one bastion per datacenter, a lab registry and one production registry per datacenter.</p>
+  </header>
+
+  <section>
+    <h2>Target layout</h2>
+    <p class="muted">Who reaches Red Hat, who pushes where, and who pulls from what.</p>
+    <figure>
+      <div class="fig-scroll">
+<svg viewBox="0 0 1000 640" role="img" aria-label="Target layout. In datacenter 1 a mirroring bastion reaches Red Hat only through the enterprise proxy and pushes over TCP 8443 to two mirror registries: the lab registry and the datacenter 1 production registry. In datacenter 2 its own bastion does the same for the datacenter 2 production registry. Lab clusters pull from the lab registry and each datacenter's production clusters pull from their own registry. The old 1.x registry keeps serving until every cluster has switched, then it is retired. All hosts run RHEL 9.">
+<defs><marker id="ap1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
+<g font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="currentColor">
+<rect x="20" y="14" width="960" height="50" rx="8" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.5"/>
+<text x="500.0" y="34" fill="var(--remote)" font-weight="600" text-anchor="middle">Red Hat · TCP 443</text>
+<text x="500.0" y="51" fill="currentColor" font-family="IBM Plex Mono, monospace" font-size="12" text-anchor="middle">quay.io · registry.redhat.io · api.openshift.com · mirror.openshift.com</text>
+<rect x="20" y="82" width="960" height="40" fill="var(--none-wash)" stroke="var(--rule)" stroke-dasharray="6 5"/>
+<text x="500" y="107" fill="var(--none)" font-weight="600" text-anchor="middle">enterprise proxy: only the two bastions, Red Hat hosts only</text>
+<rect x="20" y="140" width="190" height="30" rx="6" fill="var(--host-wash)" stroke="var(--host)"/>
+<text x="115.0" y="160" fill="var(--host)" font-family="IBM Plex Mono, monospace" font-size="13" font-weight="600" text-anchor="middle">DATACENTER 1</text>
+<rect x="650" y="140" width="150" height="30" rx="6" fill="var(--host-wash)" stroke="var(--host)"/>
+<text x="725.0" y="160" fill="var(--host)" font-family="IBM Plex Mono, monospace" font-size="13" font-weight="600" text-anchor="middle">DATACENTER 2</text>
+<line x1="635" y1="140" x2="635" y2="540" stroke="var(--rule)" stroke-width="1.5" stroke-dasharray="6 5"/>
+<rect x="160" y="196" width="300" height="62" rx="8" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="176" y="214.5" fill="var(--host)" font-weight="600">mirror-bastion-dc1 · RHEL 9</text>
+<text x="176" y="231.5" fill="currentColor">Ansible, oc-mirror v2, Vault</text>
+<text x="176" y="248.5" fill="var(--muted)">every mirroring command runs here</text>
+<rect x="665" y="196" width="300" height="62" rx="8" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="681" y="214.5" fill="var(--host)" font-weight="600">mirror-bastion-dc2 · RHEL 9</text>
+<text x="681" y="231.5" fill="currentColor">Ansible, oc-mirror v2, Vault</text>
+<text x="681" y="248.5" fill="var(--muted)">every mirroring command runs here</text>
+<path d="M310,196 L310,126" fill="none" stroke="var(--remote)" stroke-width="1.4" marker-end="url(#ap1)"/>
+<text x="318" y="160" fill="var(--remote)">443, through the proxy</text>
+<path d="M815,196 L815,126" fill="none" stroke="var(--remote)" stroke-width="1.4" marker-end="url(#ap1)"/>
+<text x="823" y="160" fill="var(--remote)">443, through the proxy</text>
+<rect x="40" y="322" width="260" height="62" rx="8" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="56" y="340.5" fill="var(--host)" font-weight="600">registry-lab:8443</text>
+<text x="56" y="357.5" fill="currentColor">mirror registry 2.0.x · RHEL 9</text>
+<text x="56" y="374.5" fill="var(--muted)">new content lands here first</text>
+<rect x="330" y="322" width="280" height="62" rx="8" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="346" y="340.5" fill="var(--host)" font-weight="600">registry-dc1:8443</text>
+<text x="346" y="357.5" fill="currentColor">mirror registry 2.0.x · RHEL 9</text>
+<text x="346" y="374.5" fill="var(--muted)">production, DC1</text>
+<rect x="665" y="322" width="300" height="62" rx="8" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="681" y="340.5" fill="var(--host)" font-weight="600">registry-dc2:8443</text>
+<text x="681" y="357.5" fill="currentColor">mirror registry 2.0.x · RHEL 9</text>
+<text x="681" y="374.5" fill="var(--muted)">production, DC2</text>
+<path d="M250,258 L250,286 L170,286 L170,318" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ap1)"/>
+<path d="M370,258 L370,286 L470,286 L470,318" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ap1)"/>
+<text x="380" y="278" fill="var(--muted)">push, 8443 direct</text>
+<path d="M815,258 L815,318" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ap1)"/>
+<text x="823" y="294" fill="var(--muted)">push, 8443 direct</text>
+<rect x="40" y="440" width="260" height="46" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="56" y="459" fill="currentColor" font-weight="600">lab clusters</text>
+<text x="56" y="476" fill="var(--muted)">pull through IDMS / ITMS</text>
+<rect x="330" y="440" width="280" height="46" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="346" y="459" fill="currentColor" font-weight="600">production clusters, DC1</text>
+<text x="346" y="476" fill="var(--muted)">pull through IDMS / ITMS</text>
+<rect x="665" y="440" width="300" height="46" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="681" y="459" fill="currentColor" font-weight="600">production clusters, DC2</text>
+<text x="681" y="476" fill="var(--muted)">pull through IDMS / ITMS</text>
+<path d="M170,440 L170,388" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ap1)"/>
+<path d="M470,440 L470,388" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ap1)"/>
+<path d="M815,440 L815,388" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ap1)"/>
+<text x="178" y="420" fill="var(--muted)">pull</text>
+<text x="478" y="420" fill="var(--muted)">pull</text>
+<text x="823" y="420" fill="var(--muted)">pull</text>
+<rect x="40" y="504" width="925" height="46" rx="8" fill="var(--none-wash)" stroke="var(--none)" stroke-width="1.5"/>
+<text x="56" y="523" fill="var(--none)" font-weight="600">old registry · mirror registry 1.x, single host</text>
+<text x="56" y="540" fill="var(--muted)">serves today's clusters until each has switched to its new registry; then retired</text>
+<text x="20" y="584" fill="var(--muted)">Each bastion pushes only to registries in its own datacenter. No two-headed DNS: the proxy resolves Red Hat's names.</text>
+<text x="20" y="606" fill="var(--host)" font-weight="600">Solid = exists today (the clusters, the old registry). Dashed = proposed: the two bastions and three registries are not built.</text>
+</g>
+</svg>
+      </div>
+      <figcaption>Proposed: the bastions and registries are not built. The clusters and the old 1.x registry exist today.</figcaption>
+    </figure>
+  </section>
+</div>

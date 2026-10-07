@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Measured | 2026-10-05, against OpenShift 4.18 to 4.22 |
-| Companion | [`DESIGN-DECISIONS.md`](DESIGN-DECISIONS.md) for the decisions, [`openshift-update-egress.html`](openshift-update-egress.html) for the full plan |
+| Companion | [`SOLUTIONS.md`](SOLUTIONS.md) for the three steps, [`PREREQUISITES.md`](PREREQUISITES.md) for the new bastions and registries, [`DESIGN-DECISIONS.md`](DESIGN-DECISIONS.md) for the decisions, [`openshift-update-egress.html`](openshift-update-egress.html) for the full plan |
 
 Our clusters run OpenShift 4.18 on the EUS channel and are well behind. Standard maintenance for
 4.18 ended on 25 August 2026, and the plan is to move to 4.20 and then 4.22. Every step waits for
@@ -162,11 +162,11 @@ neither built nor approved. They are presented side by side in [`SOLUTIONS.md`](
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/three-steps/three-steps.dark.png">
   <source srcset="diagrams/three-steps/three-steps.light.png">
-  <img alt="Three steps keep the clusters current. Step 1, built: a person runs the Ansible oc-mirror v2 playbooks on a mirror host before each update, and the cluster stays disconnected with a local Update Service. Step 2, proposed and preferred: every node reaches Red Hat's hosts through the enterprise proxy, with no mirror, no sync and no local Update Service. Step 3, proposed alternative: a scheduled job runs the same playbooks into an on-prem Red Hat Quay, and the cluster keeps no egress with a local Update Service. All three open the same Red Hat hosts and none needs two-headed DNS." src="diagrams/three-steps/three-steps.light.png">
+  <img alt="Three steps keep the clusters current. Step 1, built: a person runs the Ansible oc-mirror v2 playbooks on the mirroring bastion of each datacenter before each update, into the lab and production mirror registries, and the cluster stays disconnected with a local Update Service. Step 2, proposed and preferred: every node reaches Red Hat's hosts through the enterprise proxy, with no mirror, no sync and no local Update Service. Step 3, proposed alternative: a scheduled job on each bastion runs the same playbooks into an on-prem Red Hat Quay, and the cluster keeps no egress with a local Update Service. All three open the same Red Hat hosts and none needs two-headed DNS." src="diagrams/three-steps/three-steps.light.png">
 </picture>
 
 *Step 1 is built; Steps 2 and 3 are proposals. Every step opens the same Red Hat hosts at the
-firewall; they differ in which machines use them: one mirror host (Steps 1 and 3) or every node
+firewall; they differ in which machines use them: the mirroring bastions (Steps 1 and 3) or every node
 (Step 2). No step needs two-headed DNS. Each still needs a plan for operator catalogs
 ([`DESIGN-DECISIONS.md`](DESIGN-DECISIONS.md), D2).*
 
@@ -176,9 +176,9 @@ INSIDE      OpenShift cluster              OpenShift cluster                    
             no egress; IDMS/ITMS per run   Proxy CR: CVO, CRI-O, OLM             no egress; pulls from Quay
             graph from a local OSUS        workloads blocked from the proxy      local OSUS: required
               ^ images, graph data           | images, graph, signatures           ^ images, graph data
-            today's registry               enterprise proxy                      Red Hat Quay, HA
+            mirror registries lab/DC1/DC2  enterprise proxy                      Red Hat Quay, HA, per datacenter
               ^ push                       allowlist: Red Hat hosts only           ^ push
-            mirror host, run by a person   (no mirror host, registry or OSUS)    mirror host, systemd timer
+            bastion per DC, by hand        (no mirror host, registry or OSUS)    bastion per DC, systemd timer
             Ansible + oc-mirror v2 + Vault                                       runs the Step 1 playbooks
 EGRESS        | one host, through the proxy  | every node, through the proxy       | one host, through the proxy
 RED HAT     quay.io, registry.redhat.io, api.openshift.com, mirror.openshift.com: the same hosts for every step
@@ -209,8 +209,8 @@ hand.
 | Tooling migration | Done: oc-mirror v2 and `v2alpha1`, in `oc-mirror-ansible/` | No mirroring tool to maintain | Start on oc-mirror v2 |
 | Release signatures | Have to be mirrored, with an acknowledgment before 4.21 | Checked against Red Hat directly once the mirror sets are gone | oc-mirror v2 mirrors signatures by default |
 | Two-headed DNS | Not applicable | Not needed. Nodes resolve only the proxy | Not needed. oc-mirror v2 uses the proxy |
-| What we run | A local registry and Ansible playbooks run by hand | A highly available proxy | Highly available Quay, a mirror host, OSUS, and a proxy for the mirror host |
-| What it costs to get there | Nothing new | Security approval for node egress; one reboot of every node | A Consulting engagement, a Quay specialist, and a new registry to size and operate |
+| What we run | Today one old mirror registry 1.x; refined: two mirroring bastions and three new mirror registries 2.0.x on RHEL 9 ([`PREREQUISITES.md`](PREREQUISITES.md)), Ansible run by hand | A highly available proxy | Highly available Quay per datacenter, the two bastions, OSUS, and the proxy for the bastions |
+| What it costs to get there | Five new RHEL 9 hosts and a cutover of every cluster to its new registry | Security approval for node egress; one reboot of every node | A Consulting engagement, a Quay specialist, and a new registry to size and operate |
 
 The team's assessment is that our backlog of fixes and our limits on upgrading come from this
 process, not from OpenShift. The measurements are consistent with that: Red Hat has shipped 156
@@ -223,6 +223,10 @@ them in is our choice.
 
 ## Still to settle
 
+- The registry we mirror into is an old mirror registry for Red Hat OpenShift 1.x (team report,
+  2026-10-07). It is replaced, not upgraded: two mirroring bastions and three new 2.0.x registries
+  on RHEL 9 ([`PREREQUISITES.md`](PREREQUISITES.md)). Which datacenter holds the lab, and how many
+  clusters each production registry serves, are still to confirm.
 - Security has not yet said whether cluster nodes may reach Red Hat through the proxy. The
   preferred design depends on that answer.
 - Order of work: the cluster-wide proxy is a documented configuration on 4.18. Enabling it before
@@ -233,7 +237,7 @@ them in is our choice.
   has failed. Those two facts would make the case stronger. The sync tool is recorded: since
   2026-10-07 the current process runs oc-mirror v2 from Ansible ([`oc-mirror-ansible/`](../oc-mirror-ansible/README.md)).
 - The plan also holds a third design that sits between these two: update graph and signatures from
-  Red Hat through the proxy, images from the registry we run today. Red Hat does not document that
+  Red Hat through the proxy, images from our mirror registries. Red Hat does not document that
   combination.
 
 ## How this was measured

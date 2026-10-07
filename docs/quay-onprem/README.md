@@ -5,9 +5,10 @@
 | Status | Proposed. Not built or approved |
 | Researched | 2026-10-07, against `quay/quay-docs` branch `redhat-3.18` and `openshift/openshift-docs` branches `enterprise-4.22` and `enterprise-4.18` |
 | Builds on | Step 1, [`oc-mirror-ansible/`](../../oc-mirror-ansible/README.md), which fills the registry |
+| Hosts | The mirroring bastions and datacenter layout in [`PREREQUISITES.md`](../PREREQUISITES.md); full Quay would replace the two production mirror registries |
 | In the design docs | Option 2, as documented ([`DESIGN-DECISIONS.md`](../DESIGN-DECISIONS.md)) |
 
-Step 3 replaces today's registry with a highly available Red Hat Quay. The clusters keep **no egress**:
+Step 3 replaces the production mirror registries ([`PREREQUISITES.md`](../PREREQUISITES.md)) with a highly available Red Hat Quay. The clusters keep **no egress**:
 they pull every image from Quay and their update graph from a local OpenShift Update Service. Quay
 is filled by the step 1 oc-mirror v2 playbooks, run **on a schedule** from one mirror host that alone
 reaches Red Hat through the proxy.
@@ -55,6 +56,10 @@ need from 4.21.
 - **HA is required:** "Mirror registries must be operated in a highly available manner, ensuring their
   availability aligns with the production availability of your OpenShift Container Platform clusters"
   (`modules/oc-mirror-v2-prerequisites.adoc`).
+- **One per datacenter**, each filled by that datacenter's mirroring bastion, as the production
+  mirror registries are in [`PREREQUISITES.md`](../PREREQUISITES.md). Standalone hosts run RHEL 9:
+  quay-docs 3.18 names "Red Hat Enterprise Linux (RHEL) 9" and does not mention RHEL 10
+  (`modules/con_quay_single_prereq.adoc`). The lab can keep its mirror registry.
 
 ## Build it
 
@@ -125,26 +130,28 @@ under `metadata`; corrected here).
 Run the step 1 playbooks against Quay from the mirror host, with `target_registry_fqdn` set to Quay
 and `target_registry_path=ocp4`.
 
-For scheduled runs, keep **one fixed workspace per channel** and the same ImageSet each time.
-Red Hat: the next run generates "an image set that only contains new and updated images"
-(`modules/oc-mirror-updating-registry-about.adoc`). Red Hat gives no scheduling guidance; a systemd
+For scheduled runs, keep **one fixed workspace per channel and per Quay** and the same ImageSet each
+time. Red Hat ties incremental updates to the same "image set configuration", "destination
+registry" and "storage configuration" (`modules/oc-mirror-updating-registry-about.adoc`). The runs
+are mirror-to-mirror, which "does not use a cache, restarts from the beginning after a failure"
+(`modules/oc-mirror-workflows-table.adoc`). Red Hat gives no scheduling guidance; a systemd
 timer on the mirror host is a simple choice.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../diagrams/three-steps/quay-sync.dark.png">
   <source srcset="../diagrams/three-steps/quay-sync.light.png">
-  <img alt="Step 3's scheduled sync. A systemd timer on the mirror host fires; flock skips the run if the last one is still going. The Step 1 playbooks run oc-mirror v2 with the same workspace per channel, so only new and updated images are pushed to Quay; a run that fails after its retries raises an alert and the next run catches up. The Update Service is restarted to load the new graph image. A cluster admin applies the run's cluster resources in a change window, and the cluster then lists the new versions." src="../diagrams/three-steps/quay-sync.light.png">
+  <img alt="Step 3's scheduled sync. A systemd timer on the datacenter's mirroring bastion fires; flock skips the run if the last one is still going. The Step 1 playbooks run oc-mirror v2 mirror-to-mirror with a fixed workspace per channel and per Quay; a run that fails after its retries raises an alert, and the next run starts again from the beginning. The Update Service is restarted to load the new graph image. A cluster admin applies the run's cluster resources in a change window, and the cluster then lists the new versions." src="../diagrams/three-steps/quay-sync.light.png">
 </picture>
 
 *One run of the proposed schedule. Steps ① to ③ use the Step 1 playbooks, which exist today; Quay
 and the timer are not built.*
 
 ```text
-MIRROR HOST                         QUAY                          CLUSTERS
+BASTION (per datacenter)            QUAY                          CLUSTERS
 1 timer fires                       4 org ocp4: release, .sig,    5 restart the OSUS (new graph)
 2 flock: busy -> skip this run        catalogs, graph-image       6 admin applies cluster-resources
 3 Step 1 playbooks; fail -> alert,                                7 oc adm upgrade lists new versions
-  the next run catches up   --push-->
+  the next run starts over  --push-->
 ```
 
 The two units:

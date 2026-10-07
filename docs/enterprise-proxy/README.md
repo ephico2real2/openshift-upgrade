@@ -4,7 +4,8 @@
 |---|---|
 | Status | Proposed runbook. Not run on any of our clusters, not approved by security |
 | Researched | 2026-10-07, against `openshift/openshift-docs` branches `enterprise-4.18`, `enterprise-4.21` and `enterprise-4.22`; earlier findings in [`openshift-update-egress.html`](../openshift-update-egress.html) (2026-09-25) |
-| Starting point | OpenShift 4.18.17 on `eus-4.18`, disconnected: IDMS/ITMS from oc-mirror, mirrored CatalogSources, a local OpenShift Update Service, default OperatorHub sources off |
+| Starting point | OpenShift 4.18.17 on `eus-4.18`, disconnected: IDMS/ITMS from oc-mirror pointing at the datacenter's mirror registry (`registry-dc1` in the examples), mirrored CatalogSources, a local OpenShift Update Service, default OperatorHub sources off |
+| Where commands run | The mirroring bastion of the cluster's datacenter ([`PREREQUISITES.md`](../PREREQUISITES.md)); it needs `oc`, `jq`, Ansible Vault and the cluster API on 6443 |
 | End point | The cluster pulls images, the update graph and signatures from Red Hat through the corporate proxy. No mirror, no local Update Service, no two-headed DNS |
 | In the design docs | Option 1 ([`DESIGN-DECISIONS.md`](../DESIGN-DECISIONS.md)); this runbook is its rollout order, phase by phase |
 
@@ -235,13 +236,13 @@ oc patch image.config.openshift.io/cluster --type merge -p '{
     "registry.redhat.io",
     "registry.access.redhat.com",
     "image-registry.openshift-image-registry.svc:5000",
-    "mirror.example.com:8443"
+    "registry-dc1.example.com:8443"
   ]}}}'
 ```
 
 - **`image-registry.openshift-image-registry.svc:5000`:** the in-cluster registry. Leaving it out
   breaks builds and image streams.
-- **`mirror.example.com:8443`:** our current mirror registry, with its path if pulls use one. Keep it
+- **`registry-dc1.example.com:8443`:** the datacenter's mirror registry, with its path if pulls use one. Keep it
   until phase 9.
 - **Everything else from the phase 1 inventory:** add each registry that running pods pull from,
   or those pods fail on their next pull. Add `registry.connect.redhat.com` for certified operators.
@@ -279,7 +280,7 @@ cat > /dev/shm/proxy-patch.yaml <<'EOF'
 spec:
   httpProxy: http://proxy.example.com:3128
   httpsProxy: http://proxy.example.com:3128
-  noProxy: .apps.prod1.example.com,api-int.prod1.example.com,.example.com,10.10.0.0/16,mirror.example.com,ldap.example.com,vcenter.example.com
+  noProxy: .apps.prod1.example.com,api-int.prod1.example.com,.example.com,10.10.0.0/16,registry-dc1.example.com,ldap.example.com,vcenter.example.com
   readinessEndpoints:
   - https://mirror.openshift.com
   - https://quay.io
@@ -489,7 +490,7 @@ watch oc get mcp
 - **Tidy the trust and policy:** drop the mirror's entry from `allowedRegistries`, the mirror's key
   from the `additionalTrustedCA` ConfigMap (and `updateservice-registry`), and the mirror's login
   from the pull secret (repeat the phase 2 commands with
-  `jq 'del(.auths["mirror.example.com:8443"])'`). Keep the mirror registry itself until every
+  `jq 'del(.auths["registry-dc1.example.com:8443"])'`). Keep the mirror registries themselves until every
   cluster has gone through this runbook.
 - **Check a node again:** `registries.conf` should list no mirrors for `quay.io` or
   `registry.redhat.io`.

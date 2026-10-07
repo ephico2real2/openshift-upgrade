@@ -1,5 +1,6 @@
 # Secrets: never commit these, even encrypted, without review
 vars/credentials.yml
+vars/registry-*.yml
 vars/redhat-pull-secret.json
 pull-secret.txt
 .vault-pass*

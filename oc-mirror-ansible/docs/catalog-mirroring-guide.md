@@ -443,7 +443,7 @@ Always dry-run a catalog ImageSet first. A wrong package list is the most common
    ```
 
    Skim `mapping.txt`. You should recognise every operator in it. A count in the thousands usually means a catalog is missing its `packages` list, or `full: true` slipped in.
-3. **Agree the disk size** with your lead from the image counts. Catalog images are cached in `/data/oc-mirror/cache` alongside the release images, so check `df -h /data` first.
+3. **Agree the disk size** with your lead from the image counts. Mirror-to-mirror runs use no cache, so the images land on the registry host, not in `/data`; check the registry host's free space ([`PREREQUISITES.md`](../../docs/PREREQUISITES.md)) and `df -h /data` first.
 4. **Run for real** in tmux (release guide, Step 7), Red Hat group first. Use the same commands as item 1 without `-e oc_mirror_dry_run=true`. Catalog runs often take hours; the same timeout tuning and retries as the release runs apply.
 5. **Check the result:**
 
