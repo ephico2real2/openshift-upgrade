@@ -2,13 +2,16 @@
 
 | Path | What it is |
 |---|---|
+| [`SOLUTIONS.md`](SOLUTIONS.md) | The three steps presented side by side: Ansible for today's process, the enterprise proxy, Quay on-prem; with the recommendation and the decisions needed |
+| [`enterprise-proxy/`](enterprise-proxy/README.md) | Step 2: runbook to retrofit a disconnected cluster so it reaches Red Hat through the enterprise proxy |
+| [`quay-onprem/`](quay-onprem/README.md) | Step 3: Red Hat Quay on-prem, filled on a schedule by oc-mirror v2, with the OpenShift Update Service |
 | [`PROBLEM-STATEMENT.md`](PROBLEM-STATEMENT.md) | Why the current offline image sync cannot keep pace, measured, and the two designs that replace it |
 | [`DESIGN-DECISIONS.md`](DESIGN-DECISIONS.md) | The options, the five open decisions with their recommendations, and what is still unanswered |
 | [`openshift-update-egress.html`](openshift-update-egress.html) | The full plan: research findings, line-by-line check of the original plan, host allowlist, security controls, rollout, sources. It is a page fragment (starts at `<title>`); a browser opens it directly |
 | [`diagrams/`](diagrams/) | The plan page's four figures as light and dark PNGs |
 | [`diagrams/disconnected-update-problem/`](diagrams/disconnected-update-problem/) | Source page and PNGs for the four figures in the problem statement |
 | [`catalog-policies/`](catalog-policies/) | Admission policies that limit operator catalogs, and the scripts that test them |
-| `PROBLEM-STATEMENT.docx`, `DESIGN-DECISIONS.docx` | Word copies of the two Markdown documents, with the light figures embedded. Generated; edit the Markdown and rebuild |
+| `SOLUTIONS.docx`, `PROBLEM-STATEMENT.docx`, `DESIGN-DECISIONS.docx` | Word copies of the three Markdown documents, with the light figures embedded. Generated; edit the Markdown and rebuild |
 | [`tools/md2docx.js`](tools/md2docx.js) | Builds the Word copies: `npm install docx`, then `node tools/md2docx.js PROBLEM-STATEMENT.md PROBLEM-STATEMENT.docx` |
 
 ## catalog-policies

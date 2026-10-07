@@ -6,6 +6,9 @@ operator catalogs a cluster may use. Everything is in [`docs/`](docs/README.md).
 
 | Start here | What it is |
 |---|---|
+| [`docs/SOLUTIONS.md`](docs/SOLUTIONS.md) | The three steps side by side, the recommendation and the decisions needed (Word copy: `docs/SOLUTIONS.docx`) |
+| [`docs/enterprise-proxy/`](docs/enterprise-proxy/README.md) | Step 2: runbook to retrofit a disconnected cluster to reach Red Hat through the enterprise proxy |
+| [`docs/quay-onprem/`](docs/quay-onprem/README.md) | Step 3: Red Hat Quay on-prem, filled on a schedule, with the OpenShift Update Service |
 | [`docs/PROBLEM-STATEMENT.md`](docs/PROBLEM-STATEMENT.md) | The problem, measured, and the two designs that replace the sync |
 | [`docs/DESIGN-DECISIONS.md`](docs/DESIGN-DECISIONS.md) | The options, the open decisions with their recommendations |
 | [`docs/openshift-update-egress.html`](docs/openshift-update-egress.html) | The full plan, opened directly in a browser |
