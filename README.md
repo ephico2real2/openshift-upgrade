@@ -4,6 +4,8 @@ How disconnected OpenShift clusters can stay current: why an offline image sync 
 release cadence, the designs that replace it, the decisions still open, and the admission policies that limit which
 operator catalogs a cluster may use. Everything is in [`docs/`](docs/README.md).
 
+The plan, in three steps: (1) refine the current manual sync, done with the Ansible playbooks in [`oc-mirror-ansible/`](oc-mirror-ansible/README.md); (2) refine the enterprise proxy strategy, next; (3) build a full Red Hat Quay registry on-prem. Details in [`docs/DESIGN-DECISIONS.md`](docs/DESIGN-DECISIONS.md#steps).
+
 | Start here | What it is |
 |---|---|
 | [`docs/PROBLEM-STATEMENT.md`](docs/PROBLEM-STATEMENT.md) | The problem, measured, and the two designs that replace the sync |

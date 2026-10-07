@@ -13,6 +13,16 @@ Version-specific facts here were true on 2026-09-25. Re-check them if a newer 4.
 Our clusters run disconnected, so every update starts with a manual mirror. We want a partially
 connected design that lets us update on a regular schedule.
 
+### Steps
+
+| Step | What | Status | Here |
+|---|---|---|---|
+| 1 | Refine the current process (the manual sync) | **Done, 2026-10-07:** oc-mirror v2 run from Ansible playbooks, still started by hand | [`oc-mirror-ansible/`](../oc-mirror-ansible/README.md) |
+| 2 | Refine the enterprise proxy strategy | Next | Option 1 below |
+| 3 | Build a full Red Hat Quay registry on-prem | After step 2 | Option 2 below |
+
+Step 1 keeps the manual sync but makes it repeatable. Its playbooks are also a starting point for the scheduled oc-mirror v2 job that Options 2 and 3 need.
+
 Where we are (stated by the team on 2026-10-05): OpenShift 4.18 on the EUS channel, well behind.
 The plan is 4.18 to 4.20, then 4.20 to 4.22. Measured that day: 4.18 maintenance ended on
 2026-08-25 and its EUS term ends on 2027-02-25; the `eus-4.20` channel recommends
