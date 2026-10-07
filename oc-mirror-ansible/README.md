@@ -23,6 +23,7 @@ production mirror registries they push to.
 | `templates/catalogs-imageset.yaml.j2` | Catalog ImageSet |
 | `vars/catalogs-redhat.yml`, `vars/catalogs-partner.yml` | **Samples only** (IBM Fusion's sample setup); replace with your operator inventory |
 | `docs/diagrams/mirroring/` | Source page and light/dark PNGs for the guides' figures: a run end to end, the proxy routes, the two upgrade-path runs |
+| `vars/registry.yml.example` | One Vault file per registry and path you push to: a new mirror registry, or an existing registry on a new path (with `protected_targets`) |
 | `vars/credentials.yml.example` | Shape of the registry login; create the real file with `ansible-vault create` |
 
 Not in Git (see `.gitignore`): `vars/credentials.yml`, `vars/registry-*.yml`, `vars/redhat-pull-secret.json`, the

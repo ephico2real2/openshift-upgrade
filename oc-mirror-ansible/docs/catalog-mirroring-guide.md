@@ -315,6 +315,9 @@ The playbook stops before doing anything if no catalog list is passed, or if a c
     # Login scope in the auth file: the host (default) or the full path,
     # if the service account only has rights on that one repository
     target_auth_key: "{{ target_registry_fqdn }}"
+    # Registry paths that must never receive a push, e.g. the old oc-mirror v1 content on an
+    # existing registry. Set them in that registry's vars file (vars/registry.yml.example).
+    protected_targets: []
 
     # Working directories on the data volume (Step 2)
     base_path: "/data/oc-mirror"
@@ -327,7 +330,8 @@ The playbook stops before doing anything if no catalog list is passed, or if a c
     archive_name: "archive-catalogs-v{{ catalog_ocp_version }}-{{ catalog_group }}"   # one per catalog version and group
     archive_path: "{{ base_path }}/{{ archive_name }}"
     target_registry_name: "{{ target_registry_fqdn.split('.')[0] }}"   # registry-lab, registry-dc1, ...
-    cluster_resources_path: "{{ base_path }}/cluster-resources/{{ archive_name if oc_mirror_workflow != 'm2m' else workspace_path | basename }}-{{ target_registry_name }}"
+    # one folder per registry and path, so a new path on an existing registry gets its own files
+    cluster_resources_path: "{{ base_path }}/cluster-resources/{{ archive_name if oc_mirror_workflow != 'm2m' else workspace_path | basename }}-{{ target_registry_name }}-{{ target_registry_path | replace('/', '-') }}"
     workspace_path: "{{ base_path }}/workspace-catalogs-v{{ catalog_ocp_version }}-{{ catalog_group }}"
     cache_path: "{{ base_path }}/cache"
     auth_file_path: "{{ base_path }}/private/mirroring.json"
@@ -360,6 +364,14 @@ The playbook stops before doing anything if no catalog list is passed, or if a c
           - oc_mirror_workflow in ['m2d', 'd2m', 'm2m']
         fail_msg: "oc_mirror_workflow must be m2d (Red Hat to disk), d2m (disk to a registry) or m2m (Red Hat to a registry)."
         quiet: true
+
+    - name: Check the target is not a protected path (d2m, m2m)
+      ansible.builtin.assert:
+        that:
+          - target_registry_url not in protected_targets
+        fail_msg: "{{ target_registry_url }} is protected (protected_targets). Push to a new path, e.g. -e target_registry_path=ocp4v2."
+        quiet: true
+      when: oc_mirror_workflow != 'm2d'
 
     - name: Check the ImageSet from the mirror-to-disk run is there (d2m)
       ansible.builtin.stat:
@@ -506,7 +518,7 @@ Always dry-run a catalog ImageSet first. A wrong package list is the most common
    podman login $REG_HOST
    skopeo list-tags docker://$REG_HOST/$REG_PATH/redhat/redhat-operator-index | jq -r '.Tags[]'
    podman logout $REG_HOST
-   ls /data/oc-mirror/cluster-resources/archive-catalogs-v4.18-redhat-registry-lab/
+   ls /data/oc-mirror/cluster-resources/archive-catalogs-v4.18-redhat-registry-lab-ocp4/
    ```
 
    Expect the tag `v4.18`, and in `cluster-resources` an `idms-oc-mirror.yaml`, possibly an `itms-oc-mirror.yaml`, and one `cs-<catalog>-*.yaml` CatalogSource per catalog (plus `cc-*.yaml` ClusterCatalogs for OLM v1).
@@ -522,7 +534,7 @@ oc-mirror always names its mirror sets by category only: `idms-release-0`, `idms
 Before handover, add the run's name to every IDMS/ITMS in its folder. The cluster combines the mappings from all of them:
 
 ```
-cd /data/oc-mirror/cluster-resources/archive-catalogs-v4.18-redhat-registry-lab
+cd /data/oc-mirror/cluster-resources/archive-catalogs-v4.18-redhat-registry-lab-ocp4
 RUN=catalogs-v4-18-redhat
 sed -i -E "s/^(\s*name: )(i[dt]ms-[a-z]+-[0-9]+)\s*$/\1\2-$RUN/" i[dt]ms-oc-mirror.yaml
 grep -h 'name: i' i[dt]ms-oc-mirror.yaml
@@ -541,8 +553,8 @@ oc patch operatorhub cluster -p '{"spec": {"disableAllDefaultSources": true}}' -
 ### 3. Apply each folder
 
 ```
-oc apply -f /path/to/archive-catalogs-v4.18-redhat-registry-lab/
-oc apply -f /path/to/archive-catalogs-v4.18-partner-registry-lab/
+oc apply -f /path/to/archive-catalogs-v4.18-redhat-registry-lab-ocp4/
+oc apply -f /path/to/archive-catalogs-v4.18-partner-registry-lab-ocp4/
 ```
 
 This creates the renamed IDMS/ITMS and one CatalogSource per catalog. CatalogSource names include the catalog and its tag (for example `cs-redhat-operator-index-v4-18`), so versions don't collide.

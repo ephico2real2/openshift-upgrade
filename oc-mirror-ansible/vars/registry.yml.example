@@ -1,0 +1,18 @@
+# One file per registry this bastion pushes to, created with ansible-vault:
+#   ansible-vault create vars/registry-<name>.yml
+# and passed to the push (d2m) with -e @vars/registry-<name>.yml.
+# See docs/PREREQUISITES.md, "One Vault file per registry" and "Existing registries, new path".
+
+# --- A new mirror registry (registry-lab, registry-dc1, registry-dc2) ---
+target_registry_fqdn: "registry-dc1.example.com:8443"
+target_registry_path: "ocp4"
+target_registry_user: "ocp4+mirror"
+target_registry_password: "<robot token>"
+
+# --- An existing registry, on a new path (uncomment instead of the block above) ---
+# target_registry_fqdn: "mirror-old.example.com:8443"   # the old 1.x mirror registry, or another existing registry
+# target_registry_path: "ocp4v2"                        # a new organization that oc-mirror v1 never wrote to
+# target_registry_user: "ocp4v2+mirror"
+# target_registry_password: "<robot token>"
+# protected_targets:                                    # the old v1 content: never push here
+#   - "mirror-old.example.com:8443/ocp4"

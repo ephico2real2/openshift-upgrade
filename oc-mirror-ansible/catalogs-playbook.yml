@@ -13,6 +13,9 @@
     # Login scope in the auth file: the host (default) or the full path,
     # if the service account only has rights on that one repository
     target_auth_key: "{{ target_registry_fqdn }}"
+    # Registry paths that must never receive a push, e.g. the old oc-mirror v1 content on an
+    # existing registry. Set them in that registry's vars file (vars/registry.yml.example).
+    protected_targets: []
 
     # Working directories on the data volume (Step 2)
     base_path: "/data/oc-mirror"
@@ -25,7 +28,8 @@
     archive_name: "archive-catalogs-v{{ catalog_ocp_version }}-{{ catalog_group }}"   # one per catalog version and group
     archive_path: "{{ base_path }}/{{ archive_name }}"
     target_registry_name: "{{ target_registry_fqdn.split('.')[0] }}"   # registry-lab, registry-dc1, ...
-    cluster_resources_path: "{{ base_path }}/cluster-resources/{{ archive_name if oc_mirror_workflow != 'm2m' else workspace_path | basename }}-{{ target_registry_name }}"
+    # one folder per registry and path, so a new path on an existing registry gets its own files
+    cluster_resources_path: "{{ base_path }}/cluster-resources/{{ archive_name if oc_mirror_workflow != 'm2m' else workspace_path | basename }}-{{ target_registry_name }}-{{ target_registry_path | replace('/', '-') }}"
     workspace_path: "{{ base_path }}/workspace-catalogs-v{{ catalog_ocp_version }}-{{ catalog_group }}"
     cache_path: "{{ base_path }}/cache"
     auth_file_path: "{{ base_path }}/private/mirroring.json"
@@ -58,6 +62,14 @@
           - oc_mirror_workflow in ['m2d', 'd2m', 'm2m']
         fail_msg: "oc_mirror_workflow must be m2d (Red Hat to disk), d2m (disk to a registry) or m2m (Red Hat to a registry)."
         quiet: true
+
+    - name: Check the target is not a protected path (d2m, m2m)
+      ansible.builtin.assert:
+        that:
+          - target_registry_url not in protected_targets
+        fail_msg: "{{ target_registry_url }} is protected (protected_targets). Push to a new path, e.g. -e target_registry_path=ocp4v2."
+        quiet: true
+      when: oc_mirror_workflow != 'm2d'
 
     - name: Check the ImageSet from the mirror-to-disk run is there (d2m)
       ansible.builtin.stat:

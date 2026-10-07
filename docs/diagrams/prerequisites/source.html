@@ -69,7 +69,7 @@ a { color: var(--remote); }
     <p class="muted">Who reaches Red Hat, who pushes where, and who pulls from what.</p>
     <figure>
       <div class="fig-scroll">
-<svg viewBox="0 0 1000 640" role="img" aria-label="Target layout. In datacenter 1 a mirroring bastion reaches Red Hat only through the enterprise proxy and pushes over TCP 8443 to two mirror registries: the lab registry and the datacenter 1 production registry. In datacenter 2 its own bastion does the same for the datacenter 2 production registry. Lab clusters pull from the lab registry and each datacenter's production clusters pull from their own registry. The old 1.x registry keeps serving until every cluster has switched, then it is retired. All hosts run RHEL 9.">
+<svg viewBox="0 0 1000 640" role="img" aria-label="Target layout. In datacenter 1 a mirroring bastion reaches Red Hat only through the enterprise proxy and pushes over TCP 8443 to two mirror registries: the lab registry and the datacenter 1 production registry. In datacenter 2 its own bastion does the same for the datacenter 2 production registry. Lab clusters pull from the lab registry and each datacenter's production clusters pull from their own registry. The old 1.x registry keeps serving until every cluster has switched, then it is retired; meanwhile the datacenter 1 bastion may also push the same content into it on a new path, never into the oc-mirror v1 path. All hosts run RHEL 9.">
 <defs><marker id="ap1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
 <g font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="currentColor">
 <rect x="20" y="14" width="960" height="50" rx="8" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.5"/>
@@ -126,10 +126,12 @@ a { color: var(--remote); }
 <text x="178" y="420" fill="var(--muted)">pull</text>
 <text x="478" y="420" fill="var(--muted)">pull</text>
 <text x="823" y="420" fill="var(--muted)">pull</text>
+<path d="M315,258 L315,500" fill="none" stroke="var(--muted)" stroke-width="1.4" stroke-dasharray="6 5" marker-end="url(#ap1)"/>
+<text x="322" y="302" fill="var(--muted)" font-size="11.5">new path, proposed</text>
 <rect x="40" y="504" width="925" height="46" rx="8" fill="var(--none-wash)" stroke="var(--none)" stroke-width="1.5"/>
 <text x="56" y="523" fill="var(--none)" font-weight="600">old registry · mirror registry 1.x, single host</text>
-<text x="56" y="540" fill="var(--muted)">serves today's clusters until each has switched to its new registry; then retired</text>
-<text x="20" y="584" fill="var(--muted)">Each bastion pushes only to registries in its own datacenter. No two-headed DNS: the proxy resolves Red Hat's names.</text>
+<text x="56" y="540" fill="var(--muted)">serves today's clusters until each has switched; can take v2 pushes on a new path (ocp4v2)</text>
+<text x="20" y="584" fill="var(--muted)">Each bastion pushes only to registries in its own datacenter; the dashed arrow is an optional push into the old registry on a new path.</text>
 <text x="20" y="606" fill="var(--host)" font-weight="600">Solid = exists today (the clusters, the old registry). Dashed = proposed: the two bastions and three registries are not built.</text>
 </g>
 </svg>

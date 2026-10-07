@@ -397,6 +397,13 @@ podman logout $REG_HOST
 The push must end with `Writing manifest to image destination`. Delete `ocp4/openshift/push-test` in
 the registry's web UI afterwards.
 
+**An existing registry, on a new path.** The same archive can also be pushed into a registry we
+already run, such as the old 1.x mirror registry, under a new organization that oc-mirror v1 never
+wrote to (e.g. `ocp4v2`). Ask its owner for that organization and its two robot accounts, run the
+push test above with `REG_PATH=ocp4v2`, and list the v1 path in the registry's Vault file under
+`protected_targets` so no run can push there. Template: `vars/registry.yml.example`; rules and the
+cluster side: [`PREREQUISITES.md`](../../docs/PREREQUISITES.md), "Existing registries, on a new path".
+
 **Three registries, one Vault file each.** Repeat this step for every registry your bastion fills,
 and keep each robot account in its own Vault file (`vars/registry-dc1.yml` and so on, as in
 [`PREREQUISITES.md`](../../docs/PREREQUISITES.md), "One Vault file per registry"). Pass it with
@@ -474,7 +481,7 @@ Compared with the original article, this playbook:
 - keeps all files under `/data/oc-mirror`, with the auth file in a `0700` folder instead of `/tmp`;
 - runs in two halves (`oc_mirror_workflow`): **`m2d`** downloads from Red Hat into an archive on `/data`, and **`d2m`** pushes that archive into one registry, once per registry (lab first, then production). `m2m` (straight from Red Hat to a registry) stays for small top-ups;
 - keeps one oc-mirror cache in `/data/oc-mirror/cache` for the whole upgrade road. Red Hat: oc-mirror "uses the cache in the `mirror-to-disk` and `disk-to-mirror` workflows" to "perform incremental mirroring and avoids remirroring unchanged images", so each later run downloads only what changed, and a failed run picks up from the last success;
-- saves the ImageSet per archive (`/data/oc-mirror/imagesets/`), so every `d2m` uses exactly what `m2d` downloaded, and copies each registry's `cluster-resources` to its own folder (`/data/oc-mirror/cluster-resources/<archive>-<registry>/`);
+- saves the ImageSet per archive (`/data/oc-mirror/imagesets/`), so every `d2m` uses exactly what `m2d` downloaded, and copies each registry's `cluster-resources` to its own folder (`/data/oc-mirror/cluster-resources/<archive>-<registry>-<path>/`);
 - adds timeout handling: gentler oc-mirror settings and up to 4 attempts at the mirror run; oc-mirror's own retries back off exponentially;
 - calls `oc-mirror` by full path, so it works from any directory.
 
@@ -496,6 +503,9 @@ Before the first run, compare `oc_mirror_tuning` with the flag list you saved in
     # Login scope in the auth file: the host (default) or the full path,
     # if the service account only has rights on that one repository
     target_auth_key: "{{ target_registry_fqdn }}"
+    # Registry paths that must never receive a push, e.g. the old oc-mirror v1 content on an
+    # existing registry. Set them in that registry's vars file (vars/registry.yml.example).
+    protected_targets: []
 
     # Working directories on the data volume (Step 2)
     base_path: "/data/oc-mirror"
@@ -508,7 +518,8 @@ Before the first run, compare `oc_mirror_tuning` with the flag list you saved in
     archive_name: "archive"                         # one per run, e.g. archive-run-a
     archive_path: "{{ base_path }}/{{ archive_name }}"
     target_registry_name: "{{ target_registry_fqdn.split('.')[0] }}"   # registry-lab, registry-dc1, ...
-    cluster_resources_path: "{{ base_path }}/cluster-resources/{{ archive_name if oc_mirror_workflow != 'm2m' else workspace_path | basename }}-{{ target_registry_name }}"
+    # one folder per registry and path, so a new path on an existing registry gets its own files
+    cluster_resources_path: "{{ base_path }}/cluster-resources/{{ archive_name if oc_mirror_workflow != 'm2m' else workspace_path | basename }}-{{ target_registry_name }}-{{ target_registry_path | replace('/', '-') }}"
     workspace_path: "{{ base_path }}/workspace"
     cache_path: "{{ base_path }}/cache"
     auth_file_path: "{{ base_path }}/private/mirroring.json"
@@ -547,6 +558,14 @@ Before the first run, compare `oc_mirror_tuning` with the flag list you saved in
           - oc_mirror_workflow in ['m2d', 'd2m', 'm2m']
         fail_msg: "oc_mirror_workflow must be m2d (Red Hat to disk), d2m (disk to a registry) or m2m (Red Hat to a registry)."
         quiet: true
+
+    - name: Check the target is not a protected path (d2m, m2m)
+      ansible.builtin.assert:
+        that:
+          - target_registry_url not in protected_targets
+        fail_msg: "{{ target_registry_url }} is protected (protected_targets). Push to a new path, e.g. -e target_registry_path=ocp4v2."
+        quiet: true
+      when: oc_mirror_workflow != 'm2d'
 
     - name: Check the ImageSet from the mirror-to-disk run is there (d2m)
       ansible.builtin.stat:
@@ -763,7 +782,7 @@ A `failed=0` recap is the first check. These confirm the result:
 
    ```bash
    ls /data/oc-mirror/cluster-resources/
-   ls /data/oc-mirror/cluster-resources/archive-4.18.17-registry-lab/
+   ls /data/oc-mirror/cluster-resources/archive-4.18.17-registry-lab-ocp4/
    ls /data/oc-mirror/archive-4.18.17/working-dir/logs/     # a mirroring_errors_*.txt file means some images failed
    ```
 
@@ -952,7 +971,7 @@ The 4.20 target ends Run A and starts Run B, so the two mirrors join without a g
 
 - **`shortestPath: true`** (`-e shortest_path=true`): oc-mirror mirrors only the releases on the update path, including 4.18.17 itself. Without it, it mirrors every z-stream release in the range, which could be dozens of releases.
 - **Pin exact maximum versions, not "latest".** A pinned target gives the same result every run, and Run B's minimum must equal Run A's maximum.
-- **One archive per run, one shared cache.** Each download fetches only what the cache doesn't already hold. Each push writes that registry's cluster resources to `/data/oc-mirror/cluster-resources/<archive>-<registry>/`. Never delete or edit the cache or an archive's `working-dir`: Red Hat warns this causes "Loss of incremental mirroring data".
+- **One archive per run, one shared cache.** Each download fetches only what the cache doesn't already hold. Each push writes that registry's cluster resources to `/data/oc-mirror/cluster-resources/<archive>-<registry>-<path>/`. Never delete or edit the cache or an archive's `working-dir`: Red Hat warns this causes "Loss of incremental mirroring data".
 - **Same pull secret for both runs.** The Red Hat pull secret from Step 4 covers `quay.io` (release images) and `registry.redhat.io` (operator catalog and the Update Service operator); no separate Quay account is needed. `registry.access.redhat.com` (the graph's base image) is public.
 
 ### Steps
@@ -1001,11 +1020,11 @@ The 4.20 target ends Run A and starts Run B, so the two mirrors join without a g
    ```
 
    After the lab cluster has taken the update, push the same archives into the production registry of your datacenter (`-e @vars/registry-dc1.yml`, or `registry-dc2` on the DC2 bastion, which runs its own downloads with the same `$A` and `$B`). Check `df -h /data` between runs.
-6. **Prepare both `cluster-resources` folders for handover**, per registry (e.g. `archive-run-a-registry-lab` and `archive-run-b-registry-lab` under `/data/oc-mirror/cluster-resources/`):
+6. **Prepare both `cluster-resources` folders for handover**, per registry (e.g. `archive-run-a-registry-lab-ocp4` and `archive-run-b-registry-lab-ocp4` under `/data/oc-mirror/cluster-resources/`):
    - **Signatures:** each run writes a ConfigMap named `mirrored-release-signatures`, as both `signature-configmap.yaml` and `signature-configmap.json`, holding only that run's release signatures. Applying Run B's would replace Run A's. Rename Run A's and delete its JSON copy, so applying the folder can't bring the old name back. The cluster finds signature ConfigMaps by their label, not their name:
 
      ```bash
-     cd /data/oc-mirror/cluster-resources/archive-run-a-registry-lab
+     cd /data/oc-mirror/cluster-resources/archive-run-a-registry-lab-ocp4
      sed -i 's/name: mirrored-release-signatures$/name: mirrored-release-signatures-run-a/' signature-configmap.yaml
      rm -f signature-configmap.json
      grep 'name: mirrored-release-signatures' signature-configmap.yaml
@@ -1013,7 +1032,7 @@ The 4.20 target ends Run A and starts Run B, so the two mirrors join without a g
    - **IDMS and ITMS:** oc-mirror names its mirror sets by category only (`idms-release-0`, `idms-operator-0`, and so on), so every run, release or catalog, reuses the same names. Applying one run's files would replace the previous run's mappings on the cluster. Give each run's mirror sets a unique name before handover; the cluster combines the mappings from all of them:
 
      ```bash
-     cd /data/oc-mirror/cluster-resources/archive-run-a-registry-lab
+     cd /data/oc-mirror/cluster-resources/archive-run-a-registry-lab-ocp4
      RUN=release-run-a          # unique per run: release-run-b, release-run-b1, …
      sed -i -E "s/^(\s*name: )(i[dt]ms-[a-z]+-[0-9]+)\s*$/\1\2-$RUN/" i[dt]ms-oc-mirror.yaml
      grep -h 'name: i' i[dt]ms-oc-mirror.yaml

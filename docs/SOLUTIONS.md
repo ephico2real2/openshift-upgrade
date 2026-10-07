@@ -69,7 +69,8 @@ instead, all on RHEL 9 (RHEL 10 is not yet supported for the mirror registry or 
   registry in each datacenter. Each is a fresh mirror registry 2.0.x install, filled again from
   Red Hat by oc-mirror v2.
 - **The old registry** serves the clusters until each one has switched to its new registry, then it
-  is retired.
+  is retired. Meanwhile the bastions can also push v2 content into it, or into any existing
+  registry, on a new path (e.g. `ocp4v2`), never into the path oc-mirror v1 filled.
 
 Red Hat discourages using one mirror registry for several clusters and asks for mirror registries
 to be highly available. If a production registry serves several clusters, Step 3 (full Quay) is
@@ -78,7 +79,7 @@ the long-term answer. Hosts, sizing, flows and the cluster cutover: [`PREREQUISI
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/prerequisites/topology.dark.png">
   <source srcset="diagrams/prerequisites/topology.light.png">
-  <img alt="Target layout. In datacenter 1 a mirroring bastion reaches Red Hat only through the enterprise proxy and pushes over TCP 8443 to two mirror registries: the lab registry and the datacenter 1 production registry. In datacenter 2 its own bastion does the same for the datacenter 2 production registry. Lab clusters pull from the lab registry and each datacenter's production clusters pull from their own registry. The old 1.x registry keeps serving until every cluster has switched, then it is retired. All hosts run RHEL 9." src="diagrams/prerequisites/topology.light.png">
+  <img alt="Target layout. In datacenter 1 a mirroring bastion reaches Red Hat only through the enterprise proxy and pushes over TCP 8443 to two mirror registries: the lab registry and the datacenter 1 production registry. In datacenter 2 its own bastion does the same for the datacenter 2 production registry. Lab clusters pull from the lab registry and each datacenter's production clusters pull from their own registry. The old 1.x registry keeps serving until every cluster has switched, then it is retired; meanwhile the datacenter 1 bastion may also push the same content into it on a new path, never into the oc-mirror v1 path. All hosts run RHEL 9." src="diagrams/prerequisites/topology.light.png">
 </picture>
 
 *Proposed layout: the bastions and registries are not built yet.*
@@ -86,7 +87,8 @@ the long-term answer. Hosts, sizing, flows and the cluster cutover: [`PREREQUISI
 ```text
 DC1: mirror-bastion-dc1 --push 8443--> registry-lab (lab clusters), registry-dc1 (production DC1)
 DC2: mirror-bastion-dc2 --push 8443--> registry-dc2 (production DC2)
-both bastions --443 via the enterprise proxy--> Red Hat; the old 1.x registry is retired after cutover
+both bastions --443 via the enterprise proxy--> Red Hat; the old 1.x registry may take pushes on a new path
+(e.g. ocp4v2, never the v1 path) until it is retired after cutover
 ```
 
 ## Step 1: our current process, modernised with Ansible
