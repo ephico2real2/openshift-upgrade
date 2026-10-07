@@ -1,2 +1,4 @@
 .DS_Store
 node_modules/
+# the pinned diagram-kit install (docs/PROBLEM-STATEMENT.md, Diagram sources)
+.venv/
