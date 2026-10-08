@@ -174,12 +174,39 @@ phases, ordered so that changes that touch no nodes go first:
 *The proposed retrofit, phase by phase, with what each phase does to the nodes. The numbered list
 above is the same order.*
 
-**Only platform components reach Red Hat.** Three controls, each tested by the runbook:
+**What going direct gives us, beyond removing the sync:**
 
-- **Proxy settings:** they go to platform components and operators only; application pods get none.
-- **A network rule in every application namespace:** pods there cannot reach the proxy, even if
-  they set a proxy themselves.
-- **An image allowlist:** opening `quay.io` does not let anyone pull arbitrary public images.
+| Advantage | Why |
+|---|---|
+| Updates arrive when Red Hat ships them | Z-streams for the newest minor ship weekly. A cluster can take a security fix the day it is published, not after a mirror run has succeeded |
+| Live upgrade guidance | The cluster reads its update recommendations from `api.openshift.com`, including Red Hat's known-issue risks on conditional upgrade paths, as soon as they are published. A local Update Service only knows what the last sync brought |
+| No signature mirroring | From 4.21 release images must be signed. A connected cluster reads the signatures from Red Hat; a disconnected one needs them mirrored, plus the `ack-4.20-sigstore-in-4.21` acknowledgment before 4.21 |
+| Full, current operator catalogs | Any approved operator can be installed or updated without mirroring it first. oc-mirror v2 does not infer an operator's dependencies, so a mirrored catalog needs each one listed by hand |
+| Less to run and size | No mirror registries to keep highly available, no 2 TB caches, no oc-mirror version to track, none of its known failure modes (Red Hat KBs 7130341, 7139982, 7128745) |
+| Fewer node drains later | No IDMS/ITMS/ICSP to create or delete at each cutover; deleting them drains the nodes |
+| Red Hat's standard configuration | The connected cluster-wide proxy is the documented, most common setup, so support cases start from known ground |
+| Optional, if security agrees | Insights recommendations and telemetry give Red Hat Support proactive alerts and cluster data. Off unless enabled; updates do not need them |
+
+The costs are in the runbook: an HA proxy, security approval for node egress, one reboot of every
+node when the proxy goes on, and one drain when the mirror objects are removed.
+
+**Does the cluster-wide proxy open every namespace to the internet? No.** Red Hat, in the 4.18 and
+4.22 docs alike: "The system-wide proxy affects system components only, not user workloads"
+(`networking/configuring_network_settings/enable-cluster-wide-proxy.adoc`). Application pods get no
+proxy settings, and the firewall still lets nothing out directly. Even platform components reach
+only what the proxy allows, and our allowlist is Red Hat's documented hosts and nothing else.
+
+Three gaps remain, and the runbook closes each one:
+
+| Gap | Why it exists | Control (runbook phase) |
+|---|---|---|
+| A pod sets `HTTPS_PROXY` itself | Pod traffic leaves with the node's IP, so the proxy cannot tell a pod from a platform component | EgressFirewall in every application namespace denying the proxy's address, also in the project template for new namespaces (phase 5) |
+| Operators installed from OperatorHub get the proxy | Red Hat: OLM operators "inherit the cluster-wide proxy settings on their deployments", in whatever namespace they run | They reach only allowlisted hosts; any namespace that needs them is named in the security sign-off |
+| Any pod's image can come from `quay.io` | CRI-O pulls images for every pod through the node's proxy setting | `allowedRegistries` lists repositories, not whole registries (phase 3) |
+
+The runbook's verification table proves it on a live cluster: a test pod in an application
+namespace has no proxy variables, cannot reach the proxy, cannot go out directly, and cannot pull
+an image from outside the allowlist.
 
 **No two-headed DNS.** The proxy resolves Red Hat's names; nodes resolve only internal names.
 Internal DNS stays as it is.
