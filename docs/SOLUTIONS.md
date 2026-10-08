@@ -181,7 +181,7 @@ above is the same order.*
 | Updates arrive when Red Hat ships them | Z-streams for the newest minor ship weekly. A cluster can take a security fix the day it is published, not after a mirror run has succeeded |
 | Live upgrade guidance | The cluster reads its update recommendations from `api.openshift.com`, including Red Hat's known-issue risks on conditional upgrade paths, as soon as they are published. A local Update Service only knows what the last sync brought |
 | No signature mirroring | From 4.21 release images must be signed. A connected cluster reads the signatures from Red Hat; a disconnected one needs them mirrored, plus the `ack-4.20-sigstore-in-4.21` acknowledgment before 4.21 |
-| Full, current operator catalogs | Any approved operator can be installed or updated without mirroring it first. oc-mirror v2 does not infer an operator's dependencies, so a mirrored catalog needs each one listed by hand |
+| Current catalogs, still under our control | Approved operators come current from Red Hat, with no mirroring and no hand-listed dependencies (oc-mirror v2 does not infer them). What developers see is still only what we put in the catalog: a filtered catalog (model A) or an allowlist on the stock one (model B), enforced by the admission policies in [`catalog-policies/`](catalog-policies/) (DESIGN-DECISIONS, D2) |
 | Less to run and size | No mirror registries to keep highly available, no 2 TB caches, no oc-mirror version to track, none of its known failure modes (Red Hat KBs 7130341, 7139982, 7128745) |
 | Fewer node drains later | No IDMS/ITMS/ICSP to create or delete at each cutover; deleting them drains the nodes |
 | Red Hat's standard configuration | The connected cluster-wide proxy is the documented, most common setup, so support cases start from known ground |
@@ -201,7 +201,7 @@ Three gaps remain, and the runbook closes each one:
 | Gap | Why it exists | Control (runbook phase) |
 |---|---|---|
 | A pod sets `HTTPS_PROXY` itself | Pod traffic leaves with the node's IP, so the proxy cannot tell a pod from a platform component | EgressFirewall in every application namespace denying the proxy's address, also in the project template for new namespaces (phase 5) |
-| Operators installed from OperatorHub get the proxy | Red Hat: OLM operators "inherit the cluster-wide proxy settings on their deployments", in whatever namespace they run | They reach only allowlisted hosts; any namespace that needs them is named in the security sign-off |
+| Operators installed from OperatorHub get the proxy | Red Hat: OLM operators "inherit the cluster-wide proxy settings on their deployments", in whatever namespace they run | **We control the catalog**, so only operators we approved can be installed at all. They reach only allowlisted hosts; in an application namespace its EgressFirewall blocks the proxy too, and a Subscription can unset the proxy for an operator that does not need it |
 | Any pod's image can come from `quay.io` | CRI-O pulls images for every pod through the node's proxy setting | `allowedRegistries` lists repositories, not whole registries (phase 3) |
 
 The runbook's verification table proves it on a live cluster: a test pod in an application
