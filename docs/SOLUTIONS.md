@@ -190,6 +190,46 @@ above is the same order.*
 The costs are in the runbook: an HA proxy, security approval for node egress, one reboot of every
 node when the proxy goes on, and one drain when the mirror objects are removed.
 
+**A common misconception: "our clusters cannot use a proxy."** They can, and Red Hat documents it
+as a standard configuration, both when a cluster is installed and on a running one: "Production
+environments can deny direct access to the internet and instead have an HTTP or HTTPS proxy
+available. You can configure a new OpenShift Container Platform cluster to use a proxy by
+configuring the proxy settings in the `install-config.yaml` file"
+(`modules/installation-configure-proxy.adoc`; for existing clusters,
+`modules/nw-proxy-configure-object.adoc`). The proxy serves the platform only (below), allows only
+Red Hat's documented hosts, and needs no two-headed DNS.
+
+**Syncing and the proxy bring the same content from the same trusted partner.** We already trust
+Red Hat's content: today we copy it into our registries and run it. Going through the proxy changes
+only how it travels, not what arrives or how it is checked.
+
+| | Syncing (Step 1, Step 3) | Proxy (Step 2) |
+|---|---|---|
+| Where it comes from | Red Hat's registries, through the enterprise proxy, to a bastion | Red Hat's registries, through the enterprise proxy, to the nodes |
+| What arrives | The release images, by their SHA digests | The same images, by the same digests |
+| How it is checked | The cluster validates Red Hat's signed statements with built-in public keys; from 4.21, Sigstore signatures as well | The same checks, against Red Hat directly |
+| Hosts opened at the firewall | `quay.io`, `registry.redhat.io`, `api.openshift.com`, `mirror.openshift.com` | The same hosts |
+| Delay before a cluster can use it | Until the next successful sync | None |
+
+Red Hat: "Red Hat publishes cryptographically-signed statements about published release images at
+predefined locations by using image SHA digests as unique and immutable release image identifiers.
+The CVO utilizes a list of built-in public keys to validate the presence and signatures of the
+statement matching the checked release image" (`modules/update-process-workflow.adoc`). The
+signature check is the same in both designs; syncing adds a copy and a wait.
+
+**Syncing leaves us at a disadvantage when Red Hat fixes a bug or a vulnerability.** The fix is
+published the same day either way. A synced cluster can take it only after someone has mirrored it
+and the run has succeeded; a proxied cluster can take it in the next change window, after the lab.
+We still decide when each cluster updates; the proxy removes the wait, not the control.
+
+**What the proxy unlocks:**
+
+| Area | With syncing | With the proxy |
+|---|---|---|
+| Keeping up with updates | Each z-stream (weekly for the newest minor) waits for a mirror run; 4.18 fixes keep shipping (156 CVEs in 4.18 advisories so far in 2026) | Every z-stream and its upgrade guidance are available when Red Hat publishes them |
+| Building new clusters | A mirror with the target release first, then a disconnected install pointing at it | `install-config.yaml` names the proxy; the installer pulls the current release from Red Hat |
+| New platform features and operators | Each new operator, and every dependency, mirrored by hand before anyone can try it | Available as soon as Red Hat ships it; we still choose what the catalog shows |
+
 **Does the cluster-wide proxy open every namespace to the internet? No.** Red Hat, in the 4.18 and
 4.22 docs alike: "The system-wide proxy affects system components only, not user workloads"
 (`networking/configuring_network_settings/enable-cluster-wide-proxy.adoc`). Application pods get no
