@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: allow-redhat
+  namespace: team-a
+spec:
+
+  containers:
+  - name: app
+    image: registry.redhat.io/ubi9/ubi-minimal:latest

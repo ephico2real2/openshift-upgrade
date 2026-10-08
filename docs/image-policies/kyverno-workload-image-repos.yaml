@@ -1,0 +1,71 @@
+# Kyverno: application pods may only use images from approved repositories.
+#
+# This sits on top of image.config.openshift.io/cluster allowedRegistries
+# (enterprise-proxy runbook, phase 3); it does not replace it. allowedRegistries
+# is enforced by CRI-O on every node, for every pull, including builds and
+# static pods. This policy is enforced at admission, for application
+# namespaces only, so it can be stricter than the node list: applications have
+# no reason to pull quay.io/openshift-release-dev.
+#
+# Replace the example hosts with the phase 1 inventory. Start with
+# validationActions: [Audit], read the PolicyReports, then switch to [Deny].
+# Written as a ValidatingPolicy: Kyverno 1.19 deprecates kyverno.io/v1 ClusterPolicy.
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: restrict-workload-image-repos
+  annotations:
+    policies.kyverno.io/title: Restrict application image repositories
+    policies.kyverno.io/description: >-
+      Pods outside the platform namespaces may only use images from the
+      approved repositories. allowedRegistries on the nodes stays the backstop.
+spec:
+  validationActions: [Deny]
+  matchConstraints:
+    # Pods, and the controllers that create them, so `oc apply` of a Deployment
+    # fails at once instead of its ReplicaSet failing quietly later.
+    resourceRules:
+    - apiGroups: [""]
+      apiVersions: ["v1"]
+      operations: ["CREATE", "UPDATE"]
+      resources: ["pods", "pods/ephemeralcontainers"]
+    - apiGroups: ["apps"]
+      apiVersions: ["v1"]
+      operations: ["CREATE", "UPDATE"]
+      resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+    - apiGroups: ["batch"]
+      apiVersions: ["v1"]
+      operations: ["CREATE", "UPDATE"]
+      resources: ["jobs", "cronjobs"]
+  matchConditions:
+  - name: application-namespaces-only
+    expression: >-
+      !(request.namespace == 'openshift' || request.namespace.startsWith('openshift-') ||
+        request.namespace.startsWith('kube-') || request.namespace in ['default', 'kyverno'])
+  variables:
+  - name: allowed
+    expression: >-
+      [
+        'registry.redhat.io/',
+        'registry.access.redhat.com/',
+        'registry.connect.redhat.com/',
+        'image-registry.openshift-image-registry.svc:5000/',
+        'registry-dc1.example.com:8443/'
+      ]
+  - name: podSpec
+    expression: >-
+      object.kind == 'Pod' ? object.spec :
+      object.kind == 'CronJob' ? object.spec.jobTemplate.spec.template.spec :
+      object.spec.template.spec
+  - name: images
+    expression: >-
+      variables.podSpec.containers.map(c, c.image) +
+      variables.podSpec.?initContainers.orValue([]).map(c, c.image) +
+      variables.podSpec.?ephemeralContainers.orValue([]).map(c, c.image)
+  validations:
+  - expression: >-
+      variables.images.all(i, variables.allowed.exists(p, i.startsWith(p)))
+    messageExpression: >-
+      'Images must come from an approved repository (' + variables.allowed.join(', ') +
+      '); not allowed: ' +
+      variables.images.filter(i, !variables.allowed.exists(p, i.startsWith(p))).join(', ')

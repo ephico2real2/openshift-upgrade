@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: allow-mirror
+  namespace: team-a
+spec:
+
+  containers:
+  - name: app
+    image: registry-dc1.example.com:8443/ocp4v2/team-a/app:1.0

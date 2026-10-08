@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: skip-platform-ns
+  namespace: openshift-monitoring
+spec:
+
+  containers:
+  - name: app
+    image: quay.io/libpod/alpine:latest

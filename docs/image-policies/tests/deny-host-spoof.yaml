@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: deny-host-spoof
+  namespace: team-a
+spec:
+
+  containers:
+  - name: app
+    image: registry.redhat.io.evil.example.com/ubi9/ubi:latest

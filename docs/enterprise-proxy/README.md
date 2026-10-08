@@ -250,6 +250,11 @@ oc patch image.config.openshift.io/cluster --type merge -p '{
   CRI-O reloads.
 - **Open question for Red Hat Support:** whether `quay.io/openshift-release-dev` covers everything a
   connected cluster pulls from `quay.io`. Watch for `ErrImagePull` with "not allowed" after phase 8.
+- **Stricter rule for applications (Kyverno):** this list has to include everything the platform
+  pulls. A Kyverno policy in [`../image-policies/`](../image-policies/) narrows application
+  namespaces further, at admission, with an audit mode first and per-team exceptions. It adds to
+  `allowedRegistries` and does not replace it: admission never sees build `FROM` pulls, static pods
+  or pulls run on a node.
 
 ## Phase 4: the cluster-wide proxy (maintenance window)
 

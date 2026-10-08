@@ -246,7 +246,7 @@ Only two places a platform component touches other namespaces, and both are cont
 | Where | Why | Control (runbook phase) |
 |---|---|---|
 | Operators installed from OperatorHub get the proxy | Red Hat: OLM operators "inherit the cluster-wide proxy settings on their deployments" [R2], in whatever namespace they run; for the pods they manage, "Operators must handle setting environment variables for proxy settings" [R2] | **We control the catalog**, so only operators we approved can be installed at all, and they reach only allowlisted hosts. A Subscription can unset the proxy for an operator that does not need it: the variables "can also be unset using an empty value" [R2] (phase 7) |
-| Any pod's image can come from `quay.io` | CRI-O pulls images for every pod through the node's proxy setting; it carries images only, never application traffic | `allowedRegistries` lists repositories, not whole registries: "Registries not in your allowlist are blocked" [R3] (phase 3) |
+| Any pod's image can come from `quay.io` | CRI-O pulls images for every pod through the node's proxy setting; it carries images only, never application traffic | `allowedRegistries` lists repositories, not whole registries: "Registries not in your allowlist are blocked" [R3] (phase 3). A Kyverno policy narrows application namespaces further at admission ([`image-policies/`](image-policies/)); it adds to `allowedRegistries`, it does not replace it |
 
 The runbook's verification table proves it on a live cluster: a test pod in an application
 namespace gets no proxy variables, cannot go out directly, and cannot pull an image from outside the
