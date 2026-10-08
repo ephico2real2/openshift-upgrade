@@ -213,7 +213,7 @@ a { color: var(--remote); }
     <p class="muted">What each phase changes and what it does to the nodes.</p>
     <figure>
       <div class="fig-scroll">
-<svg viewBox="0 0 1000 760" role="img" aria-label="The Step 2 runbook converts a disconnected cluster in ten phases. Phases 0 to 3 touch no nodes beyond a CRI-O reload: approval, backup, the Red Hat pull secret and the image allowlist. Phase 4 turns on the cluster-wide proxy and drains and reboots every node. Phases 5 to 7 lock workloads out of the proxy, point update checks at Red Hat and move the operator catalogs, with no node effect. Phase 8 runs one update with the mirror still in place, and only then phase 9 removes the mirror, which drains the nodes again.">
+<svg viewBox="0 0 1000 760" role="img" aria-label="The Step 2 runbook converts a disconnected cluster in ten phases. Phases 0 to 3 touch no nodes beyond a CRI-O reload: approval, backup, the Red Hat pull secret and the image allowlist. Phase 4 turns on the cluster-wide proxy and drains and reboots every node. Phase 5 is optional, since the proxy never reaches application pods; phases 6 and 7 point update checks at Red Hat and move the operator catalogs, with no node effect. Phase 8 runs one update with the mirror still in place, and only then phase 9 removes the mirror, which drains the nodes again.">
 <defs><marker id="ah3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
 <g font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="currentColor">
 <rect x="20" y="14" width="640" height="30" rx="6" fill="var(--host-wash)" stroke="var(--host)"/>
@@ -256,8 +256,8 @@ a { color: var(--remote); }
 <path d="M650,335 L696,335" fill="none" stroke="var(--muted)" stroke-width="1.1" marker-end="url(#ah3)"/>
 <path d="M60,358 L60,372" fill="none" stroke="currentColor" stroke-width="1.2" marker-end="url(#ah3)"/>
 <rect x="30" y="374" width="620" height="46" rx="8" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5" stroke-dasharray="5 4"/>
-<text x="46" y="393" fill="var(--host)" font-weight="600">Phase 5 · lock workloads out of the proxy</text>
-<text x="46" y="410" fill="var(--muted)">EgressFirewall in every workload namespace; project template</text>
+<text x="46" y="393" fill="var(--host)" font-weight="600">Phase 5 · optional: keep workloads off the proxy</text>
+<text x="46" y="410" fill="var(--muted)">only if security asks; the platform already gives apps no proxy</text>
 <rect x="700" y="379" width="270" height="36" rx="8" fill="var(--none-wash)" stroke="var(--none)" stroke-width="1.5"/>
 <text x="835.0" y="401" fill="var(--muted)" text-anchor="middle">none</text>
 <path d="M650,397 L696,397" fill="none" stroke="var(--muted)" stroke-width="1.1" marker-end="url(#ah3)"/>
@@ -290,7 +290,7 @@ a { color: var(--remote); }
 <text x="835.0" y="649" fill="var(--gap)" text-anchor="middle">drain; plan for a reboot</text>
 <path d="M650,645 L696,645" fill="none" stroke="var(--muted)" stroke-width="1.1" marker-end="url(#ah3)"/>
 <text x="20" y="698" fill="var(--muted)">Nothing touches the nodes until phase 4, which gets its own window. The mirror comes out only after a connected update worked.</text>
-<text x="20" y="720" fill="var(--muted)">Checks: tests 1–5 after phase 4, 6–9 after phase 5, all again after phase 9 (enterprise-proxy/README.md, Verify).</text>
+<text x="20" y="720" fill="var(--muted)">Checks: tests 1–5 after phase 4, 6–9 after phase 6, all again after phase 9 (enterprise-proxy/README.md, Verify).</text>
 <text x="20" y="744" fill="var(--host)" font-weight="600">Dashed = proposed runbook, not run on any of our clusters and not approved yet.</text>
 </g>
 </svg>
