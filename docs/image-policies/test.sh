@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Offline test of kyverno-workload-image-repos.yaml with the kyverno CLI (tested with v1.19.1).
-# The expected result is in each fixture's file name: allow-* pass, deny-* fail, skip-* skip.
-# Each case is checked on its own: `kyverno test` reported an invalid policy as passing.
+# Offline test with the kyverno CLI (tested with v1.19.1): kyverno test .kyverno-test
+# The ConfigMap in allowed-image-registries.yaml is copied into the test context first, so the
+# test runs against the list we actually apply. The run fails if any case is reported with a
+# reason other than Ok or Excluded: `kyverno test` counts an invalid policy as passing otherwise.
 set -u
 cd "$(dirname "$0")"
 K=${KYVERNO:-kyverno}
-bad=0
-for f in tests/*.yaml; do
-  n=$(basename "$f" .yaml)
-  case "$n" in allow-*) want="pass: 1, fail: 0";; deny-*) want="pass: 0, fail: 1";; skip-*) want="pass: 0, fail: 0, warn: 0, error: 0, skip: 1";; esac
-  got=$("$K" apply kyverno-workload-image-repos.yaml -r "$f" 2>/dev/null | grep '^pass:')
-  if [[ "$got" == *"$want"* && "$got" == *"error: 0"* ]]; then echo "ok   $n"; else echo "FAIL $n: $got"; bad=1; fi
-done
-exit $bad
+{ printf 'apiVersion: cli.kyverno.io/v1alpha1\nkind: Context\nmetadata:\n  name: context\nspec:\n  resources:\n'
+  grep -v '^#' allowed-image-registries.yaml | sed 's/^/    /; 1s/^    /  - /'; } > .kyverno-test/context.yaml
+out=$("$K" test .kyverno-test 2>&1 | sed 's/\x1b\[[0-9;]*m//g')
+echo "$out" | grep -E '^│ [0-9]|Test Summary'
+rows=$(echo "$out" | grep -cE '^│ [0-9]')
+bad=$(echo "$out" | grep -E '^│ [0-9]' | grep -vcE '│ Pass +│ (Ok|Excluded) +│')
+echo "$out" | grep -q '0 tests failed' && [ "$rows" -gt 0 ] && [ "$bad" -eq 0 ] || { echo "FAILED ($bad bad rows of $rows)"; exit 1; }

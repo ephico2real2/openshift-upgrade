@@ -33,7 +33,7 @@ Every step needs the new hosts first: a mirroring bastion in each datacenter and
 | [`docs/PROBLEM-STATEMENT.md`](docs/PROBLEM-STATEMENT.md) | The problem, measured, and the two designs that replace the sync |
 | [`docs/DESIGN-DECISIONS.md`](docs/DESIGN-DECISIONS.md) | The options, the open decisions with their recommendations |
 | [`docs/openshift-update-egress.html`](docs/openshift-update-egress.html) | The full plan, opened directly in a browser |
-| [`docs/image-policies/`](docs/image-policies/) | Kyverno policy limiting which repositories application pods may use, on top of `allowedRegistries`, with its tests |
+| [`docs/image-policies/`](docs/image-policies/) | Kyverno's standard allowed-registries policy for application pods, the list kept in a ConfigMap in the cluster, on top of `allowedRegistries`; with its tests |
 | [`docs/catalog-policies/`](docs/catalog-policies/) | ValidatingAdmissionPolicy, Kyverno and Gatekeeper rules for operator catalogs, with their tests |
 | [`oc-mirror-ansible/`](oc-mirror-ansible/README.md) | How we mirror today: oc-mirror v2 Ansible playbooks and step-by-step guides for release images (4.18 → 4.20 → 4.22, Update Service) and operator catalogs |
 

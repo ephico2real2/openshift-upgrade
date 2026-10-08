@@ -1,0 +1,52 @@
+apiVersion: cli.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: restrict-workload-image-registries
+policies:
+- ../kyverno-workload-image-repos.yaml
+resources:
+- resource.yaml
+context: context.yaml
+results:
+- isValidatingPolicy: true
+  kind: Pod
+  policy: restrict-workload-image-registries
+  resources:
+  - team-a/allow-redhat
+  - team-a/allow-internal
+  - team-a/allow-mirror
+  result: pass
+- isValidatingPolicy: true
+  kind: Pod
+  policy: restrict-workload-image-registries
+  resources:
+  - team-a/deny-dockerhub-short
+  - team-a/deny-quay-public
+  - team-a/deny-release-repo
+  - team-a/deny-host-spoof
+  - team-a/deny-init-container
+  result: fail
+- isValidatingPolicy: true
+  kind: Pod
+  policy: restrict-workload-image-registries
+  resources:
+  - openshift-monitoring/skip-platform-ns
+  result: skip
+- isValidatingPolicy: true
+  kind: Deployment
+  policy: restrict-workload-image-registries
+  resources:
+  - team-a/allow-deployment
+  result: pass
+- isValidatingPolicy: true
+  kind: Deployment
+  policy: restrict-workload-image-registries
+  resources:
+  - team-a/deny-deployment
+  result: fail
+- isValidatingPolicy: true
+  kind: CronJob
+  policy: restrict-workload-image-registries
+  resources:
+  - team-a/deny-cronjob
+  result: fail

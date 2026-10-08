@@ -1,0 +1,16 @@
+# The cluster's list of registries (or registry/path prefixes) application
+# pods may pull from. One per line, or comma-separated; lines starting with #
+# are ignored. Each entry is matched up to a "/". Edit this list, not the policy.
+# Replace registry-dc1.example.com:8443 with this cluster's mirror registry.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: allowed-image-registries
+  namespace: kyverno
+data:
+  registries: |
+    registry.redhat.io
+    registry.access.redhat.com
+    registry.connect.redhat.com
+    image-registry.openshift-image-registry.svc:5000
+    registry-dc1.example.com:8443
