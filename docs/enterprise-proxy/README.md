@@ -29,7 +29,7 @@ RED HAT          quay.io + CDN, registry.redhat.io, api.openshift.com, mirror.op
 ENTERPRISE PROXY allowlist of Red Hat hosts only; the firewall lets only the proxy out
                     ^ node IPs only (pod traffic leaves with the node IP too, see "Only core components")
 CLUSTER          Proxy CR -> CVO, CRI-O, OLM, Insights, image registry operator ...
-                 workload namespaces: no proxy variables + EgressFirewall denying the proxy
+                 workload namespaces: no proxy variables from the platform
                  allowedRegistries limits what any pod may pull
 ```
 
@@ -63,7 +63,7 @@ come out only after a connected update has worked.
 | 2 · Pull secret | Merge Red Hat's pull secret into `openshift-config/pull-secret` | None ("without draining or rebooting the node") |
 | 3 · Image policy | `allowedRegistries` | CRI-O reload, no drain |
 | 4 · Proxy | `user-ca-bundle`, then `proxy/cluster` | **Drain and reboot, every node** |
-| 5 · Lock workloads out | EgressFirewall per workload namespace, project template | None |
+| 5 · Optional: keep workloads off the proxy | Only if security asks; app teams that already use the proxy must be excluded | None |
 | 6 · Update graph | Clear `spec.upstream`, keep the channel | None |
 | 7 · Catalogs | Default `redhat-operators` source back on, Subscriptions moved to it | None (operators may update) |
 | 8 · First connected update | One z-stream or the planned EUS update | Normal update |
@@ -250,6 +250,12 @@ oc patch image.config.openshift.io/cluster --type merge -p '{
   CRI-O reloads.
 - **Open question for Red Hat Support:** whether `quay.io/openshift-release-dev` covers everything a
   connected cluster pulls from `quay.io`. Watch for `ErrImagePull` with "not allowed" after phase 8.
+- **Stricter rule for applications (Kyverno):** this list has to include everything the platform
+  pulls. Kyverno's standard allowed-registries policy, in [`../image-policies/`](../image-policies/),
+  narrows application namespaces further at admission: the list is a ConfigMap in the cluster,
+  with an audit mode first and per-team exceptions. It adds to
+  `allowedRegistries` and does not replace it: admission never sees build `FROM` pulls, static pods
+  or pulls run on a node.
 
 ## Phase 4: the cluster-wide proxy (maintenance window)
 
@@ -327,18 +333,29 @@ oc debug $NODE -- chroot /host cat /etc/mco/proxy.env
 drain and reboot of every node. Changing `httpProxy`, `httpsProxy` or `noProxy` later reboots the
 nodes again; a `trustedCA`-only change restarts CRI-O.
 
-## Phase 5: only core components may use the proxy
+## Phase 5 (optional): keep workloads off the proxy
 
-The proxy cannot tell node traffic from pod traffic: OVN-Kubernetes sends pod egress out with the
-node's IP. Three layers keep application pods off it:
+**Our guarantee does not depend on this phase.** Red Hat: "The system-wide proxy affects system
+components only, not user workloads"
+([`enable-cluster-wide-proxy.adoc`](https://github.com/openshift/openshift-docs/blob/enterprise-4.18/networking/configuring_network_settings/enable-cluster-wide-proxy.adoc)).
+The platform never writes proxy variables into an application pod. Application teams are already
+allowed to set a proxy in their own deployments; when they do, it is their deliberate choice under
+our existing policy, not something the Proxy object does. So this is not a platform gap.
 
-| Layer | Control | Gap it closes |
+| Layer | Control | What it covers |
 |---|---|---|
-| Proxy settings | `proxy/cluster` sets proxy variables on platform components and OLM operators only | Pods don't use the proxy by default |
-| Network | EgressFirewall in every workload namespace denying the proxy's IPs | A pod that sets `HTTPS_PROXY` itself |
-| Image policy | `allowedRegistries` (phase 3) | A workload pulling arbitrary `quay.io` images: CRI-O pulls through the node proxy for every pod |
+| Proxy settings | `proxy/cluster` sets proxy variables on platform components and OLM operators only | Application pods get no proxy from the platform (the guarantee) |
+| Image policy | `allowedRegistries` (phase 3) | A workload pulling arbitrary `quay.io` images: CRI-O pulls through the node proxy for every pod; "Registries not in your allowlist are blocked" ([`images-configuration-allowed.adoc`](https://github.com/openshift/openshift-docs/blob/enterprise-4.18/modules/images-configuration-allowed.adoc)) |
+| Network (optional, this phase) | EgressFirewall denying the proxy's IPs | Only if security wants the platform proxy unusable by any pod |
 
-**EgressFirewall per workload namespace.** It must be named `default`; there can be only one per
+**Do not apply this phase as written if application teams use the same proxy today:** the
+EgressFirewall would cut them off. Prefer a separate proxy listener (or port) for the clusters'
+nodes, with its own allowlist of Red Hat hosts, as phase 0 suggests. Then application traffic and
+platform traffic are separated at the proxy, and nothing changes for the teams. Use the
+EgressFirewall below only for namespaces that must not use any proxy, and leave out every namespace
+whose team uses one.
+
+**EgressFirewall per workload namespace (optional).** It must be named `default`; there can be only one per
 namespace; it "does not apply to the host network namespace", so CRI-O and kubelet are unaffected.
 
 ```yaml
@@ -354,7 +371,7 @@ spec:
       cidrSelector: 10.20.0.15/32      # each proxy IP, including the VIP and every node of an HA proxy
 ```
 
-Apply it to every namespace that is not part of the platform:
+Apply it to the namespaces security names, skipping any whose team uses the proxy:
 
 ```bash
 for ns in $(oc get ns -o name | cut -d/ -f2 | grep -vE '^(openshift|kube-|default$)'); do
@@ -497,7 +514,7 @@ watch oc get mcp
 
 ## Verify: only core components reach Red Hat
 
-Run these after phase 5 and again after phase 9; keep the output as evidence for security.
+Run these after phase 6 and again after phase 9; keep the output as evidence for security.
 
 | # | Test | Command | Expected |
 |---|---|---|---|
@@ -507,13 +524,14 @@ Run these after phase 5 and again after phase 9; keep the output as evidence for
 | 4 | Node has no direct route | `oc debug $NODE -- chroot /host curl -s -m 10 --noproxy '*' https://quay.io` | Times out |
 | 5 | Proxy allowlist holds | `oc debug $NODE -- chroot /host sh -c '. /etc/mco/proxy.env; curl -s -m 10 -o /dev/null -w "%{http_code}" -x $HTTPS_PROXY https://www.example.com'` | Denied (`403` or connection refused) |
 | 6 | A workload pod gets no proxy | in a test namespace: `oc run t --image=registry.redhat.io/ubi9/ubi-minimal --restart=Never -- sleep 600`, then `oc exec t -- env \| grep -i proxy` | Nothing |
-| 7 | A workload pod cannot use the proxy | `oc exec t -- curl -s -m 10 -x http://proxy.example.com:3128 https://quay.io` | Times out (EgressFirewall) |
+| 7 | Optional, only with phase 5: a workload pod cannot use the platform proxy | `oc exec t -- curl -s -m 10 -x http://proxy.example.com:3128 https://quay.io` | Times out (EgressFirewall); skip if phase 5 was not applied |
 | 8 | A workload pod cannot go direct | `oc exec t -- curl -s -m 10 https://quay.io` | Times out (firewall) |
 | 9 | Pulls outside the allowlist fail | `oc run t2 --image=quay.io/libpod/alpine:latest --restart=Never -- true; oc get pod t2` | `ErrImagePull`, "not allowed" in `oc describe` |
 | 10 | Platform still healthy | `oc get co` | All `Available=True`, none `Degraded` |
 | 11 | Proxy logs | Ask the network team for a week of the clusters' requests | Sources are node IPs only; destinations are on the allowlist; denies reviewed |
 
-Tests 6 to 9 need a namespace created the way users create them (so it gets the EgressFirewall).
+Tests 6 to 9 need a namespace created the way users create them, with no proxy set by us. Test 6
+is the guarantee: the platform injects nothing.
 Clean up with `oc delete pod t t2`.
 
 Red Hat documents tests 1, 2 and 10 (`modules/nw-verify-proxy-configuration.adoc`; its CVO log

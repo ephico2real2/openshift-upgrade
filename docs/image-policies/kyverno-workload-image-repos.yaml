@@ -1,0 +1,69 @@
+# Kyverno: application pods may only use images from the registries listed in
+# the cluster, in ConfigMap kyverno/allowed-image-registries.
+#
+# Based on the Kyverno policy library's advanced-restrict-image-registries
+# (github.com/kyverno/policies, other-vpol/), with three changes:
+#   - the list lives in the kyverno namespace, not default, so only cluster
+#     admins can change it;
+#   - each entry is matched up to a "/", so "registry.redhat.io" does not also
+#     allow "registry.redhat.io.evil.example.com/...";
+#   - platform namespaces are skipped: the platform's images are governed by
+#     allowedRegistries (enterprise-proxy runbook, phase 3), which stays the
+#     node-level backstop for every pull.
+# Kyverno generates the same rule for Deployments, Jobs, CronJobs and the other
+# pod controllers, so `oc apply` fails at once. It does so only while the policy
+# matches plain "pods"; adding "pods/ephemeralcontainers" turns that off, so
+# debug containers added to a running pod are not checked here.
+#
+# Start with validationActions: [Audit], read the PolicyReports, then [Deny].
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
+metadata:
+  name: restrict-workload-image-registries
+  annotations:
+    policies.kyverno.io/title: Restrict application image registries
+    policies.kyverno.io/subject: Pod
+    policies.kyverno.io/minversion: 1.17.0
+    policies.kyverno.io/description: >-
+      Pods outside the platform namespaces may only use images from the
+      registries listed in ConfigMap kyverno/allowed-image-registries.
+spec:
+  validationActions: [Deny]
+  # Fail closed: if the ConfigMap is missing or unreadable the policy errors, and
+  # the request is refused rather than let through. Create the ConfigMap first.
+  failurePolicy: Fail
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+    - apiGroups: [""]
+      apiVersions: ["v1"]
+      operations: ["CREATE", "UPDATE"]
+      resources: ["pods"]
+  matchConditions:
+  - name: application-namespaces-only
+    expression: >-
+      !(request.namespace == 'openshift' || request.namespace.startsWith('openshift-') ||
+        request.namespace.startsWith('kube-') || request.namespace in ['default', 'kyverno'])
+  variables:
+  - name: cm
+    expression: >-
+      resource.Get("v1", "configmaps", "kyverno", "allowed-image-registries")
+  - name: allowed
+    expression: >-
+      variables.cm.data[?'registries'].orValue('').split('\n')
+        .map(l, l.split(',')).flatten()
+        .map(r, r.trim()).filter(r, r != '' && !r.startsWith('#'))
+        .map(r, r.endsWith('/') ? r : r + '/')
+  - name: images
+    expression: >-
+      (object.spec.containers + object.spec.?initContainers.orValue([]) +
+       object.spec.?ephemeralContainers.orValue([])).map(c, c.image)
+  validations:
+  - expression: >-
+      variables.images.all(i, variables.allowed.exists(r, i.startsWith(r)))
+    messageExpression: >-
+      'Images must come from a registry in ConfigMap kyverno/allowed-image-registries (' +
+      variables.allowed.join(', ') + '); not allowed: ' +
+      variables.images.filter(i, !variables.allowed.exists(r, i.startsWith(r))).join(', ')

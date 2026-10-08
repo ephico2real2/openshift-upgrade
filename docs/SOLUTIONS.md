@@ -174,12 +174,94 @@ phases, ordered so that changes that touch no nodes go first:
 *The proposed retrofit, phase by phase, with what each phase does to the nodes. The numbered list
 above is the same order.*
 
-**Only platform components reach Red Hat.** Three controls, each tested by the runbook:
+**What going direct gives us, beyond removing the sync:**
 
-- **Proxy settings:** they go to platform components and operators only; application pods get none.
-- **A network rule in every application namespace:** pods there cannot reach the proxy, even if
-  they set a proxy themselves.
-- **An image allowlist:** opening `quay.io` does not let anyone pull arbitrary public images.
+| Advantage | Why |
+|---|---|
+| Updates arrive when Red Hat ships them | Z-streams for the newest minor ship weekly. A cluster can take a security fix the day it is published, not after a mirror run has succeeded |
+| Live upgrade guidance | The cluster reads its update recommendations from `api.openshift.com`, including Red Hat's known-issue risks on conditional upgrade paths, as soon as they are published. A local Update Service only knows what the last sync brought |
+| No signature mirroring | From 4.21 release images must be signed. A connected cluster reads the signatures from Red Hat; a disconnected one needs them mirrored, plus the `ack-4.20-sigstore-in-4.21` acknowledgment before 4.21 |
+| Current catalogs, still under our control | Approved operators come current from Red Hat, with no mirroring and no hand-listed dependencies (oc-mirror v2 does not infer them). What developers see is still only what we put in the catalog: a filtered catalog (model A) or an allowlist on the stock one (model B), enforced by the admission policies in [`catalog-policies/`](catalog-policies/) (DESIGN-DECISIONS, D2) |
+| Less to run and size | No mirror registries to keep highly available, no 2 TB caches, no oc-mirror version to track, none of its known failure modes (Red Hat KBs 7130341, 7139982, 7128745) |
+| Fewer node drains later | No IDMS/ITMS/ICSP to create or delete at each cutover; deleting them drains the nodes |
+| Red Hat's standard configuration | The connected cluster-wide proxy is the documented, most common setup, so support cases start from known ground |
+| Optional, if security agrees | Insights recommendations and telemetry give Red Hat Support proactive alerts and cluster data. Off unless enabled; updates do not need them |
+
+The costs are in the runbook: an HA proxy, security approval for node egress, one reboot of every
+node when the proxy goes on, and one drain when the mirror objects are removed.
+
+**A common misconception: "our clusters cannot use a proxy."** They can, and Red Hat documents it
+as a standard configuration, both when a cluster is installed and on a running one: "Production
+environments can deny direct access to the internet and instead have an HTTP or HTTPS proxy
+available. You can configure a new OpenShift Container Platform cluster to use a proxy by
+configuring the proxy settings in the `install-config.yaml` file"
+[R4] (for existing clusters, [R6]). The proxy serves the platform only (below), allows only
+Red Hat's documented hosts, and needs no two-headed DNS.
+
+**Syncing and the proxy bring the same content from the same trusted partner.** We already trust
+Red Hat's content: today we copy it into our registries and run it. Going through the proxy changes
+only how it travels, not what arrives or how it is checked.
+
+| | Syncing (Step 1, Step 3) | Proxy (Step 2) |
+|---|---|---|
+| Where it comes from | Red Hat's registries, through the enterprise proxy, to a bastion | Red Hat's registries, through the enterprise proxy, to the nodes |
+| What arrives | The release images, by their SHA digests | The same images, by the same digests |
+| How it is checked | The cluster validates Red Hat's signed statements with built-in public keys; from 4.21, Sigstore signatures as well | The same checks, against Red Hat directly |
+| Hosts opened at the firewall | `quay.io`, `registry.redhat.io`, `api.openshift.com`, `mirror.openshift.com` | The same hosts |
+| Delay before a cluster can use it | Until the next successful sync | None |
+
+Red Hat: "Red Hat publishes cryptographically-signed statements about published release images at
+predefined locations by using image SHA digests as unique and immutable release image identifiers.
+The CVO utilizes a list of built-in public keys to validate the presence and signatures of the
+statement matching the checked release image" [R5]. The
+signature check is the same in both designs; syncing adds a copy and a wait.
+
+**Syncing leaves us at a disadvantage when Red Hat fixes a bug or a vulnerability.** The fix is
+published the same day either way. A synced cluster can take it only after someone has mirrored it
+and the run has succeeded; a proxied cluster can take it in the next change window, after the lab.
+We still decide when each cluster updates; the proxy removes the wait, not the control.
+
+**What the proxy unlocks:**
+
+| Area | With syncing | With the proxy |
+|---|---|---|
+| Keeping up with updates | Each z-stream (weekly for the newest minor) waits for a mirror run; 4.18 fixes keep shipping (156 CVEs in 4.18 advisories so far in 2026) | Every z-stream and its upgrade guidance are available when Red Hat publishes them |
+| Building new clusters | A mirror with the target release first, then a disconnected install pointing at it | `install-config.yaml` names the proxy; the installer pulls the current release from Red Hat |
+| New platform features and operators | Each new operator, and every dependency, mirrored by hand before anyone can try it | Available as soon as Red Hat ships it; we still choose what the catalog shows |
+
+**Does the cluster-wide proxy open every namespace to the internet? No.** Red Hat, in the 4.18 and
+4.22 docs alike: "The system-wide proxy affects system components only, not user workloads" [R1].
+Application pods get no proxy settings, and the firewall still lets nothing out directly. Even
+platform components reach only what the proxy allows, and our allowlist is Red Hat's documented
+hosts and nothing else [R7].
+
+**Our guarantee: the platform's proxy setting does not reach non-platform applications.** Nothing in
+the platform writes proxy variables into an application pod [R1]. Application teams are already
+allowed to set a proxy in their own deployments; a team that does so makes a deliberate choice under
+our existing policy, and the platform never makes it for them. That is not a gap the Proxy object
+introduces, so the runbook does not try to block it (its phase 5 is optional, see the runbook).
+
+Only two places a platform component touches other namespaces, and both are controlled:
+
+| Where | Why | Control (runbook phase) |
+|---|---|---|
+| Operators installed from OperatorHub get the proxy | Red Hat: OLM operators "inherit the cluster-wide proxy settings on their deployments" [R2], in whatever namespace they run; for the pods they manage, "Operators must handle setting environment variables for proxy settings" [R2] | **We control the catalog**, so only operators we approved can be installed at all, and they reach only allowlisted hosts. A Subscription can unset the proxy for an operator that does not need it: the variables "can also be unset using an empty value" [R2] (phase 7) |
+| Any pod's image can come from `quay.io` | CRI-O pulls images for every pod through the node's proxy setting; it carries images only, never application traffic | `allowedRegistries` lists repositories, not whole registries: "Registries not in your allowlist are blocked" [R3] (phase 3). Kyverno's standard allowed-registries policy, with the list in a ConfigMap in the cluster, narrows application namespaces further at admission ([`image-policies/`](image-policies/)); it adds to `allowedRegistries`, it does not replace it |
+
+The runbook's verification table proves it on a live cluster: a test pod in an application
+namespace gets no proxy variables, cannot go out directly, and cannot pull an image from outside the
+allowlist.
+
+**References for this section** (`openshift/openshift-docs`, branch `enterprise-4.18`, read
+2026-10-08):
+
+- [R1] Cluster-wide proxy scope: [`networking/configuring_network_settings/enable-cluster-wide-proxy.adoc`](https://github.com/openshift/openshift-docs/blob/enterprise-4.18/networking/configuring_network_settings/enable-cluster-wide-proxy.adoc), "The system-wide proxy affects system components only, not user workloads." Same sentence in 4.22.
+- [R2] OLM operators and the proxy: [`modules/olm-overriding-proxy-settings.adoc`](https://github.com/openshift/openshift-docs/blob/enterprise-4.18/modules/olm-overriding-proxy-settings.adoc), "inherit the cluster-wide proxy settings on their deployments"; "Operators must handle setting environment variables for proxy settings in the pods for any managed Operands"; "can also be unset using an empty value".
+- [R3] Image allowlist: [`modules/images-configuration-allowed.adoc`](https://github.com/openshift/openshift-docs/blob/enterprise-4.18/modules/images-configuration-allowed.adoc), "Registries not in your allowlist are blocked."
+- [R4] Proxy at install time: [`modules/installation-configure-proxy.adoc`](https://github.com/openshift/openshift-docs/blob/enterprise-4.18/modules/installation-configure-proxy.adoc), "Production environments can deny direct access to the internet and instead have an HTTP or HTTPS proxy available."
+- [R5] Release signatures: [`modules/update-process-workflow.adoc`](https://github.com/openshift/openshift-docs/blob/enterprise-4.18/modules/update-process-workflow.adoc), "Red Hat publishes cryptographically-signed statements about published release images … by using image SHA digests as unique and immutable release image identifiers."
+- [R6] Proxy object fields: [`modules/nw-proxy-configure-object.adoc`](https://github.com/openshift/openshift-docs/blob/enterprise-4.18/modules/nw-proxy-configure-object.adoc).
+- [R7] Hosts the cluster needs: [`installing/install_config/configuring-firewall.adoc`](https://github.com/openshift/openshift-docs/blob/enterprise-4.18/installing/install_config/configuring-firewall.adoc).
 
 **No two-headed DNS.** The proxy resolves Red Hat's names; nodes resolve only internal names.
 Internal DNS stays as it is.

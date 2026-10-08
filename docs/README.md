@@ -1,5 +1,13 @@
 # OpenShift update egress: docs
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="diagrams/three-steps/three-steps.dark.png">
+  <source srcset="diagrams/three-steps/three-steps.light.png">
+  <img alt="Three steps keep the clusters current. Step 1, built: a person runs the Ansible oc-mirror v2 playbooks on the mirroring bastion of each datacenter before each update, into the lab and production mirror registries, and the cluster stays disconnected with a local Update Service. Step 2, proposed and preferred: every node reaches Red Hat's hosts through the enterprise proxy, with no mirror, no sync and no local Update Service. Step 3, proposed alternative: a scheduled job on each bastion runs the same playbooks into an on-prem Red Hat Quay, and the cluster keeps no egress with a local Update Service. All three open the same Red Hat hosts and none needs two-headed DNS." src="diagrams/three-steps/three-steps.light.png">
+</picture>
+
+*The three steps; [`SOLUTIONS.md`](SOLUTIONS.md) presents them, [`PREREQUISITES.md`](PREREQUISITES.md) lists the hosts they need.*
+
 | Path | What it is |
 |---|---|
 | [`PREREQUISITES.md`](PREREQUISITES.md) | The hosts every step needs: a mirroring bastion per datacenter, the lab and two production mirror registries on RHEL 9, sizing, flows, and moving clusters off the old registry |
@@ -14,6 +22,7 @@
 | [`diagrams/prerequisites/`](diagrams/prerequisites/) | Source page and PNGs for the target layout of bastions and registries |
 | [`diagrams/three-steps/`](diagrams/three-steps/) | Source page and PNGs for the three steps, the decision flow, the Step 2 retrofit flow and the Step 3 scheduled sync |
 | [`catalog-policies/`](catalog-policies/) | Admission policies that limit operator catalogs, and the scripts that test them |
+| [`image-policies/`](image-policies/) | Kyverno's standard allowed-registries policy for application pods (list in a ConfigMap in the cluster), on top of `allowedRegistries`; why both are needed; offline tests |
 | `SOLUTIONS.docx`, `PREREQUISITES.docx`, `PROBLEM-STATEMENT.docx`, `DESIGN-DECISIONS.docx` | Word copies of the four Markdown documents, with the light figures embedded. Generated; edit the Markdown and rebuild |
 | [`tools/md2docx.js`](tools/md2docx.js) | Builds the Word copies: `npm install docx`, then `node tools/md2docx.js PROBLEM-STATEMENT.md PROBLEM-STATEMENT.docx` |
 
