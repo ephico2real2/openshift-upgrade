@@ -154,18 +154,20 @@ The refined current process ([`oc-mirror-ansible/`](../oc-mirror-ansible/README.
 ## Where we go instead
 
 The plan now has three steps (refined 2026-10-07). Step 1 modernises today's process with Ansible
-and oc-mirror v2 and is built; it still means we mirror everything ourselves. Step 2, the team's
-preferred position, is a direct enterprise proxy with only Red Hat's documented hosts allowed. Step 3,
-the alternative, is a full Red Hat Quay registry on-prem, filled on a schedule. Steps 2 and 3 are
-neither built nor approved. They are presented side by side in [`SOLUTIONS.md`](SOLUTIONS.md).
+and oc-mirror v2 and is built; it still means we mirror everything ourselves. Step 2, the platform
+owner's decision, is the proxy approach: a direct enterprise proxy with only Red Hat's documented hosts
+allowed, no mirror, and Ansible running the retrofit and the updates. Step 3 is the fallback only: the
+same playbooks on a schedule into the new registries, where Red Hat Quay on-prem would only change the
+registry product. Neither is built or approved yet. They are presented side by side in
+[`SOLUTIONS.md`](SOLUTIONS.md), with the recommendation.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/three-steps/three-steps.dark.png">
   <source srcset="diagrams/three-steps/three-steps.light.png">
-  <img alt="Three steps keep the clusters current. Step 1, built: a person runs the Ansible oc-mirror v2 playbooks on the mirroring bastion of each datacenter before each update, into the lab and production mirror registries, and the cluster stays disconnected with a local Update Service. Step 2, proposed and preferred: every node reaches Red Hat's hosts through the enterprise proxy, with no mirror, no sync and no local Update Service. Step 3, proposed alternative: a scheduled job on each bastion runs the same playbooks into an on-prem Red Hat Quay, and the cluster keeps no egress with a local Update Service. All three open the same Red Hat hosts and none needs two-headed DNS." src="diagrams/three-steps/three-steps.light.png">
+  <img alt="Three steps keep the clusters current. Step 1, built: a person runs the Ansible oc-mirror v2 playbooks on the mirroring bastion of each datacenter before each update, into the lab and production mirror registries, and the cluster stays disconnected with a local Update Service. Step 2, the platform owner's decision: every node reaches Red Hat's hosts through the enterprise proxy, with no mirror, no sync and no local Update Service, and Ansible runs the retrofit and the updates. Step 3, the fallback only: the same playbooks run on a schedule into the new registries and the cluster keeps no egress with a local Update Service; Red Hat Quay on-prem would only change the registry product. All three open the same Red Hat hosts and none needs two-headed DNS." src="diagrams/three-steps/three-steps.light.png">
 </picture>
 
-*Step 1 is built; Steps 2 and 3 are proposals. Every step opens the same Red Hat hosts at the
+*Step 1 is built; Step 2 is the decision and Step 3 the fallback. Every step opens the same Red Hat hosts at the
 firewall; they differ in which machines use them: the mirroring bastions (Steps 1 and 3) or every node
 (Step 2). No step needs two-headed DNS. Each still needs a plan for operator catalogs
 ([`DESIGN-DECISIONS.md`](DESIGN-DECISIONS.md), D2).*
@@ -200,7 +202,7 @@ designs, and under the proxy approach it is what Ansible automates: the hops, th
 registry configuration and the catalog gating become playbooks, as the mirroring is today
 ([`SOLUTIONS.md`](SOLUTIONS.md), Recommendation).
 
-| Stays in every option | Today | Preferred: proxy | Alternative: Quay on-prem |
+| Stays in every option | Today | The proxy approach (the decision) | The fallback: mirror on a schedule |
 |---|---|---|---|
 | The updates themselves | 4.18 to 4.20 to 4.22, four control-plane hops | The same hops | The same hops |
 | Update service | A local service whose graph data has to be refreshed | Point the cluster at Red Hat's service: clear `spec.upstream` and set the channel | A local OSUS; oc-mirror v2 builds its graph image on each run |
@@ -210,7 +212,7 @@ registry configuration and the catalog gating become playbooks, as the mirroring
 What the proposal changes is the part that is broken today: copying images and catalogs across by
 hand.
 
-| Removed or automated | Today | Preferred: proxy | Alternative: Quay on-prem |
+| Removed or automated | Today | The proxy approach (the decision) | The fallback: mirror on a schedule |
 |---|---|---|---|
 | Image sync | Refined: oc-mirror v2 run from Ansible (`oc-mirror-ansible/`), still started by a person | Gone. Each node pulls through the proxy | A scheduled oc-mirror v2 job |
 | Catalog sync | Refined: the Ansible catalog playbook, still started by a person; catalogs stay out of date until it runs | Gone. Catalogs and operator images come from `registry.redhat.io` | The same scheduled job; every dependency listed by hand |
@@ -242,7 +244,8 @@ them in is our choice.
 - Order of work: the cluster-wide proxy is a documented configuration on 4.18. Enabling it before
   the updates would let the hops to 4.20 and 4.22 run without any sync. Red Hat Support should
   confirm that removing the mirror sets also removes the signature acknowledgment before 4.21.
-- The Red Hat Consulting engagement and the Quay specialist for the alternative are not arranged.
+- The Red Hat Consulting engagement and the Quay specialist, needed only if the fallback is chosen and
+  Quay is picked as its registry product, are not arranged.
 - This document does not record which 4.18 release each cluster is on or how many times the sync
   has failed. Those two facts would make the case stronger. The sync tool is recorded: since
   2026-10-07 the current process runs oc-mirror v2 from Ansible ([`oc-mirror-ansible/`](../oc-mirror-ansible/README.md)).

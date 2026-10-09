@@ -1,4 +1,4 @@
-# Keeping our disconnected OpenShift clusters current: three solutions
+# Keeping our OpenShift clusters current: the proxy approach, with the mirror as the fallback
 
 | | |
 |---|---|
@@ -6,7 +6,7 @@
 | For | Platform team, security, management |
 | Status | Step 1 is built. The platform owner decides, and the decision is the proxy approach; the change goes to security on the threat model with one condition: applications cannot use the proxy by default. Not yet approved |
 | Prerequisites | Two mirroring bastions and three registries on RHEL 9: [`PREREQUISITES.md`](PREREQUISITES.md) |
-| Technical detail | Step 1: [`oc-mirror-ansible/`](../oc-mirror-ansible/README.md). Step 2: [`enterprise-proxy/`](enterprise-proxy/README.md). Step 3: [`quay-onprem/`](quay-onprem/README.md). The problem: [`PROBLEM-STATEMENT.md`](PROBLEM-STATEMENT.md). The decisions: [`DESIGN-DECISIONS.md`](DESIGN-DECISIONS.md) |
+| Technical detail | Step 1: [`oc-mirror-ansible/`](../oc-mirror-ansible/README.md). Step 2: [`enterprise-proxy/`](enterprise-proxy/README.md). Step 3, the fallback (its Quay variant): [`quay-onprem/`](quay-onprem/README.md). The problem: [`PROBLEM-STATEMENT.md`](PROBLEM-STATEMENT.md). The decisions: [`DESIGN-DECISIONS.md`](DESIGN-DECISIONS.md) |
 
 ## Summary
 
@@ -22,21 +22,21 @@ schedule (Step 3's schedule, whatever the registry product) is the fallback only
 |---|---|---|---|---|
 | **1** | Our current process, modernised with Ansible and oc-mirror v2 | We do, from the mirroring bastion in each datacenter, each time we update | None | **Done**: playbooks and guides in Git |
 | **2** | Clusters reach Red Hat through the enterprise proxy | Nobody: the cluster pulls what it needs | Red Hat hosts only, through the proxy | Runbook and threat model written; the change is with security |
-| **3** | A full Red Hat Quay registry on-prem, filled on a schedule | A scheduled job, not a person | None | Design written; needs a Quay subscription and a build team |
+| **3** | The mirror approach, automated: the Step 1 playbooks on a schedule into the new registries; Red Hat Quay on-prem would only change the registry product | A scheduled job, not a person | None | Fallback only; the Quay variant is designed, not built |
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/three-steps/three-steps.dark.png">
   <source srcset="diagrams/three-steps/three-steps.light.png">
-  <img alt="Three steps keep the clusters current. Step 1, built: a person runs the Ansible oc-mirror v2 playbooks on the mirroring bastion of each datacenter before each update, into the lab and production mirror registries, and the cluster stays disconnected with a local Update Service. Step 2, proposed and preferred: every node reaches Red Hat's hosts through the enterprise proxy, with no mirror, no sync and no local Update Service. Step 3, proposed alternative: a scheduled job on each bastion runs the same playbooks into an on-prem Red Hat Quay, and the cluster keeps no egress with a local Update Service. All three open the same Red Hat hosts and none needs two-headed DNS." src="diagrams/three-steps/three-steps.light.png">
+  <img alt="Three steps keep the clusters current. Step 1, built: a person runs the Ansible oc-mirror v2 playbooks on the mirroring bastion of each datacenter before each update, into the lab and production mirror registries, and the cluster stays disconnected with a local Update Service. Step 2, the platform owner's decision: every node reaches Red Hat's hosts through the enterprise proxy, with no mirror, no sync and no local Update Service, and Ansible runs the retrofit and the updates. Step 3, the fallback only: the same playbooks run on a schedule into the new registries and the cluster keeps no egress with a local Update Service; Red Hat Quay on-prem would only change the registry product. All three open the same Red Hat hosts and none needs two-headed DNS." src="diagrams/three-steps/three-steps.light.png">
 </picture>
 
-*Step 1 is built; Steps 2 and 3 are proposals. All three open the same Red Hat hosts; they differ
-in which machines use them. No step needs two-headed DNS.*
+*Step 1 is built. Step 2 is the platform owner's decision; Step 3 is the fallback only. All three open
+the same Red Hat hosts; they differ in which machines use them. No step needs two-headed DNS.*
 
 ```text
-            STEP 1 (built)                 STEP 2 (proposed, preferred)          STEP 3 (proposed, alternative)
+            STEP 1 (built)                 STEP 2 (the decision)                 STEP 3 (fallback only)
 INSIDE      cluster: no egress, local OSUS cluster: Proxy CR, workloads blocked   cluster: no egress, local OSUS
-            mirror registries: lab,DC1,DC2 enterprise proxy, Red Hat hosts only  Red Hat Quay, HA, per datacenter
+            mirror registries: lab,DC1,DC2 enterprise proxy, Red Hat hosts only  mirror registries or Quay, HA
             bastion per datacenter, by hand no mirror host, registry or OSUS     bastion per datacenter, timer
 EGRESS      one host, through the proxy    every node, through the proxy         one host, through the proxy
 RED HAT     quay.io, registry.redhat.io, api.openshift.com, mirror.openshift.com
@@ -83,8 +83,8 @@ instead, all on RHEL 9 (RHEL 10 is not yet supported for the mirror registry or 
   registry, on a new path (e.g. `ocp4v2`), never into the path oc-mirror v1 filled.
 
 Red Hat discourages using one mirror registry for several clusters and asks for mirror registries
-to be highly available. If a production registry serves several clusters, Step 3 (full Quay) is
-the long-term answer. Hosts, sizing, flows and the cluster cutover: [`PREREQUISITES.md`](PREREQUISITES.md).
+to be highly available. If a production registry serves several clusters under the fallback, a highly
+available registry (full Quay) is its registry product. Hosts, sizing, flows and the cluster cutover: [`PREREQUISITES.md`](PREREQUISITES.md).
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/prerequisites/topology.dark.png">
@@ -149,8 +149,9 @@ MIRRORING BASTION                                       CLUSTER, change window
 has run the sync and applied its output to the cluster. When a sync fails, the update slips. The
 catalog list has to be maintained by hand per version.
 
-**Use it for:** getting off 4.18 now, whichever long-term step is chosen. It is also the engine of
-Step 3, and the fallback if Step 2 is not approved.
+**Use it for:** the mirror as today, until each cluster is retrofitted. Under the proxy approach the
+same playbooks run the retrofit and the hops; under the fallback they run the mirror on a schedule
+(Step 3).
 
 Detail: [`oc-mirror-ansible/README.md`](../oc-mirror-ansible/README.md), with the release and catalog guides.
 
@@ -299,10 +300,13 @@ the enterprise CA, which every node trusts.
 
 Detail: [`enterprise-proxy/README.md`](enterprise-proxy/README.md).
 
-## Step 3: a full Red Hat Quay registry on-prem
+## Step 3: the mirror on a schedule, the fallback only
 
-**What it is.** A highly available Red Hat Quay replaces the production mirror registries, one per
-datacenter. The clusters keep no
+**What it is.** The mirror approach, automated: the Step 1 playbooks run on a schedule into the new
+registries, so a person no longer runs the sync. It is the fallback only, if the change to the proxy
+approach is not approved. Red Hat Quay on-prem would only change the registry product of this same
+approach; it is not a third option. The rest of this section describes that Quay variant: a highly
+available Red Hat Quay replaces the production mirror registries, one per datacenter. The clusters keep no
 egress. The Step 1 playbooks fill Quay on a schedule from the mirroring bastion in each datacenter, the only machines that
 reaches Red Hat through the proxy. The clusters pull everything from Quay.
 
@@ -347,7 +351,7 @@ Detail: [`quay-onprem/README.md`](quay-onprem/README.md).
 
 ## The three steps side by side
 
-| | Step 1: Ansible, current model | Step 2: enterprise proxy | Step 3: Quay on-prem |
+| | Step 1: Ansible, current model | Step 2: the proxy approach | Step 3: mirror on a schedule (Quay variant) |
 |---|---|---|---|
 | Cluster egress | None | Red Hat hosts, through the proxy | None |
 | Who copies content | A person runs the playbooks before each update | Nobody | A scheduled job |

@@ -1,8 +1,8 @@
-# Step 3: Red Hat Quay on-prem
+# Step 3, the fallback's Quay variant: Red Hat Quay on-prem
 
 | | |
 |---|---|
-| Status | Proposed. Not built or approved |
+| Status | The fallback only, and only its registry-product choice: the mirror approach automated, with Red Hat Quay instead of the mirror registries. Not a third option ([`SOLUTIONS.md`](../SOLUTIONS.md), Recommendation). Not built or approved |
 | Researched | 2026-10-07, against `quay/quay-docs` branch `redhat-3.18` and `openshift/openshift-docs` branches `enterprise-4.22` and `enterprise-4.18` |
 | Builds on | Step 1, [`oc-mirror-ansible/`](../../oc-mirror-ansible/README.md), which fills the registry |
 | Hosts | The mirroring bastions and datacenter layout in [`PREREQUISITES.md`](../PREREQUISITES.md); full Quay would replace the two production mirror registries |

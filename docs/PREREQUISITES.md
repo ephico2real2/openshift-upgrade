@@ -113,7 +113,8 @@ registry cannot meet that on its own.
 
 Source: `docs422 modules/mirror-registry-introduction.adoc` and its assembly. **The last point
 matters for the two production registries:** if each one serves several clusters, Red Hat's answer
-is full Red Hat Quay, which is Step 3 ([`quay-onprem/`](quay-onprem/README.md)). Until then, run one
+is full Red Hat Quay, the registry product of the fallback's Quay variant ([`quay-onprem/`](quay-onprem/README.md)).
+Until then, run one
 production registry per datacenter, keep it backed up, and keep the lab registry as the place new
 content is tried first.
 

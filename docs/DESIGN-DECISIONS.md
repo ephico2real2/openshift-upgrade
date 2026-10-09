@@ -55,7 +55,7 @@ research found*
 
 ### D1 · Which design
 
-**Team position (2026-10-05).** Preferred: Option 1, a direct enterprise proxy with only Red Hat's
+**Team position (2026-10-05, refined below).** Preferred: Option 1, a direct enterprise proxy with only Red Hat's
 documented hosts allowed and no two-headed DNS. Alternative: Option 2, a full Red Hat Quay registry
 on-prem, built with Red Hat Consulting and a Quay specialist. Operator catalogs have to be accounted
 for in both (D2).

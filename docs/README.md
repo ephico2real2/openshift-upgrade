@@ -3,7 +3,7 @@
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/three-steps/three-steps.dark.png">
   <source srcset="diagrams/three-steps/three-steps.light.png">
-  <img alt="Three steps keep the clusters current. Step 1, built: a person runs the Ansible oc-mirror v2 playbooks on the mirroring bastion of each datacenter before each update, into the lab and production mirror registries, and the cluster stays disconnected with a local Update Service. Step 2, proposed and preferred: every node reaches Red Hat's hosts through the enterprise proxy, with no mirror, no sync and no local Update Service. Step 3, proposed alternative: a scheduled job on each bastion runs the same playbooks into an on-prem Red Hat Quay, and the cluster keeps no egress with a local Update Service. All three open the same Red Hat hosts and none needs two-headed DNS." src="diagrams/three-steps/three-steps.light.png">
+  <img alt="Three steps keep the clusters current. Step 1, built: a person runs the Ansible oc-mirror v2 playbooks on the mirroring bastion of each datacenter before each update, into the lab and production mirror registries, and the cluster stays disconnected with a local Update Service. Step 2, the platform owner's decision: every node reaches Red Hat's hosts through the enterprise proxy, with no mirror, no sync and no local Update Service, and Ansible runs the retrofit and the updates. Step 3, the fallback only: the same playbooks run on a schedule into the new registries and the cluster keeps no egress with a local Update Service; Red Hat Quay on-prem would only change the registry product. All three open the same Red Hat hosts and none needs two-headed DNS." src="diagrams/three-steps/three-steps.light.png">
 </picture>
 
 *The three steps; [`SOLUTIONS.md`](SOLUTIONS.md) presents them, [`PREREQUISITES.md`](PREREQUISITES.md) lists the hosts they need.*
@@ -11,17 +11,17 @@
 | Path | What it is |
 |---|---|
 | [`PREREQUISITES.md`](PREREQUISITES.md) | The hosts every step needs: a mirroring bastion per datacenter, the lab and two production mirror registries on RHEL 9, sizing, flows, and moving clusters off the old registry |
-| [`SOLUTIONS.md`](SOLUTIONS.md) | The three steps presented side by side: Ansible for today's process, the enterprise proxy, Quay on-prem; with the recommendation and the decisions needed |
-| [`enterprise-proxy/`](enterprise-proxy/README.md) | Step 2: runbook to retrofit a disconnected cluster so it reaches Red Hat through the enterprise proxy |
+| [`SOLUTIONS.md`](SOLUTIONS.md) | The three steps side by side: Ansible for today's process, the proxy approach (the platform owner's decision), the mirror on a schedule as the fallback; with the recommendation and the decisions needed |
+| [`enterprise-proxy/`](enterprise-proxy/README.md) | Step 2, the proxy approach: runbook to retrofit a disconnected cluster so it reaches Red Hat through the enterprise proxy |
 | [`enterprise-proxy/THREAT-MODEL.md`](enterprise-proxy/THREAT-MODEL.md) | Threat model of an update through the proxy: the platform starts every flow, each flow is TCP 443 through the proxy to a named Red Hat host, application pods cannot reach the internet |
-| [`quay-onprem/`](quay-onprem/README.md) | Step 3: Red Hat Quay on-prem, filled on a schedule by oc-mirror v2, with the OpenShift Update Service |
+| [`quay-onprem/`](quay-onprem/README.md) | Step 3's Quay variant: Red Hat Quay on-prem, filled on a schedule by oc-mirror v2, with the OpenShift Update Service; the fallback only |
 | [`PROBLEM-STATEMENT.md`](PROBLEM-STATEMENT.md) | Why the current offline image sync cannot keep pace, measured, and the two designs that replace it |
 | [`DESIGN-DECISIONS.md`](DESIGN-DECISIONS.md) | The options, the five open decisions with their recommendations, and what is still unanswered |
 | [`openshift-update-egress.html`](openshift-update-egress.html) | The full plan: research findings, line-by-line check of the original plan, host allowlist, security controls, rollout, sources. It is a page fragment (starts at `<title>`); a browser opens it directly |
 | [`diagrams/`](diagrams/) | The plan page's four figures as light and dark PNGs |
 | [`diagrams/disconnected-update-problem/`](diagrams/disconnected-update-problem/) | Source page and PNGs for the first three figures in the problem statement |
 | [`diagrams/prerequisites/`](diagrams/prerequisites/) | Source page and PNGs for the target layout of bastions and registries |
-| [`diagrams/three-steps/`](diagrams/three-steps/) | Source page and PNGs for the three steps, the decision flow, the Step 2 retrofit flow and the Step 3 scheduled sync |
+| [`diagrams/three-steps/`](diagrams/three-steps/) | Source page and PNGs for the three steps, the decision flow, the retrofit flow and the fallback's scheduled sync |
 | [`catalog-policies/`](catalog-policies/) | Admission policies that limit operator catalogs, and the scripts that test them |
 | [`image-policies/`](image-policies/) | Kyverno's standard allowed-registries policy for application pods (list in a ConfigMap in the cluster), on top of `allowedRegistries`; why both are needed; offline tests |
 | [`upstream/`](upstream/) | Draft issues for upstream projects we rely on (mirror-gui), not yet posted |

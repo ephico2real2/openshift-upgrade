@@ -15,7 +15,7 @@ this repository, rendered with diagram-kit from the `source.html` beside it:
 
 | Upload id | Repository figure | On slide |
 |---|---|---|
-| `8fbe951a2c8b412c9dff020decdbf0ff` | [`../diagrams/three-steps/three-steps.light.png`](../diagrams/three-steps/three-steps.light.png) | plan: `steps` |
+| `3a22cdaed3def3672ae607c3b93598b1` | [`../diagrams/three-steps/three-steps.light.png`](../diagrams/three-steps/three-steps.light.png) | plan: `steps` |
 | `6d0666dd2c2981c129bf8fdcae2e8d8d` | [`../../oc-mirror-ansible/docs/diagrams/mirroring/run-flow.light.png`](../../oc-mirror-ansible/docs/diagrams/mirroring/run-flow.light.png) | plan: `step1flow` |
 | `0a3b7fe89702e3b1b2f4ff53ef425f24` | [`../diagrams/three-steps/retrofit.light.png`](../diagrams/three-steps/retrofit.light.png) | plan: `step2` |
 | `93ca02d95972386d24f1b90e43bf3b1b`, `f4bde97f69fc9230c5dc5442e45045c1` | [`../enterprise-proxy/diagrams/threat-model/proxy-update-threat-model.light.png`](../enterprise-proxy/diagrams/threat-model/proxy-update-threat-model.light.png) | plan: `threatmodel`; threat model: `model` |

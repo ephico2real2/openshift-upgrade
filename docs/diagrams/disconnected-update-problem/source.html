@@ -346,7 +346,7 @@ a { color: var(--remote); overflow-wrap: anywhere; }
     <p>Neither design makes the remaining work go away. The updates still have to be run, the clusters still have to be pointed at an update service and a registry, and the operator catalog still has to be gated through GitOps so that only approved items are exposed. That work exists today and in both designs.</p>
     <div class="tbl">
       <table>
-        <thead><tr><th>Stays in every option</th><th>Today</th><th>Preferred: proxy</th><th>Alternative: Quay on-prem</th></tr></thead>
+        <thead><tr><th>Stays in every option</th><th>Today</th><th>The proxy approach (the decision)</th><th>The fallback: mirror on a schedule</th></tr></thead>
         <tbody>
           <tr><td>The updates themselves</td><td>4.18 to 4.20 to 4.22, four control-plane hops</td><td>The same hops</td><td>The same hops</td></tr>
           <tr><td>Update service</td><td>A local service whose graph data has to be refreshed</td><td>Point the cluster at Red Hat's service: clear <code>spec.upstream</code> and set the channel</td><td>A local OSUS; oc-mirror v2 builds its graph image on each run</td></tr>
@@ -358,7 +358,7 @@ a { color: var(--remote); overflow-wrap: anywhere; }
     <p>What the proposal changes is the part that is broken today: copying images and catalogs across by hand.</p>
     <div class="tbl">
       <table>
-        <thead><tr><th>Removed or automated</th><th>Today</th><th>Preferred: proxy</th><th>Alternative: Quay on-prem</th></tr></thead>
+        <thead><tr><th>Removed or automated</th><th>Today</th><th>The proxy approach (the decision)</th><th>The fallback: mirror on a schedule</th></tr></thead>
         <tbody>
           <tr><td>Image sync</td><td class="cell-gap">By hand, offline</td><td>Gone. Each node pulls through the proxy.</td><td>A scheduled oc-mirror v2 job</td></tr>
           <tr><td>Catalog sync</td><td class="cell-gap">By hand, and out of date today</td><td>Gone. Catalogs and operator images come from <code>registry.redhat.io</code>.</td><td>The same scheduled job; every dependency listed by hand</td></tr>
@@ -378,9 +378,9 @@ a { color: var(--remote); overflow-wrap: anywhere; }
   <section>
     <h2>Still to settle</h2>
     <ul class="plain">
-      <li>Security has not yet said whether cluster nodes may reach Red Hat through the proxy. The preferred design depends on that answer.</li>
+      <li>The platform owner decides on the proxy approach; the change goes to security on the threat model with one condition, that applications cannot use the proxy by default. Security has not yet approved it.</li>
       <li>Order of work: the cluster-wide proxy is a documented configuration on 4.18. Enabling it before the updates would let the hops to 4.20 and 4.22 run without any sync. Red Hat Support should confirm that removing the mirror sets also removes the signature acknowledgment before 4.21.</li>
-      <li>The Red Hat Consulting engagement and the Quay specialist for the alternative are not arranged.</li>
+      <li>The Red Hat Consulting engagement and the Quay specialist, needed only if the fallback is chosen and Quay is picked as its registry product, are not arranged.</li>
       <li>This page does not record which 4.18 release each cluster is on, which tool the current sync uses, or how many times it has failed. Those three facts would make the case stronger.</li>
       <li>The plan also holds a third design that sits between these two: update graph and signatures from Red Hat through the proxy, images from the registry we run today. Red Hat does not document that combination.</li>
     </ul>

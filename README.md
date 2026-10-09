@@ -4,12 +4,12 @@ How disconnected OpenShift clusters can stay current: why an offline image sync 
 release cadence, the designs that replace it, the decisions still open, and the admission policies that limit which
 operator catalogs a cluster may use. Everything is in [`docs/`](docs/README.md).
 
-The plan, in three steps: (1) today's mirroring, run by the Ansible playbooks in [`oc-mirror-ansible/`](oc-mirror-ansible/README.md) (built); (2) clusters reach Red Hat through the enterprise proxy ([`docs/enterprise-proxy/`](docs/enterprise-proxy/README.md), proposed, preferred); (3) a full Red Hat Quay registry on-prem ([`docs/quay-onprem/`](docs/quay-onprem/README.md), proposed, alternative). All three are compared in [`docs/SOLUTIONS.md`](docs/SOLUTIONS.md).
+The plan, in three steps: (1) today's mirroring, run by the Ansible playbooks in [`oc-mirror-ansible/`](oc-mirror-ansible/README.md) (built); (2) the proxy approach, the platform owner's decision: clusters reach Red Hat through the enterprise proxy ([`docs/enterprise-proxy/`](docs/enterprise-proxy/README.md)), with Ansible running the retrofit and the updates; (3) the fallback only: the same playbooks on a schedule into the new registries, where Red Hat Quay on-prem ([`docs/quay-onprem/`](docs/quay-onprem/README.md)) would only change the registry product. All three are compared in [`docs/SOLUTIONS.md`](docs/SOLUTIONS.md), with the recommendation and the threat model the change goes to security on.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/three-steps/three-steps.dark.png">
   <source srcset="docs/diagrams/three-steps/three-steps.light.png">
-  <img alt="Three steps keep the clusters current. Step 1, built: a person runs the Ansible oc-mirror v2 playbooks on the mirroring bastion of each datacenter before each update, into the lab and production mirror registries, and the cluster stays disconnected with a local Update Service. Step 2, proposed and preferred: every node reaches Red Hat's hosts through the enterprise proxy, with no mirror, no sync and no local Update Service. Step 3, proposed alternative: a scheduled job on each bastion runs the same playbooks into an on-prem Red Hat Quay, and the cluster keeps no egress with a local Update Service. All three open the same Red Hat hosts and none needs two-headed DNS." src="docs/diagrams/three-steps/three-steps.light.png">
+  <img alt="Three steps keep the clusters current. Step 1, built: a person runs the Ansible oc-mirror v2 playbooks on the mirroring bastion of each datacenter before each update, into the lab and production mirror registries, and the cluster stays disconnected with a local Update Service. Step 2, the platform owner's decision: every node reaches Red Hat's hosts through the enterprise proxy, with no mirror, no sync and no local Update Service, and Ansible runs the retrofit and the updates. Step 3, the fallback only: the same playbooks run on a schedule into the new registries and the cluster keeps no egress with a local Update Service; Red Hat Quay on-prem would only change the registry product. All three open the same Red Hat hosts and none needs two-headed DNS." src="docs/diagrams/three-steps/three-steps.light.png">
 </picture>
 
 *Step 1 is built; Steps 2 and 3 are proposals. All three open the same Red Hat hosts; they differ in which machines use them. No step needs two-headed DNS.*
@@ -29,7 +29,7 @@ Every step needs the new hosts first: a mirroring bastion in each datacenter and
 | [`docs/PREREQUISITES.md`](docs/PREREQUISITES.md) | Build first: a mirroring bastion per datacenter and the lab and two production mirror registries (RHEL 9), replacing the three old mirror registries 1.x |
 | [`docs/SOLUTIONS.md`](docs/SOLUTIONS.md) | The three steps side by side, the recommendation and the decisions needed (Word copy: `docs/SOLUTIONS.docx`) |
 | [`docs/enterprise-proxy/`](docs/enterprise-proxy/README.md) | Step 2: runbook to retrofit a disconnected cluster to reach Red Hat through the enterprise proxy |
-| [`docs/quay-onprem/`](docs/quay-onprem/README.md) | Step 3: Red Hat Quay on-prem, filled on a schedule, with the OpenShift Update Service |
+| [`docs/quay-onprem/`](docs/quay-onprem/README.md) | Step 3's Quay variant: Red Hat Quay on-prem, filled on a schedule, with the OpenShift Update Service; the fallback only |
 | [`docs/PROBLEM-STATEMENT.md`](docs/PROBLEM-STATEMENT.md) | The problem, measured, and the two designs that replace the sync |
 | [`docs/DESIGN-DECISIONS.md`](docs/DESIGN-DECISIONS.md) | The options, the open decisions with their recommendations |
 | [`docs/openshift-update-egress.html`](docs/openshift-update-egress.html) | The full plan, opened directly in a browser |

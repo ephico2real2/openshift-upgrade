@@ -61,7 +61,7 @@ a { color: var(--remote); }
   <header>
     <div class="eyebrow">openshift-upgrade · solutions · 2026-10-07</div>
     <h1>Three steps to keep the disconnected clusters current</h1>
-    <p class="lede">The figures for docs/SOLUTIONS.md, the Step 2 runbook and the Step 3 design. Step 1 is built; Steps 2 and 3 are proposals.</p>
+    <p class="lede">The figures for docs/SOLUTIONS.md, the retrofit runbook and the fallback. Step 1 is built; Step 2 is the platform owner's decision; Step 3 is the fallback only.</p>
   </header>
 
   <section>
@@ -69,7 +69,7 @@ a { color: var(--remote); }
     <p class="muted">Who copies Red Hat's content, and which machines reach Red Hat.</p>
     <figure>
       <div class="fig-scroll">
-<svg viewBox="0 0 1000 640" role="img" aria-label="Three steps keep the clusters current. Step 1, built: a person runs the Ansible oc-mirror v2 playbooks on the mirroring bastion of each datacenter before each update, into the lab and production mirror registries, and the cluster stays disconnected with a local Update Service. Step 2, proposed and preferred: every node reaches Red Hat's hosts through the enterprise proxy, with no mirror, no sync and no local Update Service. Step 3, proposed alternative: a scheduled job on each bastion runs the same playbooks into an on-prem Red Hat Quay, and the cluster keeps no egress with a local Update Service. All three open the same Red Hat hosts and none needs two-headed DNS.">
+<svg viewBox="0 0 1000 640" role="img" aria-label="Three steps keep the clusters current. Step 1, built: a person runs the Ansible oc-mirror v2 playbooks on the mirroring bastion of each datacenter before each update, into the lab and production mirror registries, and the cluster stays disconnected with a local Update Service. Step 2, the platform owner's decision: every node reaches Red Hat's hosts through the enterprise proxy, with no mirror, no sync and no local Update Service, and Ansible runs the retrofit and the updates. Step 3, the fallback only: the same playbooks run on a schedule into the new registries and the cluster keeps no egress with a local Update Service; Red Hat Quay on-prem would only change the registry product. All three open the same Red Hat hosts and none needs two-headed DNS.">
 <defs><marker id="ah1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
 <g font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="currentColor">
 <text x="20" y="92" fill="var(--host)" font-family="IBM Plex Mono, monospace" font-size="13" font-weight="600">INSIDE</text>
@@ -81,9 +81,9 @@ a { color: var(--remote); }
 <text x="140" y="30" fill="currentColor" font-size="15" font-weight="700">Step 1 · Ansible, today's model</text>
 <text x="140" y="50" fill="var(--muted)">built; we still mirror ourselves</text>
 <text x="425" y="30" fill="currentColor" font-size="15" font-weight="700">Step 2 · enterprise proxy</text>
-<text x="425" y="50" fill="var(--muted)">proposed; the team's preference</text>
-<text x="710" y="30" fill="currentColor" font-size="15" font-weight="700">Step 3 · Red Hat Quay on-prem</text>
-<text x="710" y="50" fill="var(--muted)">proposed; the alternative</text>
+<text x="425" y="50" fill="var(--muted)">the platform owner's decision</text>
+<text x="710" y="30" fill="currentColor" font-size="15" font-weight="700">Step 3 · mirror on a schedule</text>
+<text x="710" y="50" fill="var(--muted)">fallback only; Quay a registry choice</text>
 <line x1="410" y1="20" x2="410" y2="350" stroke="var(--rule)" stroke-width="1.5" stroke-dasharray="6 5"/>
 <line x1="695" y1="20" x2="695" y2="350" stroke="var(--rule)" stroke-width="1.5" stroke-dasharray="6 5"/>
 <rect x="140" y="76" width="270" height="66" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
@@ -118,10 +118,10 @@ a { color: var(--remote); }
 <path d="M460,242 L460,446" fill="none" stroke="var(--remote)" stroke-width="1.4" marker-end="url(#ah1)"/>
 <rect x="710" y="76" width="270" height="66" rx="8" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5" stroke-dasharray="5 4"/>
 <text x="726" y="96.5" fill="var(--host)" font-weight="600">OpenShift cluster</text>
-<text x="726" y="113.5" fill="currentColor">no egress; pulls from Quay</text>
+<text x="726" y="113.5" fill="currentColor">no egress; pulls from the mirror</text>
 <text x="726" y="130.5" fill="var(--muted)">local OSUS: required</text>
 <rect x="710" y="176" width="270" height="66" rx="8" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5" stroke-dasharray="5 4"/>
-<text x="726" y="196.5" fill="var(--host)" font-weight="600">Red Hat Quay, HA, per datacenter</text>
+<text x="726" y="196.5" fill="var(--host)" font-weight="600">mirror registries, or Quay, HA</text>
 <text x="726" y="213.5" fill="currentColor">infra cluster or 3+ RHEL 9 hosts</text>
 <text x="726" y="230.5" fill="var(--muted)">Clair scans what lands</text>
 <rect x="710" y="276" width="270" height="66" rx="8" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5" stroke-dasharray="5 4"/>
@@ -156,7 +156,7 @@ a { color: var(--remote); }
 </g>
 </svg>
       </div>
-      <figcaption>Step 1 is built: a person runs the playbooks before each update. Step 2 (preferred) and Step 3 (alternative) are proposals; neither is approved.</figcaption>
+      <figcaption>Step 1 is built: a person runs the playbooks before each update. Step 2 is the platform owner's decision, with security on the threat model; Step 3 is the fallback only. Neither is approved yet.</figcaption>
     </figure>
   </section>
 
