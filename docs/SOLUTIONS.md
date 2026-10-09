@@ -14,8 +14,9 @@ Our clusters run OpenShift 4.18.17 on the EUS channel and are well behind. Every
 someone copying images and catalogs into our registry, and that copy has failed several times. The
 plan is to move to 4.20 and then 4.22, which needs four release payloads plus catalogs for each minor.
 
-This document presents three steps. They are not mutually exclusive: Step 1 is done and keeps us
-moving now, and either Step 2 or Step 3 is the long-term design.
+This document presents three steps. Step 1 is done and keeps us moving now. The proxy approach
+(Step 2) is the platform owner's decision for the long term; the mirror approach automated on a
+schedule (Step 3's schedule, whatever the registry product) is the fallback only.
 
 | # | What it is | Who copies the content | Cluster egress | Status |
 |---|---|---|---|---|
@@ -381,7 +382,7 @@ proxy approach needs no mirror at all:
    egress through the proxy to a vendor's hosts is established practice in our network. The proxy
    approach extends it to the OpenShift nodes, with only Red Hat's documented hosts allowed, using
    only documented configuration.
-2. **Fallback only: the mirror approach, automated.** If security does not approve node egress, the
+2. **Fallback only: the mirror approach, automated.** If security does not approve the change, the
    Ansible playbooks run on a schedule into the new registries, so a person no longer runs the sync;
    a local Update Service stays required. Red Hat Quay on-prem ([`quay-onprem/`](quay-onprem/README.md))
    would only change the registry product of this same approach; it is not a third option and adds

@@ -1,6 +1,6 @@
 # Threat model: updating a cluster through our enterprise proxy
 
-The Step 2 design ([`README.md`](README.md)) as a threat model, platform side. It covers the update
+The proxy approach ([`README.md`](README.md), the retrofit runbook) as a threat model, platform side. It covers the update
 described in [`../openshift-update-egress.html`](../openshift-update-egress.html) (*Option 1 in detail*), drawn
 as trust boundaries and data flows. Controls C1 to C7 are taken from Red Hat's OpenShift documentation,
 quoted and linked below; C8 is our own admission policy and is marked as such. The platform owner

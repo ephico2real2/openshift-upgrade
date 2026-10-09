@@ -395,7 +395,9 @@ cutover with `oc get imagecontentsourcepolicy`; step 7 deletes those.
 
 - Which datacenter holds the lab, and whether lab clusters exist in both.
 - How many clusters each production registry will serve. Red Hat discourages one mirror registry
-  for several clusters; if that is our case, Step 3 (full Quay) is the long-term answer.
+  for several clusters; if that is our case under the fallback, a highly available registry (Quay,
+  [`quay-onprem/`](quay-onprem/README.md)) is the registry product for the mirror approach, not an
+  option of its own.
 - Whether the bastions may reach Red Hat through the enterprise proxy (security approval, as for the
   current mirror host).
 - Each old registry's exact version and OS, and which new registry replaces it (assumed lab → lab,
