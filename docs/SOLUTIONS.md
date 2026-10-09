@@ -50,7 +50,8 @@ Owner shape the direction of this platform offering; this is the SME's recommend
 and modern best practice. Ansible is used in both cases; the difference is the manual mirror, which
 the proxy approach eliminates. We are not after two-headed DNS; we are after a sustainable way to update
 as we grow. The disconnected setup was carried over from OpenShift 3.x, where the proxy setup was a mess;
-on OpenShift 4.x and the coming 5.x the proxy is Red Hat's supported way for enterprise customers to take fixes as they ship.
+on OpenShift 4.x the proxy is Red Hat's supported way for enterprise customers to take fixes as they ship, and
+it keeps us ready for the growth that follows (OpenShift 5.x, for example).
 
 ## Where we are
 
@@ -387,7 +388,8 @@ is the manual mirror, which the proxy approach eliminates.
 **Why the proxy approach.** We are not looking for two-headed DNS, and no option needs it. We are
 looking for a sustainable way to update our clusters that keeps pace with our growth. The disconnected
 setup we run today was carried over from OpenShift 3.x, where it was the sound choice because the proxy
-setup was a mess. OpenShift 4.x, and the coming OpenShift 5.x, are far more advanced: the
+setup was a mess. OpenShift 4.x is far more advanced, and we have to be ready for the growth that follows it (OpenShift
+5.x, for example): the
 cluster-wide proxy is Red Hat's documented, supported way for enterprise customers to take updates and
 fixes as they ship ("Production environments can deny direct access to the internet and instead have
 an HTTP or HTTPS proxy available" [R4]), which is what operations and vulnerability management need.
