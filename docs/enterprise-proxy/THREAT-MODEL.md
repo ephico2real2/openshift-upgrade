@@ -14,12 +14,12 @@ trust boundaries and data flows, with the control on every flow. It shows three 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/threat-model/proxy-update-threat-model.dark.png">
   <source srcset="diagrams/threat-model/proxy-update-threat-model.light.png">
-  <img alt="Threat model of updating a cluster through the enterprise proxy. Inside the OpenShift cluster, the platform (the nodes and the openshift namespaces) starts every update: the Cluster Version Operator fetches the update graph and the release signature, CRI-O on each node pulls the payload images and their sigstore signatures, and OLM pulls only approved operators. Every one of these flows is HTTPS on TCP 443 through the enterprise proxy, whose allowlist holds only Red Hat hosts: api.openshift.com, mirror.openshift.com, quay.io with its CDN, and registry.redhat.io; anything else gets 403. The cluster admin only picks the target with oc adm upgrade. Application namespaces sit in their own trust boundary: the platform gives application pods no proxy settings and the firewall gives them no direct route, so an attempt to reach any other internet host is blocked (threat T1). A pod's image is still pulled by CRI-O through the proxy, so the image allowlist decides what may be pulled (threat T4, control C5). Residual risk and open items: a team may set its own proxy in its pods, which is deliberate and still reaches only Red Hat hosts; OLM operators inherit the proxy, so only approved catalogs; TLS interception at the proxy is an open decision." src="diagrams/threat-model/proxy-update-threat-model.light.png">
+  <img alt="Threat model of updating a cluster through the enterprise proxy. Inside the OpenShift cluster, the platform (the nodes and the openshift namespaces) starts every update: the Cluster Version Operator fetches the update graph and the release signature, CRI-O on each node pulls the payload images and their sigstore signatures, and OLM pulls only approved operators. Every one of these flows is HTTPS on TCP 443 through the enterprise proxy, whose allowlist holds only Red Hat hosts: api.openshift.com, mirror.openshift.com, quay.io with its CDN, and registry.redhat.io; anything else gets 403. The cluster admin only picks the target with oc adm upgrade. Application namespaces sit in their own trust boundary: the platform gives application pods no proxy settings and the firewall gives them no direct route, so an attempt to reach any other internet host is blocked (threat T1). A pod's image is still pulled by CRI-O through the proxy, so the image allowlist decides what may be pulled (threat T4, control C5). Residual risk and open items: a team may set its own proxy in its pods, which is deliberate and still reaches only Red Hat hosts; OLM operators inherit the proxy, so only approved catalogs; the proxy inspects TLS and re-signs with the enterprise CA, which the nodes and platform components trust through the proxy's trustedCA bundle, so it sees registry tokens while the release and image signatures still prove the content." src="diagrams/threat-model/proxy-update-threat-model.light.png">
 </picture>
 
 *Trust boundaries (red dashed): the internet, the cluster, and inside it the platform, which starts every
 update, and the application namespaces. Platform flows (solid) are TCP 443 through the proxy to Red Hat
-hosts; C1–C6 are the controls, T1, T4 and T6 the threats drawn where they occur (all seven are in the
+hosts; C1–C7 are the controls, T1, T4 and T6 the threats drawn where they occur (all seven are in the
 table below).*
 
 ## Who calls which Red Hat host
@@ -45,7 +45,7 @@ The full allowlist, including the hosts still being confirmed with Red Hat (`con
 | T3 | A tampered release or image, in transit or at the source | **C4** the CVO checks Red Hat's GPG signature of the release; CRI-O checks the sigstore signature of each image (`ClusterImagePolicy` `openshift`, from 4.21); TLS on every flow | Built in | Test 2 (update checks work); a bad signature stops the update |
 | T4 | A workload pulls an arbitrary public image from `quay.io` through the nodes' proxy | **C5** `allowedRegistries` by repository on the nodes; the Kyverno policy narrows application namespaces further | Phase 3; [`../image-policies/`](../image-policies/) | Test 9 (pulls outside the allowlist fail) |
 | T5 | An unapproved operator is installed and inherits the proxy | **C6** only catalogs and packages we approve, enforced by admission policies | Phase 7; [`../catalog-policies/`](../catalog-policies/) | The catalog policy test suites |
-| T6 | The proxy re-encrypts TLS to Red Hat hosts (interception) and breaks or weakens the checks | Exempt the Red Hat hosts from interception until Red Hat Support answers | Phase 0, decision D4 | Open: D4 |
+| T6 | The proxy inspects TLS: it decrypts the platform's traffic, including registry tokens, and could alter content | **C7** the enterprise CA (already on every node) is in `user-ca-bundle` / `trustedCA`, so platform components validate the proxy's certificates · **C4** signatures prove the content whatever the TLS path · `sso.redhat.com` not re-encrypted · the proxy is part of the trusted base: protect its logs and admin access | Phase 0 (D4, answered), phase 4a | Test 1 (proxy applied with `trustedCA`), test 2 and test 3 (TLS validates through the proxy) |
 | T7 | A proxy outage stops updates and image pulls | Run the proxy highly available | Phase 0 | Proxy monitoring; the mirror stays until phase 9 |
 
 **Not a gap: an application team that sets a proxy in its own deployment.** That is a deliberate
@@ -64,6 +64,11 @@ listener for the clusters' nodes (phase 0), such a pod cannot use the platform's
   [`modules/update-process-workflow.adoc`](https://github.com/openshift/openshift-docs/blob/enterprise-4.18/modules/update-process-workflow.adoc).
 - **C5:** "Registries not in your allowlist are blocked":
   [`modules/images-configuration-allowed.adoc`](https://github.com/openshift/openshift-docs/blob/enterprise-4.18/modules/images-configuration-allowed.adoc).
+- **C7:** the `trustedCA` bundle "is merged with the RHCOS trust bundle and injected into the trust
+  store of platform components that make egress HTTPS calls":
+  [`security/certificate_types_descriptions/proxy-certificates.adoc`](https://github.com/openshift/openshift-docs/blob/enterprise-4.18/security/certificate_types_descriptions/proxy-certificates.adoc).
+  A proxy that re-encrypts must exclude `sso.redhat.com`:
+  [`modules/cluster-wide-proxy-preqs.adoc`](https://github.com/openshift/openshift-docs/blob/enterprise-4.18/modules/cluster-wide-proxy-preqs.adoc).
 - **C6, OLM and the proxy:** operators "inherit the cluster-wide proxy settings on their deployments":
   [`modules/olm-overriding-proxy-settings.adoc`](https://github.com/openshift/openshift-docs/blob/enterprise-4.18/modules/olm-overriding-proxy-settings.adoc).
 

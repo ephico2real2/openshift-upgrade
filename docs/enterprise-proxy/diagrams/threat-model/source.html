@@ -69,7 +69,7 @@ a { color: var(--remote); }
     <p class="muted">The platform starts every flow; every flow is TCP 443 through the proxy to a Red Hat host.</p>
     <figure>
       <div class="fig-scroll">
-<svg viewBox="0 0 1000 730" role="img" aria-label="Threat model of updating a cluster through the enterprise proxy. Inside the OpenShift cluster, the platform (the nodes and the openshift namespaces) starts every update: the Cluster Version Operator fetches the update graph and the release signature, CRI-O on each node pulls the payload images and their sigstore signatures, and OLM pulls only approved operators. Every one of these flows is HTTPS on TCP 443 through the enterprise proxy, whose allowlist holds only Red Hat hosts: api.openshift.com, mirror.openshift.com, quay.io with its CDN, and registry.redhat.io; anything else gets 403. The cluster admin only picks the target with oc adm upgrade. Application namespaces sit in their own trust boundary: the platform gives application pods no proxy settings and the firewall gives them no direct route, so an attempt to reach any other internet host is blocked (threat T1). A pod's image is still pulled by CRI-O through the proxy, so the image allowlist decides what may be pulled (threat T4, control C5). Residual risk and open items: a team may set its own proxy in its pods, which is deliberate and still reaches only Red Hat hosts; OLM operators inherit the proxy, so only approved catalogs; TLS interception at the proxy is an open decision.">
+<svg viewBox="0 0 1000 730" role="img" aria-label="Threat model of updating a cluster through the enterprise proxy. Inside the OpenShift cluster, the platform (the nodes and the openshift namespaces) starts every update: the Cluster Version Operator fetches the update graph and the release signature, CRI-O on each node pulls the payload images and their sigstore signatures, and OLM pulls only approved operators. Every one of these flows is HTTPS on TCP 443 through the enterprise proxy, whose allowlist holds only Red Hat hosts: api.openshift.com, mirror.openshift.com, quay.io with its CDN, and registry.redhat.io; anything else gets 403. The cluster admin only picks the target with oc adm upgrade. Application namespaces sit in their own trust boundary: the platform gives application pods no proxy settings and the firewall gives them no direct route, so an attempt to reach any other internet host is blocked (threat T1). A pod's image is still pulled by CRI-O through the proxy, so the image allowlist decides what may be pulled (threat T4, control C5). Residual risk and open items: a team may set its own proxy in its pods, which is deliberate and still reaches only Red Hat hosts; OLM operators inherit the proxy, so only approved catalogs; the proxy inspects TLS and re-signs with the enterprise CA, which the nodes and platform components trust through the proxy's trustedCA bundle, so it sees registry tokens while the release and image signatures still prove the content.">
 <defs><marker id="pt1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
 <g font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="currentColor">
 <rect x="20" y="14" width="960" height="84" rx="10" fill="none" stroke="var(--gap)" stroke-width="1.6" stroke-dasharray="9 5"/>
@@ -86,9 +86,12 @@ a { color: var(--remote); }
 <text x="74" y="141" fill="var(--host)" font-weight="600">allowlist</text>
 <text x="735" y="132" fill="var(--none)" font-weight="600" text-anchor="middle">enterprise proxy</text>
 <text x="735" y="150" fill="var(--none)" font-size="12" text-anchor="middle">Red Hat only · CONNECT :443 · else 403</text>
-<rect x="881" y="127" width="30" height="20" rx="10" fill="var(--gap-wash)" stroke="var(--gap)" stroke-width="1.5"/>
-<text x="896" y="141.5" fill="var(--gap)" font-family="IBM Plex Mono, monospace" font-size="11.5" font-weight="700" text-anchor="middle">T6</text>
-<text x="918" y="141" fill="var(--gap)" font-size="12" font-weight="600">D4 open</text>
+<rect x="229" y="127" width="30" height="20" rx="10" fill="var(--gap-wash)" stroke="var(--gap)" stroke-width="1.5"/>
+<text x="244" y="141.5" fill="var(--gap)" font-family="IBM Plex Mono, monospace" font-size="11.5" font-weight="700" text-anchor="middle">T6</text>
+<text x="266" y="141" fill="var(--gap)" font-size="12" font-weight="600">TLS inspected</text>
+<rect x="425" y="127" width="30" height="20" rx="10" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5"/>
+<text x="440" y="141.5" fill="var(--host)" font-family="IBM Plex Mono, monospace" font-size="11.5" font-weight="700" text-anchor="middle">C7</text>
+<text x="462" y="141" fill="var(--host)" font-size="12" font-weight="600">enterprise CA</text>
 <rect x="20" y="192" width="960" height="246" rx="10" fill="none" stroke="var(--gap)" stroke-width="1.6" stroke-dasharray="9 5"/>
 <text x="32" y="210" fill="var(--gap)" font-family="IBM Plex Mono, monospace" font-size="11.5" font-weight="600"></text>
 <text x="640" y="210" fill="var(--gap)" font-family="IBM Plex Mono, monospace" font-size="11.5" font-weight="600">TRUST BOUNDARY · CLUSTER</text>
@@ -107,8 +110,8 @@ a { color: var(--remote); }
 <text x="464" y="292.5" fill="var(--muted)">only</text>
 <rect x="252" y="318" width="180" height="62" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
 <text x="268" y="336.5" fill="currentColor" font-weight="600">proxy/cluster</text>
-<text x="268" y="353.5" fill="var(--host)">platform components</text>
-<text x="268" y="370.5" fill="var(--host)">only (C2)</text>
+<text x="268" y="353.5" fill="var(--host)">platform only (C2)</text>
+<text x="268" y="370.5" fill="var(--host)">enterprise CA (C7)</text>
 <rect x="448" y="318" width="176" height="62" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
 <text x="464" y="336.5" fill="currentColor" font-weight="600">image policy</text>
 <text x="464" y="353.5" fill="var(--host)">allowedRegistries</text>
@@ -150,12 +153,12 @@ a { color: var(--remote); }
 <path d="M200,480 L200,310" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#pt1)"/>
 <rect x="340" y="454" width="640" height="124" rx="8" fill="var(--gap-wash)" stroke="var(--gap)" stroke-width="1.5"/>
 <text x="356" y="478" fill="var(--gap)" font-weight="600">Residual risk and open items</text>
-<text x="356" y="495" fill="var(--gap)">A team may set its own proxy in its pods: deliberate, allowed by policy.</text>
-<text x="356" y="512" fill="var(--gap)">The proxy still allows only Red Hat hosts (C3), so it is not a way out.</text>
-<text x="356" y="529" fill="var(--gap)">OLM operators inherit the proxy: only catalogs we approve (C6), T5.</text>
-<text x="356" y="546" fill="var(--muted)">Open: TLS interception at the proxy (D4, T6); console and sso hosts to confirm.</text>
+<text x="356" y="495" fill="var(--gap)">A team may set its own proxy in its pods: deliberate; still Red Hat hosts only (C3).</text>
+<text x="356" y="512" fill="var(--gap)">OLM operators inherit the proxy: only catalogs we approve (C6), T5.</text>
+<text x="356" y="529" fill="var(--gap)">The proxy decrypts TLS (T6): it sees registry tokens; signatures (C4) still prove content.</text>
+<text x="356" y="546" fill="var(--muted)">Red Hat: do not re-encrypt sso.redhat.com. Still to confirm: console, sso hosts.</text>
 <text x="20" y="606" fill="var(--muted)">C1 firewall: only the proxy goes out · C2 proxy for platform components only · C3 allowlist · C4 GPG and sigstore signatures</text>
-<text x="20" y="626" fill="var(--muted)">C5 image allowlist (+ Kyverno for apps) · C6 catalog control.   T = threat, see THREAT-MODEL.md for T1 to T7, tests and phases.</text>
+<text x="20" y="626" fill="var(--muted)">C5 image allowlist (+ Kyverno for apps) · C6 catalog control · C7 enterprise CA in trustedCA.   T = threat: THREAT-MODEL.md.</text>
 <text x="20" y="652" fill="currentColor">Red Hat: “The system-wide proxy affects system components only, not user workloads.” (enable-cluster-wide-proxy.adoc)</text>
 <text x="20" y="678" fill="var(--muted)">Red dashed outline = trust boundary.  Solid = platform flow, TCP 443 through the proxy.  Red dashed arrow = blocked or controlled.</text>
 <text x="20" y="706" fill="var(--host)" font-weight="600">Proposed design: none of this is configured today.</text>

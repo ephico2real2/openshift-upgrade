@@ -280,10 +280,11 @@ go out. Nothing new inside the clusters.
 | Red Hat changes hostnames | Track the firewall documentation; alert on proxy denies |
 | An internal service missed from `noProxy` breaks a platform feature | Inventory before the proxy goes on; test in lower environments first |
 | Telemetry sends cluster data to Red Hat | Leave it off unless security decides otherwise; updates don't need it |
-| A TLS-intercepting proxy | Exempt Red Hat hosts until Red Hat Support confirms the position |
+| The proxy inspects TLS (decided: it re-signs with the enterprise CA) | The enterprise CA, already on every node, also goes into `trustedCA`; `sso.redhat.com` is not re-encrypted; signatures prove the content whatever the TLS path |
 
-**Needs:** security approval of node egress to the listed hosts; answers on telemetry and TLS
-interception; a Red Hat Support case for the open questions in the runbook.
+**Needs:** security approval of node egress to the listed hosts; an answer on telemetry; a Red Hat
+Support case for the open questions in the runbook. TLS inspection is decided: the proxy re-signs with
+the enterprise CA, which every node trusts.
 
 Detail: [`enterprise-proxy/README.md`](enterprise-proxy/README.md).
 
@@ -384,7 +385,7 @@ Now: Step 1 takes the clusters to 4.20 (4.18 EUS ends 25 Feb 2027)
 |---|---|---|
 | May cluster nodes reach Red Hat's hosts through the proxy? | Security | Step 2 or Step 3 |
 | Telemetry and Insights on or off? | Security | Step 2 allowlist and pull secret |
-| Will the proxy intercept TLS to Red Hat hosts? | Network team, Red Hat Support | Step 2 proxy configuration |
+| ~~Will the proxy intercept TLS to Red Hat hosts?~~ Answered 2026-10-09: yes, with the enterprise CA every node trusts | Network team | Step 2 proxy configuration |
 | Filtered or stock operator catalog? | Platform team | Step 2 catalog phase, Step 3 catalog runs |
 | Quay subscription, platform and build partner | Management | Step 3 |
 | Five RHEL 9 hosts, DNS names, internal-CA certificates and firewall flows | Infrastructure, network teams | Everything ([`PREREQUISITES.md`](PREREQUISITES.md)) |

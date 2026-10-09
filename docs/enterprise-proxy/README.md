@@ -78,8 +78,8 @@ Do it per cluster, lower environments first.
 
 1. **Security sign-off** on the host list below and on the controls in
    [`openshift-update-egress.html`](../openshift-update-egress.html), "Security controls for the
-   approval request". The open telemetry question (D3) and TLS interception question (D4) must be
-   answered before phase 2 and phase 4.
+   approval request". The open telemetry question (D3) must be answered before phase 2. TLS
+   inspection (D4) is answered: see item 4.
 2. **Firewall:** cluster nodes may reach the proxy and internal services only. Nothing goes out
    directly.
 3. **Proxy:** highly available. A proxy outage stops every image pull from Red Hat, so it needs the
@@ -106,10 +106,16 @@ Do it per cluster, lower environments first.
    - **Proxy login:** prefer a proxy that admits the cluster's node subnets without a password. A
      user name and password in `httpProxy` are readable by anyone who can read `proxy/cluster`, and
      they end up in the environment of every platform pod.
-4. **TLS interception (D4):** until Red Hat Support answers, exempt the hosts above from
-   interception. If the proxy does intercept, the proxy's CA must go into `trustedCA` (phase 4)
-   and `sso.redhat.com` must not be re-encrypted (`modules/cluster-wide-proxy-preqs.adoc`, ROSA/OSD
-   context).
+4. **TLS inspection (D4), answered 2026-10-09:** the enterprise proxy inspects TLS to the Red Hat
+   hosts and re-signs it with the enterprise CA, and every node already carries the enterprise trust
+   bundle. The same CA must also be in `user-ca-bundle`, which `proxy/cluster` names in `trustedCA`
+   (phase 4a): Red Hat: that bundle "is merged with the RHCOS trust bundle and injected into the trust
+   store of platform components that make egress HTTPS calls"
+   (`security/certificate_types_descriptions/proxy-certificates.adoc`). Red Hat also says a proxy that
+   re-encrypts egress traffic must exclude `sso.redhat.com` from re-encryption
+   (`modules/cluster-wide-proxy-preqs.adoc`; the same table lists `observatorium-mst.api.openshift.com`,
+   managed-OpenShift telemetry). Payload integrity does not depend on TLS: the CVO checks GPG
+   signatures and CRI-O sigstore signatures.
 5. **Red Hat credentials:** a Registry Service Account for `registry.redhat.io` ("recommended… in
    place of an individual's Customer Portal credentials"), or the organisation's pull secret from
    `console.redhat.com`. Keep it Vault-encrypted as in Step 1 (`vars/redhat-pull-secret.json`).
@@ -546,7 +552,8 @@ our own.
 
 - **Security:** approval of the host list, node egress through the proxy, and D3 (telemetry).
 - **Red Hat Support case:**
-  - TLS interception (D4).
+  - Whether Red Hat supports TLS inspection of `quay.io` and `registry.redhat.io` traffic (D4 is
+    decided on our side; Red Hat's position is not verified).
   - Whether updates need `console.redhat.com`/`sso.redhat.com`, and whether on-prem clusters need
     `quayio-production-s3.s3.amazonaws.com`.
   - Whether `allowedRegistries: quay.io/openshift-release-dev` is enough.

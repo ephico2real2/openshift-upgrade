@@ -50,7 +50,7 @@ research found*
 | D1 | Which design do we build? | **Team position, 2026-10-05:** Option 1 preferred; Option 2 (full Red Hat Quay on-prem) as the alternative | Security's answer on which machines may reach Red Hat; for the alternative, a Red Hat Consulting engagement and a Quay specialist |
 | D2 | Filtered catalog (model A) or allowlist on the stock catalog (model B)? | Model A, keeping a mirror registry for the catalog image alone | D1 (the registry product is answered: mirror registry for Red Hat OpenShift, [`PREREQUISITES.md`](PREREQUISITES.md)) |
 | D3 | Keep telemetry and Insights on? | Security team's call | Security |
-| D4 | Will the proxy decrypt traffic to Red Hat hosts? | Exempt the Red Hat hosts from interception until Support answers | A Red Hat support answer |
+| D4 | Will the proxy decrypt traffic to Red Hat hosts? | **Answered 2026-10-09: yes.** The proxy re-signs with the enterprise CA, which every node trusts; the same CA goes into `trustedCA`; `sso.redhat.com` excluded from re-encryption | Red Hat's support position on inspecting `quay.io` and `registry.redhat.io` (still unverified) |
 | D5 | How often do we update? | Monthly z-stream window; EUS-to-EUS minors for production, which matches the team's 4.18 → 4.20 → 4.22 plan | Team agreement on the z-stream window |
 
 ### D1 · Which design
@@ -102,10 +102,13 @@ recommendations. It can be turned on later without touching nodes. *§ Decisions
 
 ### D4 · TLS interception
 
-Interception is the only way to filter `quay.io` by repository at the network layer, and it needs
-the proxy CA in `trustedCA`. Red Hat's support position on it could not be verified. Payload
-integrity does not depend on the proxy: the CVO checks GPG signatures and CRI-O checks sigstore
-signatures. *§ Decisions, D4*
+**Answered 2026-10-09:** the enterprise proxy inspects TLS and re-signs it with the enterprise CA,
+and every OpenShift node already carries the enterprise trust bundle. The CA must also be in
+`user-ca-bundle` (`trustedCA` on `proxy/cluster`) so platform components trust it, and Red Hat asks
+that `sso.redhat.com` is not re-encrypted. Inspection is also what makes filtering `quay.io` by
+repository possible at the network layer. Red Hat's support position on inspecting `quay.io` and
+`registry.redhat.io` traffic could not be verified. Payload integrity does not depend on the proxy:
+the CVO checks GPG signatures and CRI-O checks sigstore signatures. *§ Decisions, D4*
 
 ### D5 · Cadence
 
