@@ -47,7 +47,7 @@ research found*
 
 | ID | Question | Recommendation | Waiting on |
 |---|---|---|---|
-| D1 | Which design do we build? | **Team position, 2026-10-05, refined 2026-10-09:** two independent options. Preferred: Option 1, the proxy approach, which other teams (VMware, TKG) already update through; it needs no mirror at all. Fallback only: the mirror approach automated, the Ansible playbooks on a schedule into the new registries. Option 2, Red Hat Quay on-prem, would only change the registry product of that same mirror approach: not a third option | Security's answer on which machines may reach Red Hat; for the alternative, a Red Hat Consulting engagement and a Quay specialist |
+| D1 | Which design do we build? | **Team position, 2026-10-05, refined 2026-10-09:** two independent options. Preferred: Option 1, the proxy approach, which other teams (VMware, TKG) already update through; it needs no mirror at all. Fallback only: the mirror approach automated, the Ansible playbooks on a schedule into the new registries. Option 2, Red Hat Quay on-prem, would only change the registry product of that same mirror approach: not a third option. **The platform owner decides**; the change goes to security on the threat model ([`enterprise-proxy/THREAT-MODEL.md`](enterprise-proxy/THREAT-MODEL.md)) with one condition: applications cannot use the proxy by default | Security's approval of the change; for the fallback, a Red Hat Consulting engagement and a Quay specialist only if Quay is picked |
 | D2 | Filtered catalog (model A) or allowlist on the stock catalog (model B)? | Model A, keeping a mirror registry for the catalog image alone | D1 (the registry product is answered: mirror registry for Red Hat OpenShift, [`PREREQUISITES.md`](PREREQUISITES.md)) |
 | D3 | Keep telemetry and Insights on? | Security team's call | Security |
 | D4 | Will the proxy decrypt traffic to Red Hat hosts? | **Answered 2026-10-09: yes.** The proxy re-signs with the enterprise CA, which every node trusts; the same CA goes into `trustedCA`; `sso.redhat.com` excluded from re-encryption | Red Hat's support position on inspecting `quay.io` and `registry.redhat.io` (still unverified) |
@@ -79,7 +79,9 @@ through the same enterprise proxy; and, as the fallback only, the mirror approac
 Ansible playbooks on a schedule into the new registries. Red Hat Quay on-prem would only change the
 registry product of that mirror approach; it is not a third option and adds no value of its own.
 
-The choice turns on one security answer: which machines may reach Red Hat through the proxy.
+The platform owner decides. The change goes to security on the threat model, and the one condition
+is that consumers and applications cannot use the proxy by default: the platform gives them no proxy
+settings (C2) and they have no route out (C1), proven by the runbook's tests 6 and 8.
 
 - **Node egress to the four host groups is approved** → Option 1. It uses only documented
   configuration and needs no mirror to run.

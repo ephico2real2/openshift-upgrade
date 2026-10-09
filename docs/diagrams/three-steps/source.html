@@ -162,48 +162,54 @@ a { color: var(--remote); }
 
   <section>
     <h2>How the team chooses</h2>
-    <p class="muted">Two independent options: the proxy approach, preferred, needs no mirror; the mirror approach, automated, is the fallback only. One security answer decides.</p>
+    <p class="muted">The platform owner decides on the proxy approach and takes the change to security on the threat model; the mirror approach, automated, is the fallback only.</p>
     <figure>
       <div class="fig-scroll">
-<svg viewBox="0 0 1000 420" role="img" aria-label="How the team chooses: two independent options. Security answers one question: may cluster nodes reach Red Hat's hosts through the enterprise proxy? Yes leads to the preferred option, the proxy approach, which needs no mirror at all: no mirror, no sync, no local Update Service; VMware and TKG already update through this proxy; the retrofit runbook, lower environments first; updates then come straight from Red Hat. No leads to the fallback only, the mirror approach automated: the Ansible playbooks on a timer into the new registries, a local Update Service stays required, and a person no longer runs the sync. Red Hat Quay on-prem would only change the registry product of that same mirror approach; it is not a third option. Under either option the clusters must be on 4.20 before 4.18's EUS term ends on 25 February 2027.">
+<svg viewBox="0 0 1000 530" role="img" aria-label="How the team chooses. The platform owner decides: the proxy approach, with no mirror, no sync and no local Update Service. The change goes to security on the threat model, with one condition: applications cannot use the proxy by default; the platform gives them no proxy settings (C2) and they have no route out (C1), proven by the runbook's tests 6 and 8. Approved leads to the preferred option, the proxy approach: VMware and TKG already update through this proxy; the retrofit runbook, lower environments first; the mirror is retired per cluster. Not approved leads to the fallback only, the mirror approach automated: the Ansible playbooks on a timer into the new registries, a local Update Service stays required; Red Hat Quay on-prem would only change the registry product, not a third option. Under either option the clusters must be on 4.20 before 4.18's EUS term ends on 25 February 2027.">
 <defs><marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
 <g font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="currentColor">
-<rect x="300" y="20" width="400" height="70" rx="8" fill="var(--none-wash)" stroke="var(--none)" stroke-width="1.5"/>
-<text x="316" y="42.5" fill="var(--none)" font-weight="600">Security decides</text>
-<text x="316" y="59.5" fill="currentColor">may cluster nodes reach Red Hat's hosts</text>
-<text x="316" y="76.5" fill="currentColor">through the enterprise proxy?</text>
-<path d="M300,55 L240,55 L240,136" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ah2)"/>
-<text x="250" y="46" fill="var(--remote)" font-weight="600">yes</text>
-<path d="M700,55 L760,55 L760,136" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ah2)"/>
-<text x="732" y="46" fill="var(--gap)" font-weight="600">no</text>
-<rect x="30" y="140" width="420" height="120" rx="8" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5" stroke-dasharray="5 4"/>
-<text x="46" y="162.0" fill="var(--host)" font-weight="600">1 · Preferred: the proxy approach</text>
-<text x="46" y="179.0" fill="currentColor">needs no mirror at all: no mirror, no sync, no local OSUS</text>
-<text x="46" y="196.0" fill="currentColor">VMware and TKG already update through this proxy</text>
-<text x="46" y="213.0" fill="currentColor">the retrofit runbook, lower environments first</text>
-<text x="46" y="230.0" fill="currentColor">every node reboots once when the proxy goes on</text>
-<text x="46" y="247.0" fill="var(--muted)">updates then come straight from Red Hat</text>
-<rect x="550" y="140" width="420" height="120" rx="8" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5" stroke-dasharray="5 4"/>
-<text x="566" y="162.0" fill="var(--host)" font-weight="600">2 · Fallback only: the mirror approach, automated</text>
-<text x="566" y="179.0" fill="currentColor">the Ansible playbooks on a timer into the new registries</text>
-<text x="566" y="196.0" fill="currentColor">a local OSUS stays required</text>
-<text x="566" y="213.0" fill="currentColor">Red Hat Quay on-prem would only change the registry</text>
-<text x="566" y="230.0" fill="currentColor">product of this same approach: not a third option</text>
-<text x="566" y="247.0" fill="var(--muted)">a person no longer runs the sync</text>
-<path d="M240,260 L240,296" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ah2)"/>
-<path d="M760,260 L760,296" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ah2)"/>
-<rect x="30" y="300" width="420" height="46" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
-<text x="46" y="318" fill="currentColor" font-weight="600">The mirror is retired</text>
-<text x="46" y="335" fill="var(--muted)">kept only until each cluster is retrofitted</text>
-<rect x="550" y="300" width="420" height="46" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
-<text x="566" y="318" fill="currentColor" font-weight="600">The mirror stays, on a schedule</text>
-<text x="566" y="335" fill="var(--muted)">the same playbooks fill the new registries</text>
-<text x="20" y="380" fill="currentColor">Either option: the clusters must be on 4.20 before 4.18's EUS term ends on 25 Feb 2027.</text>
-<text x="20" y="406" fill="var(--host)" font-weight="600">Dashed = proposed. The decision is open (DESIGN-DECISIONS.md, D1).</text>
+<rect x="300" y="20" width="400" height="53" rx="8" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5"/>
+<text x="316" y="42.5" fill="var(--host)" font-weight="600">Platform owner decides: the proxy approach</text>
+<text x="316" y="59.5" fill="currentColor">no mirror, no sync, no local OSUS; updates straight from Red Hat</text>
+<path d="M500,73 L500,109" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ah2)"/>
+<text x="510" y="95" fill="var(--muted)">the change goes to security on the threat model</text>
+<rect x="300" y="113" width="400" height="87" rx="8" fill="var(--none-wash)" stroke="var(--none)" stroke-width="1.5"/>
+<text x="316" y="135.5" fill="var(--none)" font-weight="600">Security: one condition</text>
+<text x="316" y="152.5" fill="currentColor">applications cannot use the proxy by default:</text>
+<text x="316" y="169.5" fill="currentColor">no proxy from the platform (C2), no route out (C1)</text>
+<text x="316" y="186.5" fill="var(--muted)">proven by the runbook's tests 6 and 8</text>
+<path d="M300,160 L240,160 L240,246" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ah2)"/>
+<text x="244" y="151" fill="var(--remote)" font-weight="600">approved</text>
+<path d="M700,160 L760,160 L760,246" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ah2)"/>
+<text x="706" y="151" fill="var(--gap)" font-weight="600">not approved</text>
+<rect x="30" y="250" width="420" height="120" rx="8" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="46" y="272.0" fill="var(--host)" font-weight="600">1 · Preferred: the proxy approach</text>
+<text x="46" y="289.0" fill="currentColor">needs no mirror at all: no mirror, no sync, no local OSUS</text>
+<text x="46" y="306.0" fill="currentColor">VMware and TKG already update through this proxy</text>
+<text x="46" y="323.0" fill="currentColor">the retrofit runbook, lower environments first</text>
+<text x="46" y="340.0" fill="currentColor">every node reboots once when the proxy goes on</text>
+<text x="46" y="357.0" fill="var(--muted)">updates then come straight from Red Hat</text>
+<rect x="550" y="250" width="420" height="120" rx="8" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="566" y="272.0" fill="var(--host)" font-weight="600">2 · Fallback only: the mirror approach, automated</text>
+<text x="566" y="289.0" fill="currentColor">the Ansible playbooks on a timer into the new registries</text>
+<text x="566" y="306.0" fill="currentColor">a local OSUS stays required</text>
+<text x="566" y="323.0" fill="currentColor">Red Hat Quay on-prem would only change the registry</text>
+<text x="566" y="340.0" fill="currentColor">product of this same approach: not a third option</text>
+<text x="566" y="357.0" fill="var(--muted)">a person no longer runs the sync</text>
+<path d="M240,370 L240,406" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ah2)"/>
+<path d="M760,370 L760,406" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ah2)"/>
+<rect x="30" y="410" width="420" height="46" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="46" y="428" fill="currentColor" font-weight="600">The mirror is retired</text>
+<text x="46" y="445" fill="var(--muted)">kept only until each cluster is retrofitted</text>
+<rect x="550" y="410" width="420" height="46" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="566" y="428" fill="currentColor" font-weight="600">The mirror stays, on a schedule</text>
+<text x="566" y="445" fill="var(--muted)">the same playbooks fill the new registries</text>
+<text x="20" y="490" fill="currentColor">Either option: the clusters must be on 4.20 before 4.18's EUS term ends on 25 Feb 2027.</text>
+<text x="20" y="516" fill="var(--host)" font-weight="600">Dashed = proposed. The change is not yet approved (DESIGN-DECISIONS.md, D1); the threat model is enterprise-proxy/THREAT-MODEL.md.</text>
 </g>
 </svg>
       </div>
-      <figcaption>Proposed decision flow: two independent options. Only the Ansible playbooks exist today.</figcaption>
+      <figcaption>Proposed decision flow. The platform owner's decision, the change with security, and the fallback. Only the Ansible playbooks exist today.</figcaption>
     </figure>
   </section>
 

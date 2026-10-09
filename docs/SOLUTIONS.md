@@ -356,10 +356,17 @@ Detail: [`quay-onprem/README.md`](quay-onprem/README.md).
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/three-steps/decision.dark.png">
   <source srcset="diagrams/three-steps/decision.light.png">
-  <img alt="How the team chooses: two independent options. Security answers one question: may cluster nodes reach Red Hat's hosts through the enterprise proxy? Yes leads to the preferred option, the proxy approach, which needs no mirror at all: no mirror, no sync, no local Update Service; VMware and TKG already update through this proxy; the retrofit runbook, lower environments first; updates then come straight from Red Hat. No leads to the fallback only, the mirror approach automated: the Ansible playbooks on a timer into the new registries, a local Update Service stays required, and a person no longer runs the sync. Red Hat Quay on-prem would only change the registry product of that same mirror approach; it is not a third option. Under either option the clusters must be on 4.20 before 4.18's EUS term ends on 25 February 2027." src="diagrams/three-steps/decision.light.png">
+  <img alt="How the team chooses. The platform owner decides: the proxy approach, with no mirror, no sync and no local Update Service. The change goes to security on the threat model, with one condition: applications cannot use the proxy by default; the platform gives them no proxy settings (C2) and they have no route out (C1), proven by the runbook's tests 6 and 8. Approved leads to the preferred option, the proxy approach: VMware and TKG already update through this proxy; the retrofit runbook, lower environments first; the mirror is retired per cluster. Not approved leads to the fallback only, the mirror approach automated: the Ansible playbooks on a timer into the new registries, a local Update Service stays required; Red Hat Quay on-prem would only change the registry product, not a third option. Under either option the clusters must be on 4.20 before 4.18's EUS term ends on 25 February 2027." src="diagrams/three-steps/decision.light.png">
 </picture>
 
-*Proposed decision flow: two independent options. Only the Ansible playbooks exist today.*
+*Proposed decision flow. The platform owner's decision, the change with security, and the fallback. Only
+the Ansible playbooks exist today.*
+
+**The platform owner decides**, and the decision is the proxy approach. The change goes to security on
+the threat model ([`enterprise-proxy/THREAT-MODEL.md`](enterprise-proxy/THREAT-MODEL.md)), with one
+condition to meet: consumers and applications cannot use the proxy by default. The platform gives
+application pods no proxy settings (C2) and they have no route out (C1); the runbook's tests 6 and 8
+prove it on every cluster. With that condition met, we are good.
 
 The recommendation is two-fold. The two are independent options, not steps in sequence, and the
 proxy approach needs no mirror at all:
@@ -378,17 +385,19 @@ proxy approach needs no mirror at all:
    no value of its own.
 
 ```text
-Security: may cluster nodes reach Red Hat's hosts through the proxy?
-  yes -> 1 · preferred: the proxy approach, the retrofit runbook; no mirror at all   (mirror retired per cluster)
-  no  -> 2 · fallback only: the mirror approach, automated on the new registries      (mirror stays, on a schedule)
+Platform owner decides: the proxy approach
+  -> the change goes to security on the threat model; one condition: applications cannot use the proxy by default
+     approved     -> 1 · preferred: the proxy approach, the retrofit runbook; no mirror at all   (mirror retired per cluster)
+     not approved -> 2 · fallback only: the mirror approach, automated on the new registries      (mirror stays, on a schedule)
 Either option: the clusters must be on 4.20 before 4.18's EUS term ends on 25 Feb 2027.
 ```
 
 In order:
 
-1. **Now:** take the proxy approach to security, with the precedent that VMware and TKG already
-   update through the proxy.
-2. **If security approves node egress:** run the retrofit runbook in lower environments, then
+1. **Now:** the platform owner takes the change to security on the threat model, with the precedent
+   that VMware and TKG already update through the proxy, and the condition that applications cannot
+   use the proxy by default.
+2. **If security approves the change:** run the retrofit runbook in lower environments, then
    production, one cluster per window. The mirror is retired as each cluster is retrofitted.
 3. **If security does not approve it:** build the two bastions and three registries
    ([`PREREQUISITES.md`](PREREQUISITES.md)) and put the Ansible playbooks on a schedule into them.
@@ -399,7 +408,7 @@ In order:
 
 | Decision | From | Blocks |
 |---|---|---|
-| May cluster nodes reach Red Hat's hosts through the proxy? | Security | The proxy approach (preferred) or the mirror approach (fallback) |
+| The proxy approach: the platform owner's decision, taken to security on the threat model; condition: applications cannot use the proxy by default | Platform owner, with security | The proxy approach (preferred) or the mirror approach (fallback) |
 | Telemetry and Insights on or off? | Security | The proxy allowlist and the pull secret |
 | ~~Will the proxy intercept TLS to Red Hat hosts?~~ Answered 2026-10-09: yes, with the enterprise CA every node trusts | Network team | The proxy configuration |
 | Filtered or stock operator catalog? | Platform team | The catalog phase of the proxy approach; the catalog runs of the mirror approach |

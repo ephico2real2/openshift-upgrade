@@ -3,7 +3,9 @@
 The Step 2 design ([`README.md`](README.md)) as a threat model, platform side. It covers the update
 described in [`../openshift-update-egress.html`](../openshift-update-egress.html) (*Option 1 in detail*), drawn
 as trust boundaries and data flows. Controls C1 to C7 are taken from Red Hat's OpenShift documentation,
-quoted and linked below; C8 is our own admission policy and is marked as such. It shows four things:
+quoted and linked below; C8 is our own admission policy and is marked as such. The platform owner
+decides on the proxy approach and takes the change to security on this document; the condition that
+matters is point 3, that applications cannot use the proxy by default. It shows four things:
 
 1. **The platform starts every update.** The Cluster Version Operator, CRI-O on the nodes and OLM
    make the requests; the cluster admin only picks the target.

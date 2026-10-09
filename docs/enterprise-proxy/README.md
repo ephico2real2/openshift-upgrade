@@ -76,7 +76,9 @@ Do it per cluster, lower environments first.
 
 ## Phase 0: approve and prepare outside the cluster
 
-1. **Security sign-off** on the host list below and on the controls in
+1. **Security sign-off** on the change, taken to security by the platform owner on the threat model
+   ([`THREAT-MODEL.md`](THREAT-MODEL.md)); the condition is that applications cannot use the proxy by
+   default (tests 6 and 8). Also the host list below and the controls in
    [`openshift-update-egress.html`](../openshift-update-egress.html), "Security controls for the
    approval request". The open telemetry question (D3) must be answered before phase 2. TLS
    inspection (D4) is answered: see item 4.
