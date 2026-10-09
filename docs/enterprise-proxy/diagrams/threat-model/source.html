@@ -184,7 +184,7 @@ a { color: var(--remote); }
     <p class="muted">The same update in order: who calls which Red Hat host, and the controls on each step.</p>
     <figure>
       <div class="fig-scroll">
-<svg viewBox="0 0 1000 900" role="img" aria-label="The same update step by step. Each step names the platform component that makes the request, the Red Hat host it reaches over TCP 443 through the enterprise proxy, and the controls that apply. Step 1: the Cluster Version Operator asks api.openshift.com for the update graph. Step 2: the cluster admin picks the target with oc adm upgrade; no egress. Step 3: the CVO fetches the release signature from mirror.openshift.com and checks it with Red Hat's keys. Step 4: CRI-O on each node pulls the release images from quay.io and its CDN, only from allowed repositories. Step 5: from OpenShift 4.21, CRI-O checks each image's sigstore signature. Step 6: OLM installs operators from approved catalogs only; CRI-O pulls their images from registry.redhat.io. Step 7: application pods are admitted only with images from the allowed registries and have no proxy settings and no route out. Every request crosses the enterprise proxy, which allows only Red Hat hosts and re-signs TLS with the enterprise CA the platform trusts.">
+<svg viewBox="0 0 1000 900" role="img" aria-label="The same update step by step. Each step names the platform component that makes the request, the Red Hat host it reaches over TCP 443 through the enterprise proxy, and the controls that apply. Step 1: the Cluster Version Operator asks api.openshift.com for the update graph. Step 2: the cluster admin picks the target with oc adm upgrade; no egress. Step 3: the CVO fetches the release signature from mirror.openshift.com and checks it with Red Hat's keys. Step 4: CRI-O on each node pulls the release images from quay.io and its CDN, only from allowed repositories. Step 5, from OpenShift 4.21 only: CRI-O checks each image's sigstore signature; on 4.18 to 4.20 this step is not active and the CVO's release signature check in step 3 is the signature control. Step 6: OLM installs operators from approved catalogs only; CRI-O pulls their images from registry.redhat.io. Step 7: application pods are admitted only with images from the allowed registries and have no proxy settings and no route out. Every request crosses the enterprise proxy, which allows only Red Hat hosts and re-signs TLS with the enterprise CA the platform trusts.">
 <defs><marker id="pt2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
 <g font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="currentColor">
 <rect x="20" y="14" width="400" height="30" rx="6" fill="var(--host-wash)" stroke="var(--host)"/>
@@ -233,8 +233,8 @@ a { color: var(--remote); }
 <rect x="555" y="379" width="30" height="20" rx="10" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5"/>
 <text x="570" y="393.5" fill="var(--host)" font-family="IBM Plex Mono, monospace" font-size="11.5" font-weight="700" text-anchor="middle">C7</text>
 <rect x="36" y="450" width="384" height="64" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
-<text x="52" y="476" fill="currentColor" font-weight="600">⑤ Check each image</text>
-<text x="52" y="493" fill="var(--muted)">CRI-O: sigstore signature, from 4.21</text>
+<text x="52" y="476" fill="currentColor" font-weight="600">⑤ Check each image · from OpenShift 4.21 only</text>
+<text x="52" y="493" fill="var(--muted)">CRI-O: sigstore signature; not active on 4.18 to 4.20</text>
 <rect x="660" y="450" width="320" height="64" rx="8" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.5"/>
 <text x="676" y="476" fill="currentColor" font-family="IBM Plex Mono, monospace" font-size="12">quay.io · sha256-&lt;digest&gt;.sig</text>
 <text x="676" y="493" fill="var(--muted)">sigstore signature</text>

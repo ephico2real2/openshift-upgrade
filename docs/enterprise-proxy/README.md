@@ -92,6 +92,7 @@ Do it per cluster, lower environments first.
    | `registry.redhat.io` | Core images, operator catalogs and operator images | Always |
    | `api.openshift.com` | "API endpoint for cluster tokens and update checks" | Always |
    | `mirror.openshift.com` | Release signatures ("the Cluster Version Operator needs only a single functioning source") | Always |
+   | `storage.googleapis.com/openshift-release` | The other documented source of release signatures, same sentence | Not needed: the CVO tries it too, the proxy denies it, and `mirror.openshift.com` serves the signature. Expect that deny in the proxy logs (test 11) |
    | `quayio-production-s3.s3.amazonaws.com` | "Required to access Quay image content in AWS" | As listed; ask Red Hat whether on-prem needs it |
    | `console.redhat.com`, `sso.redhat.com` | Cluster tokens and authentication | Listed under updates; whether updates fail without them is unverified |
    | `registry.access.redhat.com`, `access.redhat.com` | Ecosystem Catalog images and their signature store | If anything pulls from that registry |
@@ -537,7 +538,7 @@ Run these after phase 6 and again after phase 9; keep the output as evidence for
 | 8 | A workload pod cannot go direct | `oc exec t -- curl -s -m 10 https://quay.io` | Times out (firewall) |
 | 9 | Pulls outside the allowlist fail | `oc run t2 --image=quay.io/libpod/alpine:latest --restart=Never -- true; oc get pod t2` | `ErrImagePull`, "not allowed" in `oc describe` |
 | 10 | Platform still healthy | `oc get co` | All `Available=True`, none `Degraded` |
-| 11 | Proxy logs | Ask the network team for a week of the clusters' requests | Sources are node IPs only; destinations are on the allowlist; denies reviewed |
+| 11 | Proxy logs | Ask the network team for a week of the clusters' requests | Sources are node IPs only; destinations are on the allowlist; denies reviewed (the CVO's attempts on `storage.googleapis.com` are expected, phase 0) |
 
 Tests 6 to 9 need a namespace created the way users create them, with no proxy set by us. Test 6
 is the guarantee: the platform injects nothing.

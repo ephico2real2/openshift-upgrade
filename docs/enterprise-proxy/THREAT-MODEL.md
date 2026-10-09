@@ -31,11 +31,12 @@ The same update, step by step: who calls which Red Hat host, and the controls on
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/threat-model/proxy-update-steps.dark.png">
   <source srcset="diagrams/threat-model/proxy-update-steps.light.png">
-  <img alt="The same update step by step. Each step names the platform component that makes the request, the Red Hat host it reaches over TCP 443 through the enterprise proxy, and the controls that apply. Step 1: the Cluster Version Operator asks api.openshift.com for the update graph. Step 2: the cluster admin picks the target with oc adm upgrade; no egress. Step 3: the CVO fetches the release signature from mirror.openshift.com and checks it with Red Hat's keys. Step 4: CRI-O on each node pulls the release images from quay.io and its CDN, only from allowed repositories. Step 5: from OpenShift 4.21, CRI-O checks each image's sigstore signature. Step 6: OLM installs operators from approved catalogs only; CRI-O pulls their images from registry.redhat.io. Step 7: application pods are admitted only with images from the allowed registries and have no proxy settings and no route out. Every request crosses the enterprise proxy, which allows only Red Hat hosts and re-signs TLS with the enterprise CA the platform trusts." src="diagrams/threat-model/proxy-update-steps.light.png">
+  <img alt="The same update step by step. Each step names the platform component that makes the request, the Red Hat host it reaches over TCP 443 through the enterprise proxy, and the controls that apply. Step 1: the Cluster Version Operator asks api.openshift.com for the update graph. Step 2: the cluster admin picks the target with oc adm upgrade; no egress. Step 3: the CVO fetches the release signature from mirror.openshift.com and checks it with Red Hat's keys. Step 4: CRI-O on each node pulls the release images from quay.io and its CDN, only from allowed repositories. Step 5, from OpenShift 4.21 only: CRI-O checks each image's sigstore signature; on 4.18 to 4.20 this step is not active and the CVO's release signature check in step 3 is the signature control. Step 6: OLM installs operators from approved catalogs only; CRI-O pulls their images from registry.redhat.io. Step 7: application pods are admitted only with images from the allowed registries and have no proxy settings and no route out. Every request crosses the enterprise proxy, which allows only Red Hat hosts and re-signs TLS with the enterprise CA the platform trusts." src="diagrams/threat-model/proxy-update-steps.light.png">
 </picture>
 
 *Steps ① to ⑥ are the platform's; ⑦ shows that application pods are admitted only with allowed images
-and have no way out.*
+and have no way out. Step ⑤ exists from OpenShift 4.21 only: while the clusters are on 4.18 to 4.20
+it is not active, and the CVO's release signature check in step ③ is the signature control.*
 
 ## Who calls which Red Hat host
 
@@ -43,7 +44,7 @@ and have no way out.*
 |---|---|---|
 | Cluster Version Operator (`openshift-cluster-version`) | `api.openshift.com` | Update graph: versions, digests, known risks |
 | Cluster Version Operator | `mirror.openshift.com` | Release signature, looked up by digest. The CVO also tries the other documented source, `storage.googleapis.com/openshift-release`; the proxy denies it, and Red Hat says the CVO "needs only a single functioning source" ([`configuring-firewall.adoc`](https://github.com/openshift/openshift-docs/blob/enterprise-4.18/modules/configuring-firewall.adoc)). Expect that deny in the proxy logs (test 11) |
-| CRI-O on each node | `quay.io` and its CDN hosts | Release images; from OpenShift 4.21, their sigstore signatures too |
+| CRI-O on each node | `quay.io` and its CDN hosts | Release images; from OpenShift 4.21 only, their sigstore signatures too (not active on 4.18 to 4.20) |
 | CRI-O on each node, for the catalog and operator pods OLM creates | `registry.redhat.io` (layers from the Quay CDN) | Operator images from the catalogs we approve |
 | Cluster admin (`oc adm upgrade --to=…`) | none | Picks the target; the CVO does the rest |
 
