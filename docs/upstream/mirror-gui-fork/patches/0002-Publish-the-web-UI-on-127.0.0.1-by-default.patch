@@ -1,6 +1,6 @@
-From 0d469f2542c76aa0296cbc4be0bc15be037f1255 Mon Sep 17 00:00:00 2001
-From: Claude <noreply@anthropic.com>
-Date: Fri, 9 Oct 2026 00:39:28 +0000
+From 3fdcae006ea2adab104aa2dd1926eae57fc011e1 Mon Sep 17 00:00:00 2001
+From: ephico2real2 <123043136+ephico2real2@users.noreply.github.com>
+Date: Fri, 9 Oct 2026 18:13:25 +0000
 Subject: [PATCH 2/5] Publish the web UI on 127.0.0.1 by default
 
 The API has no authentication and GET /api/pull-secret/content returns

@@ -1,6 +1,6 @@
-From 2773c9c9c05bab5f2a2ead77773a143af11320d8 Mon Sep 17 00:00:00 2001
-From: Claude <noreply@anthropic.com>
-Date: Fri, 9 Oct 2026 00:45:00 +0000
+From 4f0fb498dfff60b6501a9bba45ebb18334cc5c47 Mon Sep 17 00:00:00 2001
+From: ephico2real2 <123043136+ephico2real2@users.noreply.github.com>
+Date: Fri, 9 Oct 2026 18:13:25 +0000
 Subject: [PATCH 3/5] Detect operator dependencies per channel, transitively,
  including required APIs
 

@@ -41,7 +41,7 @@ apply to release images, but not to every operator or additional image.
 
 **A fix is available:** branch
 [`ephico2real2/mirror-gui:fix/tls-deps-bind`](https://github.com/ephico2real2/mirror-gui/tree/fix/tls-deps-bind),
-commit `1e1b427` (tests and docs in `8b419ee`). It removes both flags, adds the per-operation opt-out
+commit `9d608b6` (tests and docs in `bd393df`). It removes both flags, adds the per-operation opt-out
 `skipSourceTlsVerify` (UI switch, off by default, with a warning) and documents it in `API.md`. The
 destination is always a local `file://` directory, so only source TLS needs a setting. The new
 integration tests fail on `3cec34f`. Happy to open a PR.
@@ -75,7 +75,7 @@ complete and find a missing operator only when the install fails in the disconne
 - Use the dependency package's real default channel from the catalog data instead of a guess.
 - Until then, label the feature as partial in the UI and README.
 
-**A fix is available:** same branch, commit `2773c9c` (E2E tests and `API.md` in `8b419ee`).
+**A fix is available:** same branch, commit `4f0fb49` (E2E tests and `API.md` in `bd393df`).
 `catalog_metadata.py` also writes `dependency-graph.json` (per channel head; required APIs resolved to
 the one package providing them; ambiguous or unprovided APIs listed, not guessed). The dependencies API
 takes a `channel`, resolves transitively and returns `requiredBy`, the real `defaultChannel` and
