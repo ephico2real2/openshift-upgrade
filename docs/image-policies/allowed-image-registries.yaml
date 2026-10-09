@@ -1,7 +1,7 @@
 # The cluster's list of registries (or registry/path prefixes) application
 # pods may pull from. One per line, or comma-separated; lines starting with #
 # are ignored. Each entry is matched up to a "/". Edit this list, not the policy.
-# Replace registry-dc1.example.com:8443 with this cluster's mirror registry.
+# The internal registry names are illustrations: put this cluster's own here.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -9,8 +9,14 @@ metadata:
   namespace: kyverno
 data:
   registries: |
+    # Red Hat
     registry.redhat.io
     registry.access.redhat.com
     registry.connect.redhat.com
+    # The cluster's own image registry
     image-registry.openshift-image-registry.svc:5000
+    # Our internal registries (illustrative names). The enterprise registry may be
+    # Artifactory, a GitLab container registry, Harbor or Quay; the datacenter's
+    # oc-mirror registry stays until runbook phase 9.
+    registry.example.com
     registry-dc1.example.com:8443
