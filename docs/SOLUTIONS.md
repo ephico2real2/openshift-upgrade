@@ -4,7 +4,7 @@
 |---|---|
 | Date | 2026-10-07 |
 | For | Platform team, security, management |
-| Status | Step 1 is built. Steps 2 and 3 are proposals: no decision is ratified, and both need security approval |
+| Status | Step 1 is built. The platform owner decides, and the decision is the proxy approach; the change goes to security on the threat model with one condition: applications cannot use the proxy by default. Not yet approved |
 | Prerequisites | Two mirroring bastions and three registries on RHEL 9: [`PREREQUISITES.md`](PREREQUISITES.md) |
 | Technical detail | Step 1: [`oc-mirror-ansible/`](../oc-mirror-ansible/README.md). Step 2: [`enterprise-proxy/`](enterprise-proxy/README.md). Step 3: [`quay-onprem/`](quay-onprem/README.md). The problem: [`PROBLEM-STATEMENT.md`](PROBLEM-STATEMENT.md). The decisions: [`DESIGN-DECISIONS.md`](DESIGN-DECISIONS.md) |
 
@@ -20,7 +20,7 @@ moving now, and either Step 2 or Step 3 is the long-term design.
 | # | What it is | Who copies the content | Cluster egress | Status |
 |---|---|---|---|---|
 | **1** | Our current process, modernised with Ansible and oc-mirror v2 | We do, from the mirroring bastion in each datacenter, each time we update | None | **Done**: playbooks and guides in Git |
-| **2** | Clusters reach Red Hat through the enterprise proxy | Nobody: the cluster pulls what it needs | Red Hat hosts only, through the proxy | Runbook written; needs security approval |
+| **2** | Clusters reach Red Hat through the enterprise proxy | Nobody: the cluster pulls what it needs | Red Hat hosts only, through the proxy | Runbook and threat model written; the change is with security |
 | **3** | A full Red Hat Quay registry on-prem, filled on a schedule | A scheduled job, not a person | None | Design written; needs a Quay subscription and a build team |
 
 <picture>
@@ -41,8 +41,10 @@ EGRESS      one host, through the proxy    every node, through the proxy        
 RED HAT     quay.io, registry.redhat.io, api.openshift.com, mirror.openshift.com
 ```
 
-**The team's position (2026-10-05):** Step 2 preferred, Step 3 as the alternative. The choice turns on
-one security answer: may cluster nodes reach Red Hat's hosts through the proxy?
+**The platform owner decides (position of 2026-10-05, refined 2026-10-09):** the proxy approach, with the
+mirror approach, automated, as the fallback only. The change goes to security on the threat model
+([`enterprise-proxy/THREAT-MODEL.md`](enterprise-proxy/THREAT-MODEL.md)) with one condition: consumers
+and applications cannot use the proxy by default. With that met, we are good.
 
 ## Where we are
 
@@ -187,7 +189,7 @@ above is the same order.*
 | Red Hat's standard configuration | The connected cluster-wide proxy is the documented, most common setup, so support cases start from known ground |
 | Optional, if security agrees | Insights recommendations and telemetry give Red Hat Support proactive alerts and cluster data. Off unless enabled; updates do not need them |
 
-The costs are in the runbook: an HA proxy, security approval for node egress, one reboot of every
+The costs are in the runbook: an HA proxy, security's approval of the change, one reboot of every
 node when the proxy goes on, and one drain when the mirror objects are removed.
 
 **A common misconception: "our clusters cannot use a proxy."** They can, and Red Hat documents it
@@ -282,7 +284,8 @@ go out. Nothing new inside the clusters.
 | Telemetry sends cluster data to Red Hat | Leave it off unless security decides otherwise; updates don't need it |
 | The proxy inspects TLS (decided: it re-signs with the enterprise CA) | The enterprise CA, already on every node, also goes into `trustedCA`; `sso.redhat.com` is not re-encrypted; signatures prove the content whatever the TLS path |
 
-**Needs:** security approval of node egress to the listed hosts; an answer on telemetry; a Red Hat
+**Needs:** security's approval of the change, taken to it on the threat model with the condition that
+applications cannot use the proxy by default; an answer on telemetry; a Red Hat
 Support case for the open questions in the runbook. TLS inspection is decided: the proxy re-signs with
 the enterprise CA, which every node trusts.
 
@@ -346,7 +349,7 @@ Detail: [`quay-onprem/README.md`](quay-onprem/README.md).
 | Registries | Three new mirror registries (lab, DC1, DC2) | Lab registry; production registries until each cluster is retrofitted | HA Quay per datacenter; the lab keeps its mirror registry |
 | Two-headed DNS | No | No | No |
 | One-off node impact | None beyond today | One reboot (proxy), one drain (mirror removal) | Mirror config changes as today |
-| Security approval | Mirror host to Red Hat (as today) | Cluster nodes to Red Hat hosts | Mirror host to Red Hat |
+| Security approval | Mirror host to Red Hat (as today) | The change, on the threat model: applications cannot use the proxy by default | Mirror host to Red Hat |
 | New things to run | Two bastions and three mirror registries on RHEL 9 | HA proxy with allowlist | HA Quay, storage, Clair, bastion timers, Update Service |
 | Operator catalogs | Mirrored per version, list kept by hand | Red Hat's catalog, or a filtered one | Mirrored per version on a schedule |
 | Ready to use | Now | After approval and one window per cluster | After a Quay build |

@@ -5,7 +5,7 @@
 | Researched | 2026-09-25, against OpenShift 4.22 docs and `release-4.22` product source |
 | Hosts | Two mirroring bastions and three registries (lab, DC1, DC2) on RHEL 9, replacing the three old mirror registries 1.x: [`PREREQUISITES.md`](PREREQUISITES.md); all three steps side by side: [`SOLUTIONS.md`](SOLUTIONS.md) |
 | Evidence | [`openshift-update-egress.html`](openshift-update-egress.html) (section names are cited below as *§ name*); the problem is stated in [`PROBLEM-STATEMENT.md`](PROBLEM-STATEMENT.md) |
-| Status | **No decision is ratified yet.** The team stated its position on D1 on 2026-10-05; it still depends on security approval. Every other entry in [Decisions](#decisions) is a recommendation waiting on the input named beside it. |
+| Status | **The platform owner decides, and the decision is the proxy approach (D1).** The change goes to security on the threat model ([`enterprise-proxy/THREAT-MODEL.md`](enterprise-proxy/THREAT-MODEL.md)) with one condition: applications cannot use the proxy by default. Not yet approved. Every other entry in [Decisions](#decisions) is a recommendation waiting on the input named beside it. |
 
 Version-specific facts here were true on 2026-09-25. Re-check them if a newer 4.x has shipped.
 

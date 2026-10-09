@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Proposed runbook. Not run on any of our clusters, not approved by security |
+| Status | Proposed runbook. Not run on any of our clusters. The platform owner's decision; the change is with security on [`THREAT-MODEL.md`](THREAT-MODEL.md), condition: applications cannot use the proxy by default; not yet approved |
 | Researched | 2026-10-07, against `openshift/openshift-docs` branches `enterprise-4.18`, `enterprise-4.21` and `enterprise-4.22`; earlier findings in [`openshift-update-egress.html`](../openshift-update-egress.html) (2026-09-25) |
 | Starting point | OpenShift 4.18.17 on `eus-4.18`, disconnected: IDMS/ITMS from oc-mirror pointing at the datacenter's mirror registry (`registry-dc1` in the examples), mirrored CatalogSources, a local OpenShift Update Service, default OperatorHub sources off |
 | Where commands run | The mirroring bastion of the cluster's datacenter ([`PREREQUISITES.md`](../PREREQUISITES.md)); it needs `oc`, `jq`, Ansible Vault and the cluster API on 6443 |
@@ -553,7 +553,8 @@ our own.
 
 ## Still open
 
-- **Security:** approval of the host list, node egress through the proxy, and D3 (telemetry).
+- **Security:** approval of the change on the threat model (the condition: applications cannot use the
+  proxy by default, tests 6 and 8), the host list, and D3 (telemetry).
 - **Red Hat Support case:**
   - Whether Red Hat supports TLS inspection of `quay.io` and `registry.redhat.io` traffic (D4 is
     decided on our side; Red Hat's position is not verified).
