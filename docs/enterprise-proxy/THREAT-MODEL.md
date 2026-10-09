@@ -3,9 +3,22 @@
 The proxy approach ([`README.md`](README.md), the retrofit runbook) as a threat model, platform side. It covers the update
 described in [`../openshift-update-egress.html`](../openshift-update-egress.html) (*Option 1 in detail*), drawn
 as trust boundaries and data flows. Controls C1 to C7 are taken from Red Hat's OpenShift documentation,
-quoted and linked below; C8 is our own admission policy and is marked as such. The platform owner
-decides on the proxy approach and takes the change to security on this document; the condition that
-matters is point 3, that applications cannot use the proxy by default. It shows four things:
+quoted and linked below; C8 is our own admission policy and is marked as such.
+
+**Why this change.** The SMEs and the Product Owner shape the direction of this platform offering;
+the proxy approach is the SME's recommendation, from experience and modern best practice
+([`../SOLUTIONS.md`](../SOLUTIONS.md), Recommendation). We are not looking for two-headed DNS but for
+a sustainable way to update our clusters that keeps pace with our growth. The disconnected setup we
+run was carried over from OpenShift 3.x, where the proxy setup was a mess; OpenShift 4.x is far more
+advanced, and we have to be ready for the growth that follows it (OpenShift 5.x, for example). The
+cluster-wide proxy is Red Hat's documented, supported way for enterprise customers to take updates
+and fixes as they ship, which is what operations and vulnerability management need. Ansible is used
+either way; what this change eliminates is the manual mirror and its upkeep.
+
+**The decision and the condition.** The platform owner decides on the proxy approach and takes the
+change to security on this document. The one condition is point 3 below: consumers and applications
+cannot use the proxy by default. Tests 6 and 8 of the runbook prove it on every cluster. With that
+met, we are good. This document shows four things:
 
 1. **The platform starts every update.** The Cluster Version Operator, CRI-O on the nodes and OLM
    make the requests; the cluster admin only picks the target.
