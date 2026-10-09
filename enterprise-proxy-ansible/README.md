@@ -1,8 +1,9 @@
-# Step 2 as playbooks: retrofit, update, remove the mirror, verify
+# How we do Step 2: retrofit, update, remove the mirror, verify
 
-The runbook [`docs/enterprise-proxy/README.md`](../docs/enterprise-proxy/README.md) converts a disconnected
-cluster so it reaches Red Hat through the enterprise proxy. These playbooks run that runbook, phase by phase,
-from the same mirroring bastion the [`oc-mirror-ansible/`](../oc-mirror-ansible/README.md) playbooks run on,
+These playbooks convert a disconnected cluster so it reaches Red Hat through the enterprise proxy, and run its
+updates afterwards. This is the north star: the conversion is automated, as the mirroring is today. The runbook
+[`docs/enterprise-proxy/README.md`](../docs/enterprise-proxy/README.md) is the documentation and teaching copy
+of the same phases, with Red Hat's words behind each step. The playbooks run from the same mirroring bastion the [`oc-mirror-ansible/`](../oc-mirror-ansible/README.md) playbooks run on,
 and with the same Vault-encrypted Red Hat pull secret. They are the "Ansible runs the retrofit and the
 updates" part of the proxy approach ([`docs/SOLUTIONS.md`](../docs/SOLUTIONS.md), "What Ansible automates").
 

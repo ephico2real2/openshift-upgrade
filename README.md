@@ -28,14 +28,14 @@ Every step needs the new hosts first: a mirroring bastion in each datacenter and
 |---|---|
 | [`docs/PREREQUISITES.md`](docs/PREREQUISITES.md) | Build first: a mirroring bastion per datacenter and the lab and two production mirror registries (RHEL 9), replacing the three old mirror registries 1.x |
 | [`docs/SOLUTIONS.md`](docs/SOLUTIONS.md) | The three steps side by side, the recommendation and the decisions needed (Word copy: `docs/SOLUTIONS.docx`) |
-| [`docs/enterprise-proxy/`](docs/enterprise-proxy/README.md) | Step 2: runbook to retrofit a disconnected cluster to reach Red Hat through the enterprise proxy |
+| [`docs/enterprise-proxy/`](docs/enterprise-proxy/README.md) | Step 2 explained: the conversion of a disconnected cluster to the enterprise proxy, phase by phase, for review and teaching |
 | [`docs/quay-onprem/`](docs/quay-onprem/README.md) | Step 3's Quay variant: Red Hat Quay on-prem, filled on a schedule, with the OpenShift Update Service; the fallback only |
 | [`docs/PROBLEM-STATEMENT.md`](docs/PROBLEM-STATEMENT.md) | The problem, measured, and the two designs that replace the sync |
 | [`docs/DESIGN-DECISIONS.md`](docs/DESIGN-DECISIONS.md) | The options, the open decisions with their recommendations |
 | [`docs/openshift-update-egress.html`](docs/openshift-update-egress.html) | The full plan, opened directly in a browser |
 | [`docs/image-policies/`](docs/image-policies/) | Kyverno's standard allowed-registries policy for application pods, the list kept in a ConfigMap in the cluster, on top of `allowedRegistries`; with its tests |
 | [`docs/catalog-policies/`](docs/catalog-policies/) | ValidatingAdmissionPolicy, Kyverno and Gatekeeper rules for operator catalogs, with their tests |
-| [`enterprise-proxy-ansible/`](enterprise-proxy-ansible/README.md) | Step 2 as playbooks: retrofit a cluster to the proxy phase by phase, run the updates with the signature check, remove the mirror, and write the Verify evidence; tested offline against a stand-in cluster |
+| [`enterprise-proxy-ansible/`](enterprise-proxy-ansible/README.md) | How we do Step 2 (the north star): Ansible playbooks that retrofit a cluster to the proxy phase by phase, run the updates with the signature check, remove the mirror, and write the Verify evidence; tested offline against a stand-in cluster |
 | [`oc-mirror-ansible/`](oc-mirror-ansible/README.md) | How we mirror today: oc-mirror v2 Ansible playbooks and step-by-step guides for release images (4.18 → 4.20 → 4.22, Update Service) and operator catalogs |
 
 The figures are rendered with [diagram-kit](https://github.com/ephico2real2/diagram-kit) (MPL-2.0), which checks

@@ -1,6 +1,6 @@
 # Threat model: updating a cluster through our enterprise proxy
 
-The proxy approach ([`README.md`](README.md), the retrofit runbook) as a threat model, platform side. It covers the update
+The proxy approach ([`README.md`](README.md), the conversion explained; [`enterprise-proxy-ansible/`](../../enterprise-proxy-ansible/README.md) runs it) as a threat model, platform side. It covers the update
 described in [`../openshift-update-egress.html`](../openshift-update-egress.html) (*Option 1 in detail*), drawn
 as trust boundaries and data flows. Controls C1 to C7 are taken from Red Hat's OpenShift documentation,
 quoted and linked below; C8 is our own admission policy and is marked as such.
@@ -17,7 +17,7 @@ upgrade either way, under the proxy too; what this change eliminates is the manu
 
 **The decision and the condition.** The platform owner decides on the proxy approach and takes the
 change to security on this document. The one condition is point 3 below: consumers and applications
-cannot use the proxy by default. Tests 6 and 8 of the runbook prove it on every cluster. With that
+cannot use the proxy by default. Tests 6 and 8 (`verify-playbook.yml`, the runbook's Verify table) prove it on every cluster. With that
 met, we are good. This document shows four things:
 
 1. **The platform starts every update.** The Cluster Version Operator, CRI-O on the nodes and OLM
@@ -76,7 +76,7 @@ it is not active, and the CVO's release signature check in step ③ is the signa
 | C7 | The enterprise CA the proxy re-signs with is in `user-ca-bundle` (`trustedCA`) | The bundle "is merged with the RHCOS trust bundle and injected into the trust store of platform components that make egress HTTPS calls" ([`proxy-certificates.adoc`](https://github.com/openshift/openshift-docs/blob/enterprise-4.18/security/certificate_types_descriptions/proxy-certificates.adoc)); a re-encrypting proxy excludes `sso.redhat.com` ([`cluster-wide-proxy-preqs.adoc`](https://github.com/openshift/openshift-docs/blob/enterprise-4.18/modules/cluster-wide-proxy-preqs.adoc)) | 0, 4a | Tests 1 to 3 |
 | C8 | Pods may use images only from the allowed registries, Red Hat's and our internal ones (the enterprise registry, whether Artifactory, a GitLab container registry, Harbor or Quay, and the oc-mirror registry until phase 9); anything else is refused at admission | Our admission policy: Kyverno's standard allowed-registries policy with the list in a ConfigMap ([`../image-policies/`](../image-policies/)); `allowedRegistries` (C5) stays on the nodes for every pull | 3, then the policy rollout in `image-policies/` | Test 9, and `oc run` with an image from another registry is refused at admission |
 
-Tests are the runbook's *Verify* table.
+Tests are the runbook's *Verify* table, run by `verify-playbook.yml`, which writes the evidence file.
 
 ## What the design stops
 

@@ -17,12 +17,12 @@ this repository, rendered with diagram-kit from the `source.html` beside it:
 |---|---|---|
 | `3a22cdaed3def3672ae607c3b93598b1` | [`../diagrams/three-steps/three-steps.light.png`](../diagrams/three-steps/three-steps.light.png) | plan: `steps` |
 | `6d0666dd2c2981c129bf8fdcae2e8d8d` | [`../../oc-mirror-ansible/docs/diagrams/mirroring/run-flow.light.png`](../../oc-mirror-ansible/docs/diagrams/mirroring/run-flow.light.png) | plan: `step1flow` |
-| `0a3b7fe89702e3b1b2f4ff53ef425f24` | [`../diagrams/three-steps/retrofit.light.png`](../diagrams/three-steps/retrofit.light.png) | plan: `step2` |
+| `25e2458f85dcb7b0b3d11d0a3de03ecf` | [`../diagrams/three-steps/retrofit.light.png`](../diagrams/three-steps/retrofit.light.png) | plan: `step2` |
 | `93ca02d95972386d24f1b90e43bf3b1b`, `f4bde97f69fc9230c5dc5442e45045c1` | [`../enterprise-proxy/diagrams/threat-model/proxy-update-threat-model.light.png`](../enterprise-proxy/diagrams/threat-model/proxy-update-threat-model.light.png) | plan: `threatmodel`; threat model: `model` |
 | `1929238e031f7f72a8fa4f713ab577ba`, `2dfbc875d3bfef4e77075359ecba47c5` | [`../enterprise-proxy/diagrams/threat-model/proxy-update-steps.light.png`](../enterprise-proxy/diagrams/threat-model/proxy-update-steps.light.png) | plan: `threatsteps`; threat model: `steps` |
 | `5473f7abd3f5c90a897f4ca93c43cdeb` | [`../diagrams/three-steps/quay-sync.light.png`](../diagrams/three-steps/quay-sync.light.png) | plan: `step3` |
 | `1c24524fe76df8ce57a95896e091c15a` | [`../diagrams/prerequisites/topology.light.png`](../diagrams/prerequisites/topology.light.png) | plan: `hosts` |
-| `a1ce8ca7d9b4a7696ee5bf3c187b4234` | [`../diagrams/three-steps/decision.light.png`](../diagrams/three-steps/decision.light.png) | plan: `recommend` |
+| `d0697c237766e1cdada76f3f04ff759b` | [`../diagrams/three-steps/decision.light.png`](../diagrams/three-steps/decision.light.png) | plan: `recommend` |
 
 When a figure is re-rendered, upload the new PNG to the deck, point the slide's `<img src>` at the
 new id, and update this table. When a slide changes, copy the published file back here. The text
