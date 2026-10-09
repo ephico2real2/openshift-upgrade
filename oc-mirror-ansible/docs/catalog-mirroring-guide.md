@@ -142,6 +142,55 @@ done
 
 A `NOT FOUND` means the operator was renamed, moved to another catalog, or dropped in that version. Settle it with the operator's owner before the cluster update, not after.
 
+### Optional: plan the operator list with mirror-gui
+
+[`openshift/mirror-gui`](https://github.com/openshift/mirror-gui) is a web front end for oc-mirror v2,
+from the `openshift` GitHub organization (version 1.0, read at commit `3cec34f`, 2026-10-07). The
+repository states no Red Hat support. It is useful for **planning** the operator list, not for running
+mirrors, so the playbooks stay the tool that mirrors.
+
+**What it adds to the `oc-mirror list` steps above:**
+
+- **Browse offline.** `sync-catalogs.sh` extracts the Red Hat, Certified and Community catalogs for
+  OpenShift 4.16 to 4.22 into JSON: each operator's channels, the versions in each channel and the
+  default channel.
+- **See what changed.** After each sync it shows which operators were added or removed and which have
+  new versions, which helps decide what goes into the next run.
+- **Pick operators and their dependencies** in a form, and preview the ImageSetConfiguration.
+
+**Its output fits our vars files as is.** The `packages:` list in its YAML preview (name, channels,
+`minVersion`) has the same shape as `operator_catalogs[].packages` in `vars/catalogs-*.yml`, which
+`templates/catalogs-imageset.yaml.j2` writes into the ImageSet unchanged. Empty version fields are
+left out.
+
+**Its dependency detection is a first pass, not proof.** From its code
+(`scripts/catalog_metadata.py`, `src/components/MirrorConfig.tsx`):
+
+| What it does | What that misses |
+|---|---|
+| Reads only package dependencies (`olm.package.required`) | Dependencies on another operator's API (`olm.gvk.required`) are not detected |
+| Reads the newest bundle in the **default** channel | A different channel or a pinned version can have different dependencies |
+| Goes one level deep | Dependencies of dependencies are not added |
+| Gives an added dependency the package's default channel, or a guessed `stable-4.xx` | The guessed channel may not exist for that operator |
+
+The lab install from the mirrored catalog stays the check that the set is complete (Step 6).
+
+**How to run it:**
+
+1. On the bastion, which already has the Red Hat login and the route through the proxy. Follow its
+   README (`./local-build.sh`; Podman 5.0 or later).
+2. **Keep it off the network.** Its API has no login ("the API does not require authentication",
+   `API.md`), and `GET /api/pull-secret/content` returns our Red Hat pull secret, yet `local-build.sh`
+   publishes the port on every interface (`-p "$WEB_PORT:$CONTAINER_PORT"`).
+   Run it as your own user (rootless Podman), leave port 3000 closed in the bastion's firewalld
+   (`sudo firewall-cmd --list-ports` must not show it), stop it when done (`./local-build.sh --stop`),
+   and reach it only through an SSH tunnel: `ssh -L 3000:localhost:3000 <bastion>`.
+3. **Don't start mirror operations from it.** It runs oc-mirror with `--src-tls-verify=false` and
+   `--dest-tls-verify=false`, fixed in `server/index.ts`, so certificates would not be checked on the
+   way to Red Hat or to our registries. It also only mirrors to disk and keeps running jobs in memory.
+4. Copy the `packages:` block from the YAML preview into `vars/catalogs-<group>.yml`, review it in
+   Git as usual, then continue with Step 3.
+
 ## Step 3 — Build the catalog ImageSet
 
 You describe each group of catalogs in a small, non-secret vars file. The playbook turns it into an ImageSet with the catalog tag set to `v` + the version. Use **two groups**, because the Red Hat catalog keeps its image signatures and the partner catalogs don't (see Step 5):
@@ -238,7 +287,7 @@ Rules Red Hat marks as "do not use":
 - Don't combine `full: true` with `minVersion`/`maxVersion`.
 - Don't leave out `packages`: a catalog with no package list mirrors the head of **every** operator in it. The playbook refuses this.
 
-Always add the dependencies of each operator as packages of their own. oc-mirror v2 won't add them for you.
+Always add the dependencies of each operator as packages of their own. oc-mirror v2 won't add them for you. mirror-gui (Step 2) suggests some of them, but not all.
 
 ### How this compares with IBM's procedure
 
@@ -681,6 +730,7 @@ Read directly:
   - `oc-mirror-signature-mirroring.adoc`: signatures mirrored by default; disable for certified, marketplace and community catalogs
   - `oc-mirror-updating-cluster-manifests-v2.adoc`: apply the `cluster-resources` folder
   - `disabling-catalogsource-objects.adoc`: `disableAllDefaultSources`
+- [openshift/mirror-gui](https://github.com/openshift/mirror-gui) at commit `3cec34f` (2026-10-07): `README.md`, `API.md`, `docs/ARCHITECTURE-EVALUATION.md`, `docs/dev/catalog-pipeline.md`, `scripts/catalog_metadata.py` (dependency extraction), `src/components/MirrorConfig.tsx` (auto-added dependencies, YAML output), `server/index.ts` (the oc-mirror command line)
 - [openshift/oc-mirror](https://github.com/openshift/oc-mirror) source: `list operators` flags; fixed IDMS/ITMS names per category (`idms-<category>-0`); CatalogSource names from catalog and tag; `--remove-signatures`
 
 Provided by the guide's owner, pasted from IBM's documentation (the site itself is blocked from the environment this guide was written in):
