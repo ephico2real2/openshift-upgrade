@@ -1,0 +1,39 @@
+From 2101c2b22e3824c4143b1e5aa805843bd984eac1 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 9 Oct 2026 00:55:40 +0000
+Subject: [PATCH 4/4] Document WEB_BIND_ADDRESS in the scripts' help
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_019qihKhjEgccdwcruX2zHff
+---
+ local-build.sh | 1 +
+ mirror-gui.sh  | 1 +
+ 2 files changed, 2 insertions(+)
+
+diff --git a/local-build.sh b/local-build.sh
+index 78a7139..36bcc1c 100755
+--- a/local-build.sh
++++ b/local-build.sh
+@@ -449,6 +449,7 @@ show_help() {
+     echo "  IMAGE_VERSION=1.0          Set OCI image version label during build"
+     echo "  BUILD_VERSION=1.0          Compatibility alias for IMAGE_VERSION"
+     echo "  WEB_PORT=$DEFAULT_WEB_PORT            Override the host port used for the web UI"
++    echo "  WEB_BIND_ADDRESS=127.0.0.1 Host address the web UI is published on (the API has no authentication)"
+     echo "  CACHE_DIR                  Override the oc-mirror cache directory (absolute host path, e.g. /tmp/cache)"
+     echo ""
+     echo "Examples:"
+diff --git a/mirror-gui.sh b/mirror-gui.sh
+index ba773ec..75f7412 100755
+--- a/mirror-gui.sh
++++ b/mirror-gui.sh
+@@ -528,6 +528,7 @@ main() {
+             echo ""
+             echo "Environment:"
+             echo "  WEB_PORT   - Override the host port used for the web UI (default: $DEFAULT_WEB_PORT)"
++            echo "  WEB_BIND_ADDRESS - Host address the web UI is published on (default: 127.0.0.1; the API has no authentication)"
+             echo "  IMAGE_NAME - Override the container image (default: registry.ci.openshift.org/ocp/5.0:mirror-gui)"
+             echo "  CACHE_DIR  - Override the oc-mirror cache directory (absolute host path, e.g. /tmp/cache)"
+             exit 0
+-- 
+2.43.0
+

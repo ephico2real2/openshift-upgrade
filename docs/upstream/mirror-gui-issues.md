@@ -4,6 +4,8 @@ Not posted. Read at commit `3cec34f` (2026-10-07). Three separate issues; post o
 
 Issue 3 exposes a credential, so consider sending it to Red Hat's security contact instead of a public issue.
 
+Fixes for all three, as patches for a fork, are in [`mirror-gui-fork/`](mirror-gui-fork/).
+
 Why these matter for us: [catalog guide, Step 2](../../oc-mirror-ansible/docs/catalog-mirroring-guide.md#optional-plan-the-operator-list-with-mirror-gui).
 
 ---
