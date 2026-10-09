@@ -23,6 +23,7 @@
 | [`diagrams/three-steps/`](diagrams/three-steps/) | Source page and PNGs for the three steps, the decision flow, the Step 2 retrofit flow and the Step 3 scheduled sync |
 | [`catalog-policies/`](catalog-policies/) | Admission policies that limit operator catalogs, and the scripts that test them |
 | [`image-policies/`](image-policies/) | Kyverno's standard allowed-registries policy for application pods (list in a ConfigMap in the cluster), on top of `allowedRegistries`; why both are needed; offline tests |
+| [`upstream/`](upstream/) | Draft issues for upstream projects we rely on (mirror-gui), not yet posted |
 | `SOLUTIONS.docx`, `PREREQUISITES.docx`, `PROBLEM-STATEMENT.docx`, `DESIGN-DECISIONS.docx` | Word copies of the four Markdown documents, with the light figures embedded. Generated; edit the Markdown and rebuild |
 | [`tools/md2docx.js`](tools/md2docx.js) | Builds the Word copies: `npm install docx`, then `node tools/md2docx.js PROBLEM-STATEMENT.md PROBLEM-STATEMENT.docx` |
 

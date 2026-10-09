@@ -1,0 +1,237 @@
+From 9d608b667bcaacd44c7023e131c9974991de7d0b Mon Sep 17 00:00:00 2001
+From: ephico2real2 <123043136+ephico2real2@users.noreply.github.com>
+Date: Fri, 9 Oct 2026 18:13:25 +0000
+Subject: [PATCH 1/5] Verify source registry TLS by default; make skipping it
+ an explicit option
+
+Every mirror operation ran oc-mirror with --src-tls-verify=false and
+--dest-tls-verify=false hardcoded, so certificates of the source
+registries (normally registry.redhat.io, often through an enterprise
+proxy) were never checked.
+
+Drop both flags. TLS of the source registries is now verified unless
+the user turns on the new per-operation optional flag
+skipSourceTlsVerify (UI switch "Skip TLS verification for source
+registries", with a warning), which adds --src-tls-verify=false. The
+destination is always a local file:// directory, so there is no
+destination TLS setting to keep.
+
+Tests: default run passes no tls-verify flags; the opt-in passes
+--src-tls-verify=false before the mirror URL; false keeps verification;
+a non-boolean is rejected. The first three fail on the previous code.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_019qihKhjEgccdwcruX2zHff
+---
+ API.md                                        |  4 ++
+ server/index.ts                               | 17 +++++-
+ src/components/MirrorOperations.tsx           | 28 +++++++++
+ tests/integration/operationsLifecycle.test.ts | 61 +++++++++++++++++++
+ 4 files changed, 108 insertions(+), 2 deletions(-)
+
+diff --git a/API.md b/API.md
+index 8f64e8d..e124982 100644
+--- a/API.md
++++ b/API.md
+@@ -614,6 +614,10 @@ Start a new mirror operation.
+   - If not provided or empty, defaults to `default`
+   - Must be alphanumeric with dashes and underscores only (no slashes or special characters)
+   - Examples: `default`, `odf`, `production`, `test-123`
++- `optionalFlags` (object, optional): extra oc-mirror flags for this operation only:
++  - `removeSignatures` (boolean): `--remove-signatures`
++  - `skipSourceTlsVerify` (boolean, default `false`): `--src-tls-verify=false`. TLS certificates of the source registries are verified unless this is `true`; use it only for a lab registry with a self-signed certificate. The destination is a local directory, so there is no destination TLS setting.
++  - `imageTimeout`, `retryDelay` (Go duration strings such as `10m`, `30s`) and `retryTimes` (non-negative integer)
+ 
+ **Response:**
+ ```json
+diff --git a/server/index.ts b/server/index.ts
+index debddea..8f53e44 100644
+--- a/server/index.ts
++++ b/server/index.ts
+@@ -43,6 +43,7 @@ interface OperationRecord {
+ 
+ interface OptionalFlagsBody {
+   removeSignatures?: boolean;
++  skipSourceTlsVerify?: boolean;
+   imageTimeout?: string;
+   retryDelay?: string;
+   retryTimes?: number;
+@@ -50,6 +51,7 @@ interface OptionalFlagsBody {
+ 
+ const OPTIONAL_FLAG_KEYS = new Set([
+   'removeSignatures',
++  'skipSourceTlsVerify',
+   'imageTimeout',
+   'retryDelay',
+   'retryTimes',
+@@ -98,6 +100,19 @@ function buildOptionalFlagArgs(
+     }
+   }
+ 
++  // TLS verification of the source registries is on unless the user opts out
++  // for this one operation (e.g. a lab registry with a self-signed certificate).
++  // The destination is always a local directory (file://), so there is no
++  // destination TLS to configure.
++  if (typed.skipSourceTlsVerify != null) {
++    if (typeof typed.skipSourceTlsVerify !== 'boolean') {
++      return { ok: false, error: 'optionalFlags.skipSourceTlsVerify must be a boolean' };
++    }
++    if (typed.skipSourceTlsVerify) {
++      additionalArgs.push('--src-tls-verify=false');
++    }
++  }
++
+   if (typed.imageTimeout != null) {
+     if (typeof typed.imageTimeout !== 'string') {
+       return {
+@@ -1729,8 +1744,6 @@ app.post('/api/operations/start', async (req: Request, res: Response) => {
+   const child = spawn('oc-mirror', [
+       '--v2',
+       '--config', configPath,
+-      '--dest-tls-verify=false',
+-      '--src-tls-verify=false',
+       '--cache-dir', cacheDir,
+       '--authfile', AUTHFILE_PATH,
+       ...additionalArgs,
+diff --git a/src/components/MirrorOperations.tsx b/src/components/MirrorOperations.tsx
+index 22f3efb..c26f1f7 100644
+--- a/src/components/MirrorOperations.tsx
++++ b/src/components/MirrorOperations.tsx
+@@ -84,6 +84,7 @@ interface Operation {
+ 
+ interface OptionalFlags {
+   removeSignatures: boolean;
++  skipSourceTlsVerify: boolean;
+   imageTimeoutEnabled: boolean;
+   imageTimeoutMinutes: string;
+   imageTimeoutSeconds: string;
+@@ -95,6 +96,7 @@ interface OptionalFlags {
+ 
+ interface OptionalFlagsPayload {
+   removeSignatures?: boolean;
++  skipSourceTlsVerify?: boolean;
+   imageTimeout?: string;
+   retryDelay?: string;
+   retryTimes?: number;
+@@ -102,6 +104,7 @@ interface OptionalFlagsPayload {
+ 
+ const DEFAULT_OPTIONAL_FLAGS: OptionalFlags = {
+   removeSignatures: false,
++  skipSourceTlsVerify: false,
+   imageTimeoutEnabled: false,
+   imageTimeoutMinutes: '10',
+   imageTimeoutSeconds: '0',
+@@ -231,6 +234,10 @@ const buildOptionalFlagsPayload = (flags: OptionalFlags): OptionalFlagsPayload |
+     payload.removeSignatures = true;
+   }
+ 
++  if (flags.skipSourceTlsVerify) {
++    payload.skipSourceTlsVerify = true;
++  }
++
+   if (flags.imageTimeoutEnabled) {
+     const message = getDurationValidationMessage(
+       flags.imageTimeoutMinutes,
+@@ -1015,6 +1022,27 @@ const MirrorOperations: React.FC = () => {
+               />
+             </FormGroup>
+ 
++            <FormGroup
++              label={
++                <FormGroupInfoLabel
++                  text="Skip TLS verification for source registries"
++                  ariaLabel="More info about skipping TLS verification"
++                  bodyContent="Not recommended. When enabled, oc-mirror does not check the certificates of the registries it pulls from (--src-tls-verify=false), so an interception on the network path goes unnoticed. Use it only for a lab registry with a self-signed certificate; otherwise add the registry's CA to the trust store instead."
++                />
++              }
++              fieldId="flag-skip-source-tls-verify"
++              className="pf-v6-u-mb-md"
++            >
++              <Switch
++                id="flag-skip-source-tls-verify"
++                isChecked={optionalFlags.skipSourceTlsVerify}
++                onChange={(_e, checked) =>
++                  setOptionalFlags((prev) => ({ ...prev, skipSourceTlsVerify: checked }))
++                }
++                aria-label="Skip TLS verification for source registries"
++              />
++            </FormGroup>
++
+             <FormGroup
+               label={
+                 <FormGroupInfoLabel
+diff --git a/tests/integration/operationsLifecycle.test.ts b/tests/integration/operationsLifecycle.test.ts
+index 62fd3e3..f74a5cd 100644
+--- a/tests/integration/operationsLifecycle.test.ts
++++ b/tests/integration/operationsLifecycle.test.ts
+@@ -150,6 +150,67 @@ describe('Operations lifecycle API', () => {
+     });
+   });
+ 
++  describe('TLS verification of source registries', () => {
++    const runAndCaptureArgs = async (configName: string, optionalFlags?: Record<string, unknown>) => {
++      const argsFile = path.join(os.tmpdir(), `oc-mirror-args-tls-${Date.now()}-${configName}.txt`);
++      process.env.OC_MIRROR_ARGS_FILE = argsFile;
++      try {
++        await fs.promises.rm(argsFile, { force: true });
++        const configRes = await request.post('/api/config/save').send({
++          config:
++            'kind: ImageSetConfiguration\napiVersion: mirror.openshift.io/v2alpha1\nmirror:\n  platform: {}\n  operators: []\n  additionalImages: []',
++          name: configName,
++        });
++        expect(configRes.status).toBe(200);
++        const res = await request
++          .post('/api/operations/start')
++          .send({ configFile: configName, ...(optionalFlags ? { optionalFlags } : {}) });
++        expect(res.status).toBe(200);
++        let argsContent = '';
++        for (let attempt = 0; attempt < 20; attempt += 1) {
++          try {
++            argsContent = await fs.promises.readFile(argsFile, 'utf8');
++            if (argsContent.includes('file:')) break;
++          } catch {
++            // file may not exist yet
++          }
++          await new Promise((resolve) => setTimeout(resolve, 50));
++        }
++        return argsContent.split('\n').map((line) => line.trim()).filter(Boolean);
++      } finally {
++        delete process.env.OC_MIRROR_ARGS_FILE;
++        await fs.promises.rm(argsFile, { force: true });
++      }
++    };
++
++    it('verifies TLS by default: no tls-verify flags are passed', async () => {
++      const args = await runAndCaptureArgs('tls-default.yaml');
++      expect(args.some((arg) => arg.startsWith('file:'))).toBe(true);
++      expect(args.filter((arg) => arg.includes('tls-verify'))).toEqual([]);
++    });
++
++    it('passes --src-tls-verify=false only when skipSourceTlsVerify is true', async () => {
++      const args = await runAndCaptureArgs('tls-skip.yaml', { skipSourceTlsVerify: true });
++      expect(args).toContain('--src-tls-verify=false');
++      expect(args.some((arg) => arg.startsWith('--dest-tls-verify'))).toBe(false);
++      const mirrorUrlIndex = args.findIndex((arg) => arg.startsWith('file:'));
++      expect(args.indexOf('--src-tls-verify=false')).toBeLessThan(mirrorUrlIndex);
++    });
++
++    it('keeps TLS verification when skipSourceTlsVerify is false', async () => {
++      const args = await runAndCaptureArgs('tls-false.yaml', { skipSourceTlsVerify: false });
++      expect(args.filter((arg) => arg.includes('tls-verify'))).toEqual([]);
++    });
++
++    it('rejects a non-boolean skipSourceTlsVerify', async () => {
++      const res = await request
++        .post('/api/operations/start')
++        .send({ configFile: 'tls-default.yaml', optionalFlags: { skipSourceTlsVerify: 'yes' } });
++      expect(res.status).toBe(400);
++      expect(JSON.stringify(res.body)).toContain('skipSourceTlsVerify');
++    });
++  });
++
+   describe('POST /api/operations/:id/stop', () => {
+     it('returns success and updates operation to stopped', async () => {
+       const res = await request.post(`/api/operations/${seededOpId}/stop`);
+-- 
+2.43.0
+
