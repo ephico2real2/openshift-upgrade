@@ -61,7 +61,7 @@ a { color: var(--remote); }
   <header>
     <div class="eyebrow">openshift-upgrade · solutions · 2026-10-07</div>
     <h1>Three steps to keep the disconnected clusters current</h1>
-    <p class="lede">The figures for docs/SOLUTIONS.md, the retrofit runbook and the fallback. Step 1 is built; Step 2 is the platform owner's decision; Step 3 is the fallback only.</p>
+    <p class="lede">The figures for docs/SOLUTIONS.md, the Step 2 conversion and the fallback. Step 1 is built; Step 2 is the platform owner's decision; Step 3 is the fallback only.</p>
   </header>
 
   <section>
@@ -165,7 +165,7 @@ a { color: var(--remote); }
     <p class="muted">The platform owner decides on the proxy approach and takes the change to security on the threat model; the mirror approach, automated, is the fallback only.</p>
     <figure>
       <div class="fig-scroll">
-<svg viewBox="0 0 1000 570" role="img" aria-label="How the team chooses. The SMEs and the Product Owner shape the direction of this platform offering; this is the SME's recommendation from experience and modern best practice. The platform owner decides: the proxy approach, with no mirror, no sync and no local Update Service. The change goes to security on the threat model, with one condition: applications cannot use the proxy by default; the platform gives them no proxy settings (C2) and they have no route out (C1), proven by the runbook's tests 6 and 8. Approved leads to the preferred option, the proxy approach: VMware and TKG already update through this proxy; the retrofit runbook, lower environments first; the mirror is retired per cluster. Not approved leads to the fallback only, the mirror approach automated: the Ansible playbooks on a timer into the new registries, a local Update Service stays required; Red Hat Quay on-prem would only change the registry product, not a third option. Under either option the clusters must be on 4.20 before 4.18's EUS term ends on 25 February 2027. Ansible automates the upgrade in both cases, under the proxy option too: the hops, the update service, the registry settings and catalog gating; the difference is the manual mirror, which the proxy approach eliminates. With the proxy enabled on 4.18 first, the hops to 4.20 and 4.22 need no sync.">
+<svg viewBox="0 0 1000 570" role="img" aria-label="How the team chooses. The SMEs and the Product Owner shape the direction of this platform offering; this is the SME's recommendation from experience and modern best practice. The platform owner decides: the proxy approach, with no mirror, no sync and no local Update Service. The change goes to security on the threat model, with one condition: applications cannot use the proxy by default; the platform gives them no proxy settings (C2) and they have no route out (C1), proven by Verify tests 6 and 8. Approved leads to the preferred option, the proxy approach: VMware and TKG already update through this proxy; the Ansible retrofit, lower environments first; the mirror is retired per cluster. Not approved leads to the fallback only, the mirror approach automated: the Ansible playbooks on a timer into the new registries, a local Update Service stays required; Red Hat Quay on-prem would only change the registry product, not a third option. Under either option the clusters must be on 4.20 before 4.18's EUS term ends on 25 February 2027. Ansible automates the upgrade in both cases, under the proxy option too: the hops, the update service, the registry settings and catalog gating; the difference is the manual mirror, which the proxy approach eliminates. With the proxy enabled on 4.18 first, the hops to 4.20 and 4.22 need no sync.">
 <defs><marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
 <g font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="currentColor">
 <rect x="300" y="20" width="400" height="53" rx="8" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5"/>
@@ -177,7 +177,7 @@ a { color: var(--remote); }
 <text x="316" y="135.5" fill="var(--none)" font-weight="600">Security: one condition</text>
 <text x="316" y="152.5" fill="currentColor">applications cannot use the proxy by default:</text>
 <text x="316" y="169.5" fill="currentColor">no proxy from the platform (C2), no route out (C1)</text>
-<text x="316" y="186.5" fill="var(--muted)">proven by the runbook's tests 6 and 8</text>
+<text x="316" y="186.5" fill="var(--muted)">proven by Verify tests 6 and 8</text>
 <path d="M300,160 L240,160 L240,246" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ah2)"/>
 <text x="244" y="151" fill="var(--remote)" font-weight="600">approved</text>
 <path d="M700,160 L760,160 L760,246" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ah2)"/>
@@ -186,7 +186,7 @@ a { color: var(--remote); }
 <text x="46" y="272.0" fill="var(--host)" font-weight="600">1 · Preferred: the proxy approach</text>
 <text x="46" y="289.0" fill="currentColor">needs no mirror at all: no mirror, no sync, no local OSUS</text>
 <text x="46" y="306.0" fill="currentColor">VMware and TKG already update through this proxy</text>
-<text x="46" y="323.0" fill="currentColor">the retrofit runbook, lower environments first</text>
+<text x="46" y="323.0" fill="currentColor">the Ansible retrofit, lower environments first</text>
 <text x="46" y="340.0" fill="currentColor">every node reboots once when the proxy goes on</text>
 <text x="46" y="357.0" fill="var(--muted)">updates then come straight from Red Hat</text>
 <rect x="550" y="250" width="420" height="120" rx="8" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5" stroke-dasharray="5 4"/>
@@ -220,7 +220,7 @@ a { color: var(--remote); }
     <p class="muted">What each phase changes and what it does to the nodes.</p>
     <figure>
       <div class="fig-scroll">
-<svg viewBox="0 0 1000 760" role="img" aria-label="The Step 2 runbook converts a disconnected cluster in ten phases. Phases 0 to 3 touch no nodes beyond a CRI-O reload: approval, backup, the Red Hat pull secret and the image allowlist. Phase 4 turns on the cluster-wide proxy and drains and reboots every node. Phase 5 is optional, since the proxy never reaches application pods; phases 6 and 7 point update checks at Red Hat and move the operator catalogs, with no node effect. Phase 8 runs one update with the mirror still in place, and only then phase 9 removes the mirror, which drains the nodes again.">
+<svg viewBox="0 0 1000 760" role="img" aria-label="Step 2 converts a disconnected cluster in ten phases, run by the Ansible playbooks. Phases 0 to 3 touch no nodes beyond a CRI-O reload: approval, backup, the Red Hat pull secret and the image allowlist. Phase 4 turns on the cluster-wide proxy and drains and reboots every node. Phase 5 is optional, since the proxy never reaches application pods; phases 6 and 7 point update checks at Red Hat and move the operator catalogs, with no node effect. Phase 8 runs one update with the mirror still in place, and only then phase 9 removes the mirror, which drains the nodes again.">
 <defs><marker id="ah3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
 <g font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="currentColor">
 <rect x="20" y="14" width="640" height="30" rx="6" fill="var(--host-wash)" stroke="var(--host)"/>
@@ -298,11 +298,11 @@ a { color: var(--remote); }
 <path d="M650,645 L696,645" fill="none" stroke="var(--muted)" stroke-width="1.1" marker-end="url(#ah3)"/>
 <text x="20" y="698" fill="var(--muted)">Nothing touches the nodes until phase 4, which gets its own window. The mirror comes out only after a connected update worked.</text>
 <text x="20" y="720" fill="var(--muted)">Checks: tests 1–5 after phase 4, 6–9 after phase 6, all again after phase 9 (enterprise-proxy/README.md, Verify).</text>
-<text x="20" y="744" fill="var(--host)" font-weight="600">Dashed = proposed runbook, not run on any of our clusters and not approved yet.</text>
+<text x="20" y="744" fill="var(--host)" font-weight="600">Dashed = proposed, run by Ansible; not run on any cluster, not approved yet.</text>
 </g>
 </svg>
       </div>
-      <figcaption>Proposed runbook; not run on any cluster. Node effects are from Red Hat's docs, as cited in the runbook.</figcaption>
+      <figcaption>Proposed; the Ansible playbooks run it, not yet on any cluster. Node effects are from Red Hat's docs, as cited in the runbook.</figcaption>
     </figure>
   </section>
 

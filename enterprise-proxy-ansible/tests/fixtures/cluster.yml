@@ -1,0 +1,43 @@
+---
+# Test values for the stand-in cluster in tests/fixtures/state.json. Not a real environment.
+cluster_name: testcluster
+kubeconfig: ""
+oc_bin: oc
+backup_root: "{{ lookup('env', 'TEST_TMP') }}/backups"
+pull_secret_file: "{{ playbook_dir }}/tests/fixtures/redhat-pull-secret.json"
+telemetry_enabled: false
+allowed_registries:
+  - quay.io/openshift-release-dev
+  - registry.redhat.io
+  - registry.access.redhat.com
+  - image-registry.openshift-image-registry.svc:5000
+  - registry-dc1.example.com:8443
+remove_blocked_registries: true
+proxy_url: "http://proxy.example.com:3128"
+no_proxy:
+  - .apps.testcluster.example.com
+  - api-int.testcluster.example.com
+  - .example.com
+  - 10.10.0.0/16
+readiness_endpoints:
+  - https://mirror.openshift.com
+  - https://quay.io
+proxy_ca_file: "{{ playbook_dir }}/tests/fixtures/corp-proxy-ca.pem"
+trusted_ca_configmap: user-ca-bundle
+mcp_wait_minutes: 1
+egress_firewall_namespaces: []
+proxy_ips: []
+default_catalog_sources:
+  - redhat-operators
+mirrored_catalog_sources:
+  - cs-redhat-operator-index-v4-18
+subscription_target_source: redhat-operators
+subscription_manual_approval: true
+update_channel: eus-4.20
+update_to: "4.20.39"
+update_wait_minutes: 1
+mirror_registry: "registry-dc1.example.com:8443"
+mirror_ca_configmap_keys:
+  - registry-dc1.example.com..8443
+osus_namespace: openshift-update-service
+wait_delay_seconds: 0

@@ -2,24 +2,38 @@
 
 | | |
 |---|---|
-| Status | Proposed runbook. Not run on any of our clusters. The platform owner's decision; the change is with security on [`THREAT-MODEL.md`](THREAT-MODEL.md), condition: applications cannot use the proxy by default; not yet approved |
+| Status | Documentation and teaching copy of the Step 2 conversion. The conversion is done by the Ansible playbooks in [`enterprise-proxy-ansible/`](../../enterprise-proxy-ansible/README.md), our north star; this document explains each phase for review and learning. Not run on any of our clusters. The platform owner's decision; the change is with security on [`THREAT-MODEL.md`](THREAT-MODEL.md), condition: applications cannot use the proxy by default; not yet approved |
 | Researched | 2026-10-07, against `openshift/openshift-docs` branches `enterprise-4.18`, `enterprise-4.21` and `enterprise-4.22`; earlier findings in [`openshift-update-egress.html`](../openshift-update-egress.html) (2026-09-25) |
 | Starting point | OpenShift 4.18.17 on `eus-4.18`, disconnected: IDMS/ITMS from oc-mirror pointing at the datacenter's mirror registry (`registry-dc1` in the examples), mirrored CatalogSources, a local OpenShift Update Service, default OperatorHub sources off |
-| Where commands run | The mirroring bastion of the cluster's datacenter ([`PREREQUISITES.md`](../PREREQUISITES.md)); it needs `oc`, `jq`, Ansible Vault and the cluster API on 6443 |
+| Where commands run | The mirroring bastion of the cluster's datacenter ([`PREREQUISITES.md`](../PREREQUISITES.md)); it needs `oc`, `jq`, Ansible Vault and the cluster API on 6443. The playbooks: [`enterprise-proxy-ansible/`](../../enterprise-proxy-ansible/README.md) |
 | End point | The cluster pulls images, the update graph and signatures from Red Hat through the corporate proxy. No mirror, no local Update Service, no two-headed DNS |
-| In the design docs | Option 1 ([`DESIGN-DECISIONS.md`](../DESIGN-DECISIONS.md)); this runbook is its rollout order, phase by phase |
+| In the design docs | Option 1 ([`DESIGN-DECISIONS.md`](../DESIGN-DECISIONS.md)); this document explains its rollout order, phase by phase; the playbooks run it |
 
 Step 1 ([`oc-mirror-ansible/`](../../oc-mirror-ansible/README.md)) still means we mirror everything
 ourselves. Step 2 removes the mirror: the cluster-wide `Proxy` resource sends the platform's
 traffic to the enterprise proxy, which lets through only Red Hat's documented hosts. Everything
 the cluster needs from Red Hat then arrives the same way a connected cluster gets it.
 
-**Red Hat has no single "disconnected to connected" procedure.** The closest document is the reverse
-("Converting a connected cluster to a disconnected cluster",
-`disconnected/connected-to-disconnected.adoc`), whose "Restoring the network" section deletes the
-mirror objects. This runbook puts that together with the documented proxy, pull secret, update
-server and OperatorHub procedures. Where a step rests on our own reading and not on a Red Hat
+**Red Hat's own steps for this direction** are in the Knowledgebase solution "Converting a disconnected
+cluster to a connected cluster" (Solution Verified, updated 29 October 2025): turn the default OperatorHub
+sources back on (`disableAllDefaultSources: false`), check the CatalogSources, delete the
+ImageContentSourcePolicy for the internal registry, delete the mirrored CatalogSource, point each
+Subscription at `redhat-operators` (or `certified-operators`), and update the global pull secret; a
+community note adds the cluster-wide proxy, with its reboots, and the pull secret first. The product
+documentation has only the reverse ("Converting a connected cluster to a disconnected cluster",
+`disconnected/connected-to-disconnected.adoc`), whose "Restoring the network" section deletes the mirror
+objects. This runbook puts the solution's steps in a safe order (the proxy and the pull secret first, the
+mirror objects out only after a connected update worked) together with the documented proxy, pull secret,
+update server and OperatorHub procedures. Where a step rests on our own reading and not on a Red Hat
 sentence, it says so.
+
+**How we do it: Ansible.** The conversion is automated, as the mirroring is today. The playbooks in
+[`enterprise-proxy-ansible/`](../../enterprise-proxy-ansible/README.md) run phases 1 to 7
+(`retrofit-playbook.yml`, one tag per phase), phase 8 and every later hop (`update-playbook.yml`), phase 9
+(`remove-mirror-playbook.yml`) and the Verify table (`verify-playbook.yml`, the evidence file for security).
+This document is the explanation behind them, for review and teaching: what each phase does, why, in which
+order, with Red Hat's words. The commands shown are the ones the playbooks run; a phase is done by hand only
+to learn it in the lab, or in an emergency with the playbook's backup in hand.
 
 ## How it fits together
 
@@ -59,15 +73,15 @@ come out only after a connected update has worked.
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../diagrams/three-steps/retrofit.dark.png">
   <source srcset="../diagrams/three-steps/retrofit.light.png">
-  <img alt="The Step 2 runbook converts a disconnected cluster in ten phases. Phases 0 to 3 touch no nodes beyond a CRI-O reload: approval, backup, the Red Hat pull secret and the image allowlist. Phase 4 turns on the cluster-wide proxy and drains and reboots every node. Phase 5 is optional, since the proxy never reaches application pods; phases 6 and 7 point update checks at Red Hat and move the operator catalogs, with no node effect. Phase 8 runs one update with the mirror still in place, and only then phase 9 removes the mirror, which drains the nodes again." src="../diagrams/three-steps/retrofit.light.png">
+  <img alt="Step 2 converts a disconnected cluster in ten phases, run by the Ansible playbooks. Phases 0 to 3 touch no nodes beyond a CRI-O reload: approval, backup, the Red Hat pull secret and the image allowlist. Phase 4 turns on the cluster-wide proxy and drains and reboots every node. Phase 5 is optional, since the proxy never reaches application pods; phases 6 and 7 point update checks at Red Hat and move the operator catalogs, with no node effect. Phase 8 runs one update with the mirror still in place, and only then phase 9 removes the mirror, which drains the nodes again." src="../diagrams/three-steps/retrofit.light.png">
 </picture>
 
-*Proposed runbook, not run on any cluster. The table below carries the same phases and node effects.*
+*The conversion as the playbooks run it; not run on any cluster yet. The table below carries the same phases and node effects.*
 
 | Phase | What | Node effect |
 |---|---|---|
 | 0 · Approve and prepare outside the cluster | Security sign-off, proxy allowlist, firewall, Red Hat credentials | None |
-| 1 · Back up and check | Save every object this runbook changes | None |
+| 1 · Back up and check | Save every object the conversion changes | None |
 | 2 · Pull secret | Merge Red Hat's pull secret into `openshift-config/pull-secret` | None ("without draining or rebooting the node") |
 | 3 · Image policy | `allowedRegistries` | CRI-O reload, no drain |
 | 4 · Proxy | `user-ca-bundle`, then `proxy/cluster` | **Drain and reboot, every node** |
@@ -441,7 +455,8 @@ The signature ConfigMaps that Step 1 applied (`mirrored-release-signatures` in
 
 Today's Subscriptions point at the mirrored CatalogSources (`cs-redhat-operator-index-…`). Turn on
 the default Red Hat source only, move each Subscription to it, then delete the mirrored source in
-phase 9.
+phase 9. These are the Knowledgebase solution's steps; the solution turns all default sources on
+(`disableAllDefaultSources: false`), we enable only the approved ones.
 
 ```bash
 oc patch operatorhub cluster --type merge -p '{"spec":{"disableAllDefaultSources":true,"sources":[{"name":"redhat-operators","disabled":false}]}}'
@@ -525,7 +540,7 @@ watch oc get mcp
   from the `additionalTrustedCA` ConfigMap (and `updateservice-registry`), and the mirror's login
   from the pull secret (repeat the phase 2 commands with
   `jq 'del(.auths["registry-dc1.example.com:8443"])'`). Keep the mirror registries themselves until every
-  cluster has gone through this runbook.
+  cluster has gone through this conversion.
 - **Check a node again:** `registries.conf` should list no mirrors for `quay.io` or
   `registry.redhat.io`.
 
@@ -594,6 +609,9 @@ Read from [`openshift/openshift-docs`](https://github.com/openshift/openshift-do
 - Sigstore: 4.21 `modules/rn-ocp-release-notes-new-features.adoc`, 4.22
   `modules/nodes-sigstore-configure-cluster-policy.adoc`, 4.20 `modules/update-preparing-ack-sigstore.adoc`,
   4.22 `modules/zstream-4-22-16.adoc`
+- Red Hat Knowledgebase: "Converting a disconnected cluster to a connected cluster" (access.redhat.com,
+  Solution Verified, updated 29 October 2025; the OperatorHub, CatalogSource, ICSP, Subscription and pull
+  secret steps, and the community note on the proxy)
 - Earlier research (2026-09-25): [`openshift-update-egress.html`](../openshift-update-egress.html) for
   the DNS conditions, node effects and security controls
 

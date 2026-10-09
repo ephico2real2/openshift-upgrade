@@ -1,0 +1,305 @@
+{
+ "proxy/cluster": {
+  "apiVersion": "config.openshift.io/v1",
+  "kind": "Proxy",
+  "metadata": {
+   "name": "cluster"
+  },
+  "spec": {
+   "trustedCA": {
+    "name": ""
+   }
+  },
+  "status": {}
+ },
+ "image.config.openshift.io/cluster": {
+  "apiVersion": "config.openshift.io/v1",
+  "kind": "Image",
+  "metadata": {
+   "name": "cluster"
+  },
+  "spec": {
+   "registrySources": {
+    "blockedRegistries": [
+     "quay.io/openshift-payload"
+    ]
+   },
+   "additionalTrustedCA": {
+    "name": "registry-config"
+   }
+  }
+ },
+ "clusterversion/version": {
+  "apiVersion": "config.openshift.io/v1",
+  "kind": "ClusterVersion",
+  "metadata": {
+   "name": "version"
+  },
+  "spec": {
+   "channel": "eus-4.18",
+   "upstream": "https://osus.apps.testcluster.example.com/api/upgrades_info/v1/graph"
+  },
+  "status": {
+   "desired": {
+    "version": "4.18.17"
+   },
+   "history": [
+    {
+     "version": "4.18.17",
+     "state": "Completed",
+     "verified": true
+    }
+   ],
+   "conditions": [
+    {
+     "type": "Available",
+     "status": "True"
+    },
+    {
+     "type": "Progressing",
+     "status": "False"
+    },
+    {
+     "type": "Degraded",
+     "status": "False"
+    },
+    {
+     "type": "RetrievedUpdates",
+     "status": "True"
+    }
+   ]
+  }
+ },
+ "operatorhub/cluster": {
+  "apiVersion": "config.openshift.io/v1",
+  "kind": "OperatorHub",
+  "metadata": {
+   "name": "cluster"
+  },
+  "spec": {
+   "disableAllDefaultSources": true
+  },
+  "status": {
+   "sources": []
+  }
+ },
+ "clusteroperators": [
+  {
+   "metadata": {
+    "name": "authentication"
+   },
+   "status": {
+    "conditions": [
+     {
+      "type": "Available",
+      "status": "True"
+     },
+     {
+      "type": "Progressing",
+      "status": "False"
+     },
+     {
+      "type": "Degraded",
+      "status": "False"
+     }
+    ]
+   }
+  },
+  {
+   "metadata": {
+    "name": "kube-apiserver"
+   },
+   "status": {
+    "conditions": [
+     {
+      "type": "Available",
+      "status": "True"
+     },
+     {
+      "type": "Progressing",
+      "status": "False"
+     },
+     {
+      "type": "Degraded",
+      "status": "False"
+     }
+    ]
+   }
+  }
+ ],
+ "mcp": [
+  {
+   "metadata": {
+    "name": "master"
+   },
+   "spec": {
+    "paused": false
+   },
+   "status": {
+    "conditions": [
+     {
+      "type": "Updated",
+      "status": "True"
+     },
+     {
+      "type": "Updating",
+      "status": "False"
+     },
+     {
+      "type": "Degraded",
+      "status": "False"
+     }
+    ]
+   }
+  },
+  {
+   "metadata": {
+    "name": "worker"
+   },
+   "spec": {
+    "paused": false
+   },
+   "status": {
+    "conditions": [
+     {
+      "type": "Updated",
+      "status": "True"
+     },
+     {
+      "type": "Updating",
+      "status": "False"
+     },
+     {
+      "type": "Degraded",
+      "status": "False"
+     }
+    ]
+   }
+  }
+ ],
+ "pdb": [],
+ "nodes": [
+  {
+   "metadata": {
+    "name": "master-0"
+   }
+  },
+  {
+   "metadata": {
+    "name": "worker-0"
+   }
+  }
+ ],
+ "pods": [
+  {
+   "metadata": {
+    "namespace": "openshift-kube-apiserver"
+   },
+   "spec": {
+    "containers": [
+     {
+      "image": "registry-dc1.example.com:8443/ocp4v2/openshift-release-dev/ocp-v4.0-art-dev@sha256:aaaa"
+     }
+    ]
+   }
+  },
+  {
+   "metadata": {
+    "namespace": "team-a"
+   },
+   "spec": {
+    "containers": [
+     {
+      "image": "registry-dc1.example.com:8443/ocp4v2/team-a/app:1.0"
+     }
+    ]
+   }
+  }
+ ],
+ "secret/pull-secret": {
+  "metadata": {
+   "name": "pull-secret",
+   "namespace": "openshift-config"
+  },
+  "data": {
+   ".dockerconfigjson": "eyJhdXRocyI6IHsicmVnaXN0cnktZGMxLmV4YW1wbGUuY29tOjg0NDMiOiB7ImF1dGgiOiAiYldseWNtOXlPbTFwY25KdmNnPT0ifX19"
+  }
+ },
+ "configmaps/openshift-config": {
+  "registry-config": {
+   "metadata": {
+    "name": "registry-config"
+   },
+   "data": {
+    "registry-dc1.example.com..8443": "-----BEGIN CERTIFICATE-----\nmirror\n-----END CERTIFICATE-----\n"
+   }
+  }
+ },
+ "mirror-sets": {
+  "imagedigestmirrorset": [
+   "idms-release-0",
+   "idms-operator-0"
+  ],
+  "imagetagmirrorset": [
+   "itms-release-0"
+  ],
+  "imagecontentsourcepolicy": []
+ },
+ "catalogsources": [
+  {
+   "metadata": {
+    "name": "cs-redhat-operator-index-v4-18",
+    "namespace": "openshift-marketplace"
+   }
+  },
+  {
+   "metadata": {
+    "name": "redhat-operators",
+    "namespace": "openshift-marketplace"
+   }
+  }
+ ],
+ "packagemanifests": {
+  "redhat-operators": [
+   "cluster-logging",
+   "kubernetes-nmstate-operator",
+   "cincinnati-operator"
+  ]
+ },
+ "subscriptions": [
+  {
+   "metadata": {
+    "name": "cluster-logging",
+    "namespace": "openshift-logging"
+   },
+   "spec": {
+    "source": "cs-redhat-operator-index-v4-18",
+    "sourceNamespace": "openshift-marketplace",
+    "channel": "stable-6.2",
+    "installPlanApproval": "Automatic"
+   },
+   "status": {
+    "state": "AtLatestKnown"
+   }
+  },
+  {
+   "metadata": {
+    "name": "cincinnati-operator",
+    "namespace": "openshift-update-service"
+   },
+   "spec": {
+    "source": "cs-redhat-operator-index-v4-18",
+    "sourceNamespace": "openshift-marketplace",
+    "channel": "v1",
+    "installPlanApproval": "Manual"
+   },
+   "status": {
+    "state": "AtLatestKnown"
+   }
+  }
+ ],
+ "updateservices": [
+  "service"
+ ],
+ "testpods": {}
+}

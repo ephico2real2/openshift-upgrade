@@ -1,0 +1,202 @@
+---
+# Phase 9 of docs/enterprise-proxy/README.md: remove the mirror, only after phase 8 (a connected update) worked.
+# Deleting the IDMS/ITMS/ICSP objects makes the MCO drain, and by the docs reboot, every node: a maintenance window.
+- name: Remove the mirror once a connected update has worked (phase 9)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - vars/common.yml
+  vars:
+    mirror_set_kinds: [imagedigestmirrorset, imagetagmirrorset, imagecontentsourcepolicy]
+
+  tasks:
+    - name: Read ClusterVersion
+      ansible.builtin.command: "{{ oc }} get clusterversion version -o json"
+      register: cv_raw
+      changed_when: false
+
+    - name: Stop unless the last update completed, was verified, and nothing is in progress
+      ansible.builtin.assert:
+        that:
+          - (cv_raw.stdout | from_json).status.history[0].state == 'Completed'
+          - (cv_raw.stdout | from_json).status.history[0].verified | bool
+          - ((cv_raw.stdout | from_json).status.conditions | selectattr('type', 'equalto', 'Progressing') | map(attribute='status') | first) == 'False'
+          - (cv_raw.stdout | from_json).spec.upstream is not defined
+        fail_msg: "Run update-playbook.yml (phase 8) first and let it finish; the mirror comes out only after a connected update worked."
+        quiet: true
+
+    - name: Create the backup folder
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0700"
+      loop: ["{{ backup_dir }}", "{{ work_dir }}"]
+
+    - name: Back up what this playbook removes
+      ansible.builtin.shell: "{{ oc }} get {{ item.what }} -o yaml > {{ backup_dir }}/{{ item.file }} && chmod 0600 {{ backup_dir }}/{{ item.file }}"
+      loop:
+        - { what: "imagedigestmirrorset,imagetagmirrorset,imagecontentsourcepolicy", file: "phase9-mirror-sets.yaml" }
+        - { what: "catalogsource -n openshift-marketplace", file: "phase9-catalogsources.yaml" }
+        - { what: "image.config.openshift.io/cluster", file: "phase9-image-config.yaml" }
+        - { what: "configmap -n openshift-config", file: "phase9-openshift-config-cms.yaml" }
+        - { what: "secret/pull-secret -n openshift-config", file: "phase9-pull-secret.yaml" }
+      changed_when: true
+
+    - name: Check no Subscription still uses a mirrored CatalogSource
+      ansible.builtin.command: "{{ oc }} get subscriptions.operators.coreos.com -A -o json"
+      register: subs_raw
+      changed_when: false
+
+    - name: Stop if one does
+      ansible.builtin.assert:
+        that: ((subs_raw.stdout | from_json)['items'] | selectattr('spec.source', 'in', mirrored_catalog_sources) | list | length) == 0
+        fail_msg: >-
+          Subscriptions still on a mirrored source:
+          {{ (subs_raw.stdout | from_json)['items'] | selectattr('spec.source', 'in', mirrored_catalog_sources)
+             | map(attribute='metadata.namespace') | zip((subs_raw.stdout | from_json)['items']
+             | selectattr('spec.source', 'in', mirrored_catalog_sources) | map(attribute='metadata.name')) | map('join', '/') | list }}.
+          Run retrofit-playbook.yml --tags catalogs, or keep the mirrored catalog (D2, model A) and skip this playbook.
+        quiet: true
+
+    # ---------------------------------------------------------------- the mirror sets (node drain, reboot)
+    - name: List the mirror sets
+      ansible.builtin.command: "{{ oc }} get {{ item }} -o json"
+      loop: "{{ mirror_set_kinds }}"
+      register: mirror_sets_raw
+      changed_when: false
+
+    - name: Collect them as "kind name"
+      ansible.builtin.set_fact:
+        mirror_set_objects: >-
+          {{ mirror_set_objects | default([])
+             + ((item.stdout | from_json)['items'] | map(attribute='metadata.name')
+                | map('regex_replace', '^(.*)$', item.item + ' \1') | list) }}
+      loop: "{{ mirror_sets_raw.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Show what goes
+      ansible.builtin.debug:
+        msg: "Deleting: {{ mirror_set_objects | default([]) }}"
+
+    - name: Delete each mirror set (the MCO rewrites registries.conf on every node)
+      ansible.builtin.command: "{{ oc }} delete {{ item }}"
+      loop: "{{ mirror_set_objects | default([]) }}"
+      changed_when: true
+
+    - name: Wait for every pool
+      ansible.builtin.include_tasks: tasks/wait-for-pools.yml
+      when: (mirror_set_objects | default([])) | length > 0
+
+    - name: Check the ClusterOperators
+      ansible.builtin.include_tasks: tasks/check-operators.yml
+
+    # ---------------------------------------------------------------- what served the mirror
+    - name: Delete the mirrored CatalogSources (no Subscription uses them, checked above)
+      ansible.builtin.command: "{{ oc }} delete catalogsource {{ item }} -n openshift-marketplace --ignore-not-found"
+      loop: "{{ mirrored_catalog_sources }}"
+      changed_when: true
+
+    - name: Retire the local OpenShift Update Service (the cluster reads api.openshift.com since phase 6)
+      ansible.builtin.command: "{{ oc }} delete updateservice --all -n {{ osus_namespace }} --ignore-not-found"
+      when: osus_namespace | default('') | length > 0
+      changed_when: true
+
+    - name: Reminder
+      ansible.builtin.debug:
+        msg: >-
+          Uninstall the cincinnati-operator Subscription and CSV in {{ osus_namespace | default('openshift-update-service') }}
+          by hand once no other cluster's spec.upstream points at this Update Service.
+
+    # ---------------------------------------------------------------- trust and policy
+    - name: Read image.config
+      ansible.builtin.command: "{{ oc }} get image.config.openshift.io/cluster -o json"
+      register: imgcfg_raw
+      changed_when: false
+
+    - name: Drop the mirror from allowedRegistries
+      ansible.builtin.command: >-
+        {{ oc }} patch image.config.openshift.io/cluster --type merge
+        -p '{{ {"spec": {"registrySources": {"allowedRegistries": kept}}} | to_json }}'
+      vars:
+        current: "{{ (imgcfg_raw.stdout | from_json).spec.registrySources.allowedRegistries | default([]) }}"
+        kept: "{{ current | reject('equalto', mirror_registry) | list }}"
+      when: mirror_registry in current
+      changed_when: true
+
+    - name: Read the additionalTrustedCA ConfigMap, if image.config names one
+      ansible.builtin.command: "{{ oc }} get configmap {{ (imgcfg_raw.stdout | from_json).spec.additionalTrustedCA.name }} -n openshift-config -o json"
+      register: ca_cm_raw
+      changed_when: false
+      when: (imgcfg_raw.stdout | from_json).spec.additionalTrustedCA.name is defined
+
+    - name: Remove the mirror's CA keys from it
+      ansible.builtin.command: >-
+        {{ oc }} patch configmap {{ (imgcfg_raw.stdout | from_json).spec.additionalTrustedCA.name }} -n openshift-config
+        --type json -p '[{"op":"remove","path":"/data/{{ item | replace('~', '~0') | replace('/', '~1') }}"}]'
+      loop: "{{ mirror_ca_configmap_keys | default([]) }}"
+      when:
+        - ca_cm_raw is not skipped
+        - item in (ca_cm_raw.stdout | from_json).data | default({})
+      changed_when: true
+
+    - name: Pull secret without the mirror's login
+      block:
+        - name: Read the pull secret
+          ansible.builtin.command: "{{ oc }} get secret/pull-secret -n openshift-config -o json"
+          register: ps_raw
+          changed_when: false
+          no_log: true
+
+        - name: Drop the mirror entry
+          ansible.builtin.set_fact:
+            trimmed_pull_secret: >-
+              {{ current_ps | combine({'auths': current_ps.auths | dict2items | rejectattr('key', 'equalto', mirror_registry) | items2dict}) }}
+            mirror_in_ps: "{{ mirror_registry in current_ps.auths }}"
+          vars:
+            current_ps: "{{ (ps_raw.stdout | from_json)['data']['.dockerconfigjson'] | b64decode | from_json }}"
+          no_log: true
+
+        - name: Show the registry names that stay (never the tokens)
+          ansible.builtin.debug:
+            msg: "Pull secret will hold: {{ trimmed_pull_secret.auths.keys() | list | sort }}"
+
+        - name: Write it to a private work file
+          ansible.builtin.copy:
+            dest: "{{ work_dir }}/trimmed-pull-secret.json"
+            content: "{{ trimmed_pull_secret | to_json }}"
+            mode: "0600"
+          no_log: true
+          when: mirror_in_ps | bool
+
+        - name: Set the global pull secret (no drain, no reboot)
+          ansible.builtin.command: "{{ oc }} set data secret/pull-secret -n openshift-config --from-file=.dockerconfigjson={{ work_dir }}/trimmed-pull-secret.json"
+          when: mirror_in_ps | bool
+          changed_when: true
+      always:
+        - name: Remove the work copy of the pull secret
+          ansible.builtin.file:
+            path: "{{ work_dir }}/trimmed-pull-secret.json"
+            state: absent
+
+    - name: Wait for the pools to pick up the pull secret
+      ansible.builtin.include_tasks: tasks/wait-for-pools.yml
+
+    # ---------------------------------------------------------------- a node, afterwards
+    - name: Pick a node
+      ansible.builtin.include_tasks: tasks/pick-node.yml
+
+    - name: Check registries.conf on it lists no mirrors any more
+      ansible.builtin.command: "{{ oc }} debug node/{{ node }} -q -- chroot /host cat /etc/containers/registries.conf"
+      register: registries_conf
+      until: "'[[registry.mirror]]' not in registries_conf.stdout"
+      retries: 20
+      delay: "{{ wait_delay_seconds }}"
+      changed_when: false
+
+    - name: Done
+      ansible.builtin.debug:
+        msg: >-
+          {{ cluster_name }} pulls everything from Red Hat through the proxy. Keep the mirror registries themselves
+          until every cluster has gone through this runbook; run verify-playbook.yml now and keep its evidence file.

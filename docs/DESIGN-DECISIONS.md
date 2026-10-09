@@ -19,7 +19,7 @@ connected design that lets us update on a regular schedule.
 | Step | What | Status | Here |
 |---|---|---|---|
 | 1 | Refine the current process (the manual sync) | **Done, 2026-10-07:** oc-mirror v2 run from Ansible playbooks, still started by hand | [`oc-mirror-ansible/`](../oc-mirror-ansible/README.md) |
-| 2 | Refine the enterprise proxy strategy | Runbook written, 2026-10-07 | Option 1 below; [`enterprise-proxy/`](enterprise-proxy/README.md) |
+| 2 | Refine the enterprise proxy strategy | Playbooks and runbook written, 2026-10-09 (Ansible does the conversion; the runbook documents and teaches it) | Option 1 below; [`enterprise-proxy/`](enterprise-proxy/README.md) |
 | 3 | Build a full Red Hat Quay registry on-prem | Design written, 2026-10-07 | Option 2 below; [`quay-onprem/`](quay-onprem/README.md) |
 
 Step 1 keeps the manual sync but makes it repeatable. It runs on a mirroring bastion in each datacenter and fills three new mirror registries ([`PREREQUISITES.md`](PREREQUISITES.md)). Its playbooks are also a starting point for the scheduled oc-mirror v2 job that Options 2 and 3 need.
@@ -100,7 +100,7 @@ an HTTP or HTTPS proxy available" (`modules/installation-configure-proxy.adoc`, 
 
 The platform owner decides. The change goes to security on the threat model, and the one condition
 is that consumers and applications cannot use the proxy by default: the platform gives them no proxy
-settings (C2) and they have no route out (C1), proven by the runbook's tests 6 and 8.
+settings (C2) and they have no route out (C1), proven by Verify tests 6 and 8.
 
 - **Node egress to the four host groups is approved** → Option 1. It uses only documented
   configuration and needs no mirror to run.

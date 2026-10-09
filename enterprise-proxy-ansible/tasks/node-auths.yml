@@ -1,0 +1,20 @@
+---
+# Check a node received the new pull secret (the registry names only, never the tokens).
+- name: Pick a node
+  ansible.builtin.include_tasks:
+    file: pick-node.yml
+    apply:
+      tags: [always]
+
+- name: Read the registry names in the node's pull secret
+  ansible.builtin.command: >-
+    {{ oc }} debug node/{{ node }} -q -- chroot /host jq -r '.auths | keys[]' /var/lib/kubelet/config.json
+  register: node_auths
+  until: "'quay.io' in node_auths.stdout_lines"
+  retries: 20
+  delay: "{{ wait_delay_seconds }}"
+  changed_when: false
+
+- name: Show them
+  ansible.builtin.debug:
+    msg: "{{ node }} pulls with credentials for: {{ node_auths.stdout_lines | sort }}"
