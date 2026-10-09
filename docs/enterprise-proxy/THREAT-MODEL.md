@@ -1,9 +1,8 @@
 # Threat model: updating a cluster through the enterprise proxy
 
-The Step 2 design ([`README.md`](README.md)) as a threat model. It is the Option 1 update from
-[`../openshift-update-egress.html`](../openshift-update-egress.html) (*Option 1 in detail*), the same six steps, with
-the trust boundary between the platform and the applications and the control on every flow. It
-shows three things:
+The Step 2 design ([`README.md`](README.md)) as a threat model. It covers the Option 1 update from
+[`../openshift-update-egress.html`](../openshift-update-egress.html) (*Option 1 in detail*), drawn as
+trust boundaries and data flows, with the control on every flow. It shows three things:
 
 1. **The platform starts every update.** The Cluster Version Operator, CRI-O on the nodes and OLM
    make the requests; an admin picks the target. Nothing in an application namespace takes part.
@@ -15,11 +14,13 @@ shows three things:
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/threat-model/proxy-update-threat-model.dark.png">
   <source srcset="diagrams/threat-model/proxy-update-threat-model.light.png">
-  <img alt="Threat model of a cluster update through the enterprise proxy. Inside the cluster, the platform (the nodes and the openshift namespaces) starts every update: the Cluster Version Operator asks api.openshift.com for the update graph, an admin picks the target, the CVO checks the release signature at mirror.openshift.com, CRI-O on each node pulls the payload from quay.io and its CDN and checks each pull against the repository allowlist and the sigstore signature, and OLM installs only approved operators from registry.redhat.io. Every request is HTTPS on TCP 443 through the proxy, whose allowlist holds only Red Hat hosts and refuses everything else. Application pods are outside that boundary: the platform gives them no proxy settings, and the firewall gives them no direct route, so a pod cannot reach the internet. Controls: C1 firewall lets only the proxy out; C2 the cluster-wide proxy affects system components only; C3 proxy allowlist; C4 release and image signature checks; C5 repository allowlist and admission policy; C6 catalog control." src="diagrams/threat-model/proxy-update-threat-model.light.png">
+  <img alt="Threat model of updating a cluster through the enterprise proxy. Inside the OpenShift cluster, the platform (the nodes and the openshift namespaces) starts every update: the Cluster Version Operator fetches the update graph and the release signature, CRI-O on each node pulls the payload images and their sigstore signatures, and OLM pulls only approved operators. Every one of these flows is HTTPS on TCP 443 through the enterprise proxy, whose allowlist holds only Red Hat hosts: api.openshift.com, mirror.openshift.com, quay.io with its CDN, and registry.redhat.io; anything else gets 403. The cluster admin only picks the target with oc adm upgrade. Application namespaces sit in their own trust boundary: the platform gives application pods no proxy settings and the firewall gives them no direct route, so an attempt to reach any other internet host is blocked (threat T1). A pod's image is still pulled by CRI-O through the proxy, so the image allowlist decides what may be pulled (threat T4, control C5). Residual risk and open items: a team may set its own proxy in its pods, which is deliberate and still reaches only Red Hat hosts; OLM operators inherit the proxy, so only approved catalogs; TLS interception at the proxy is an open decision." src="diagrams/threat-model/proxy-update-threat-model.light.png">
 </picture>
 
-*One update through the proxy. Red dashed outlines are trust boundaries; C1–C6 are controls, T1 the
-attempt this design must stop.*
+*Trust boundaries (red dashed): the internet, the cluster, and inside it the platform, which starts every
+update, and the application namespaces. Platform flows (solid) are TCP 443 through the proxy to Red Hat
+hosts; C1–C6 are the controls, T1, T4 and T6 the threats drawn where they occur (all seven are in the
+table below).*
 
 ## Who calls which Red Hat host
 
