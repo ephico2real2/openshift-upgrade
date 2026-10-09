@@ -399,14 +399,14 @@ In order:
 
 | Decision | From | Blocks |
 |---|---|---|
-| May cluster nodes reach Red Hat's hosts through the proxy? | Security | Step 2 or Step 3 |
-| Telemetry and Insights on or off? | Security | Step 2 allowlist and pull secret |
-| ~~Will the proxy intercept TLS to Red Hat hosts?~~ Answered 2026-10-09: yes, with the enterprise CA every node trusts | Network team | Step 2 proxy configuration |
-| Filtered or stock operator catalog? | Platform team | Step 2 catalog phase, Step 3 catalog runs |
-| Quay subscription, platform and build partner | Management | Step 3 |
+| May cluster nodes reach Red Hat's hosts through the proxy? | Security | The proxy approach (preferred) or the mirror approach (fallback) |
+| Telemetry and Insights on or off? | Security | The proxy allowlist and the pull secret |
+| ~~Will the proxy intercept TLS to Red Hat hosts?~~ Answered 2026-10-09: yes, with the enterprise CA every node trusts | Network team | The proxy configuration |
+| Filtered or stock operator catalog? | Platform team | The catalog phase of the proxy approach; the catalog runs of the mirror approach |
+| Quay subscription, platform and build partner | Management | Only if the fallback is chosen and Quay is picked as its registry product |
 | Five RHEL 9 hosts, DNS names, internal-CA certificates and firewall flows | Infrastructure, network teams | Everything ([`PREREQUISITES.md`](PREREQUISITES.md)) |
-| Which datacenter holds the lab; how many clusters each production registry serves | Platform team | Registry layout; whether Step 3 is needed |
-| Monthly z-stream window | Platform team | All steps |
+| Which datacenter holds the lab; how many clusters each production registry serves | Platform team | Registry layout, fallback only |
+| Monthly z-stream window | Platform team | Either option |
 
 ## Diagram sources
 
