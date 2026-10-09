@@ -1,13 +1,15 @@
 # mirror-gui fixes (fork) and a Stream 9 test VM
 
 Fixes for the three issues drafted in [`../mirror-gui-issues.md`](../mirror-gui-issues.md), made on
-branch `fix/tls-deps-bind` on top of upstream `openshift/mirror-gui` commit `3cec34f`. The commits are
-kept here as [`patches/`](patches/) until the fork `ephico2real2/mirror-gui` exists.
+branch `fix/tls-deps-bind` on top of upstream `openshift/mirror-gui` commit `3cec34f`, pushed to the fork
+[`ephico2real2/mirror-gui`](https://github.com/ephico2real2/mirror-gui/tree/fix/tls-deps-bind). The same
+commits are kept here as [`patches/`](patches/).
 
 | Patch | Issue | Change |
 |---|---|---|
 | `0001` | 1, TLS | No more hardcoded `--src-tls-verify=false --dest-tls-verify=false`. Source TLS is verified unless the per-run option `skipSourceTlsVerify` (UI switch with a warning) is on. The destination is always `file://`, so there is no destination TLS to set |
 | `0002`, `0004` | 3, open port | `local-build.sh` and `mirror-gui.sh` publish on `WEB_BIND_ADDRESS`, default `127.0.0.1`; any other address prints a warning. README and `--help` document it and SSH tunnelling |
+| `0005` | 1 and 2 | E2E tests for the TLS switch and the dependency UI, as `AGENTS.md` asks for UI workflows; `API.md` and `TESTS.md` updated |
 | `0003` | 2, dependencies | `catalog_metadata.py` writes `dependency-graph.json`: per channel head, package dependencies plus required APIs resolved to the one package providing them; ambiguous or unprovided APIs are listed, not guessed. The API follows dependencies of dependencies for the chosen channel; the UI re-checks when the channel changes, uses real default channels and warns about unresolved APIs |
 
 ## What was tested, and where
@@ -19,7 +21,7 @@ In the Claude Code cloud container (Ubuntu, Node 22, as root), on 2026-10-09:
   on upstream: it needs a non-root user.
 - **New tests fail on the old code:** 3 TLS tests and 5 dependency API tests fail on upstream and pass
   with the patches.
-- **Browser tests (Playwright, as CI):** 110 of 110 with one worker, as CI runs them. With 3 workers,
+- **Browser tests (Playwright, as CI):** 114 of 114 with one worker, as CI runs them (110 existing, 4 new). With 3 workers,
   one or two bulk-delete row tests failed, different ones on each run.
 - **Lint and type check:** ESLint is clean; `tsc` has no new errors (the server's one type error at
   the registry-auth handler is upstream's).

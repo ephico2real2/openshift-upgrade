@@ -1,0 +1,310 @@
+From 8b419ee47e670f052e078d1ca2e47b45183457d2 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Fri, 9 Oct 2026 01:12:52 +0000
+Subject: [PATCH 5/5] Add E2E tests and API/TESTS docs for the TLS and
+ dependency changes
+
+Following AGENTS.md (E2E tests for UI workflows; API changes in
+API.md):
+
+- tests/e2e/tlsVerification.spec.ts: the "Skip TLS verification for
+  source registries" switch is off by default, the start request only
+  carries skipSourceTlsVerify when it is turned on, and its popover
+  warns against it.
+- tests/e2e/dependencyDetection.spec.ts: auto-added dependencies use
+  their real default channel or no channel filter (never a guessed
+  one), and unresolved required APIs are shown as a warning.
+- API.md: the dependencies endpoint's channel parameter and the
+  reason, api, requiredBy, defaultChannel, unresolvedApis and
+  resolution fields.
+- TESTS.md: the new and extended test files and the updated counts.
+
+Full Playwright suite: 114 of 114 with one worker, as CI runs it.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_019qihKhjEgccdwcruX2zHff
+---
+ API.md                                | 42 +++++++++++++---
+ TESTS.md                              | 15 +++---
+ tests/e2e/dependencyDetection.spec.ts | 54 +++++++++++++++++++++
+ tests/e2e/tlsVerification.spec.ts     | 70 +++++++++++++++++++++++++++
+ 4 files changed, 168 insertions(+), 13 deletions(-)
+ create mode 100644 tests/e2e/dependencyDetection.spec.ts
+ create mode 100644 tests/e2e/tlsVerification.spec.ts
+
+diff --git a/API.md b/API.md
+index e124982..447d532 100644
+--- a/API.md
++++ b/API.md
+@@ -515,17 +515,18 @@ Reload the in-memory operator cache from the current local catalog snapshot or f
+ ```
+ 
+ #### GET /api/operators/:operator/dependencies
+-Get dependencies for a specific operator.
++Get the dependencies of an operator: package dependencies and required APIs, followed transitively.
+ 
+ **Parameters:**
+ - `operator`: Operator name
+ 
+ **Query Parameters:**
+ - `catalogUrl` (optional): Specific catalog URL to search. If omitted, searches all catalogs.
++- `channel` (optional): Channel whose head bundle's requirements are used. Defaults to the operator's default channel; an unknown channel also falls back to it.
+ 
+ **Example Request:**
+ ```bash
+-curl "http://localhost:3000/api/operators/odf-operator/dependencies?catalogUrl=registry.redhat.io/redhat/redhat-operator-index:v4.21"
++curl "http://localhost:3000/api/operators/odf-operator/dependencies?catalogUrl=registry.redhat.io/redhat/redhat-operator-index:v4.21&channel=stable-4.21"
+ ```
+ 
+ **Response:**
+@@ -533,30 +534,57 @@ curl "http://localhost:3000/api/operators/odf-operator/dependencies?catalogUrl=r
+ {
+   "operator": "odf-operator",
+   "catalogType": "redhat-operator-index",
+-  "catalogVersion": "v4.18",
++  "catalogVersion": "v4.21",
++  "channel": "stable-4.21",
++  "resolution": "graph",
+   "dependencies": [
+     {
+       "packageName": "mcg-operator",
+-      "versionRange": ">=4.9.0 <=4.17.0",
++      "versionRange": ">=4.9.0 <=4.21.0",
++      "reason": "package",
+       "requiredBy": "odf-operator",
+-      "catalog": "registry.redhat.io/redhat/redhat-operator-index:v4.18"
++      "defaultChannel": "stable-4.21",
++      "catalog": "registry.redhat.io/redhat/redhat-operator-index:v4.21"
++    },
++    {
++      "packageName": "example-provider",
++      "versionRange": null,
++      "reason": "api",
++      "api": "example.com/v1/Widget",
++      "requiredBy": "mcg-operator",
++      "defaultChannel": "stable"
+     }
+   ],
+-  "count": 1
++  "unresolvedApis": [
++    {
++      "api": "monitoring.coreos.com/v1/ServiceMonitor",
++      "candidates": [],
++      "requiredBy": "odf-operator"
++    }
++  ],
++  "count": 2
+ }
+ ```
+ 
++**Response fields:**
++- `dependencies[].reason`: `package` for `olm.package.required`; `api` for an `olm.gvk.required` API that exactly one package in the catalog provides (`api` names it).
++- `dependencies[].requiredBy`: the package that needs it; dependencies of dependencies are included, each followed through its own default channel.
++- `dependencies[].defaultChannel`: the dependency's real default channel from the catalog.
++- `unresolvedApis`: required APIs provided by several packages (`candidates`) or by none in this catalog (empty `candidates`, for example an API the platform serves). They are reported, not guessed.
++- `resolution`: `graph` when the catalog has `dependency-graph.json`; `legacy` for catalog data synced before it existed, where only package dependencies of the default channel head are known.
++
+ **Response (no dependencies):**
+ ```json
+ {
+   "operator": "some-operator",
+   "dependencies": [],
++  "unresolvedApis": [],
+   "message": "No dependencies found for this operator"
+ }
+ ```
+ 
+ **Notes:**
+-- Dependencies are pre-computed during catalog fetch for faster runtime lookups
++- Dependencies are pre-computed during catalog fetch (`dependency-graph.json`) for faster runtime lookups
+ - If `catalogUrl` is omitted, searches all available catalogs and returns the first match
+ 
+ ### Operations Management
+diff --git a/TESTS.md b/TESTS.md
+index 2a4898b..53012d3 100644
+--- a/TESTS.md
++++ b/TESTS.md
+@@ -48,11 +48,11 @@ Server API tests using Supertest against the Express server. Each suite starts a
+ | `health.test.ts`              | 1     | `GET /api/health` -- returns `healthy` status, `mirror-gui` service name, valid ISO timestamp             |
+ | `catalogs.test.ts`            | 2     | `GET /api/catalogs` -- prefetched catalogs with operator counts, `digest` / `syncedAt` fields, error path |
+ | `channels.test.ts`            | 1     | `GET /api/channels` -- returns OCP channel names (stable-4.16 through stable-4.21)                        |
+-| `operators.test.ts`           | 15    | `GET /api/operators` -- operator listing, filtering by catalog/version, search, pagination                |
++| `operators.test.ts`           | 20    | `GET /api/operators` -- operator listing, filtering by catalog/version, search, pagination; `GET /api/operators/:operator/dependencies` -- transitive dependencies, required APIs resolved, unresolved APIs reported, requested channel, fallback to `dependencies.json` |
+ | `config.test.ts`              | 12    | Config API -- list, save, upload, delete, validate YAML configurations                                    |
+ | `configDownload.test.ts`      | 4     | `GET /api/config/download/:filename` -- invalid extension, traversal-safe basename, 404, successful download |
+ | `operations.test.ts`          | 7     | Operations API -- list, recent operations, stats (total/successful/failed/running)                        |
+-| `operationsLifecycle.test.ts` | 6     | Operations lifecycle -- start, stop, logs, details, SSE streaming, 404 handling                           |
++| `operationsLifecycle.test.ts` | 10    | Operations lifecycle -- start, stop, logs, details, SSE streaming, 404 handling; source TLS verified by default, `skipSourceTlsVerify` opt-in and validation |
+ | `settings.test.ts`            | 4     | Settings API -- registries list, cache cleanup, `POST /api/registries/verify` validation                   |
+ | `system.test.ts`              | 3     | System API -- path availability, system info (oc-mirror version, architecture, disk space), system status |
+ | `pullSecret.test.ts`          | 11    | Pull secret API -- status, content, save/validate, delete, system status / hostDataDir                     |
+@@ -67,6 +67,7 @@ Server API tests using Supertest against the Express server. Each suite starts a
+ | ------------------------------ | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+ | `auditFetchCatalogs.test.ts`   | 2     | Tests `scripts/audit-fetch-catalogs.mjs` logic using synthetic fixtures -- detects version metadata mismatches and JSON parse errors                                                                                                                   |
+ | `catalogDataIntegrity.test.ts` | 94    | Validates all committed catalog metadata: `catalog-index.json` has all 6 OCP versions and 3 catalog types, all 18 catalogs have valid `operators.json` (with required fields and minimum operator counts), `dependencies.json`, `catalog-info.json`, and optional `digest`/`synced_at` fields |
++| `catalogMetadataGraph.test.ts` | 5     | Runs `scripts/catalog_metadata.py generate` on the synthetic catalog in `tests/fixtures/fbc-dependency-graph` -- per-channel heads, required APIs resolved to their provider, ambiguous/unprovided/self-provided APIs, unchanged `operators.json`/`dependencies.json`, and the generated graph matches the server fixture |
+ | `shellcheck.test.ts`           | 7     | Runs ShellCheck on shell scripts when available; skips gracefully otherwise                                                                                                                                                                            |
+ 
+ 
+@@ -87,6 +88,8 @@ Runs Playwright browser tests using headless Chromium (port 3001 in CI via dev s
+ | `settings.spec.ts`           | 5     | Settings page -- Pull Secret/Registry/Cache/Sync Catalogs tabs, key fields visible, sync and clear buttons                       |
+ | `configToOperations.spec.ts` | 1     | End-to-end workflow -- saves a YAML config via API, navigates to operations page, confirms it appears                          |
+ | `pullSecret.spec.ts`         | 6     | Pull secret -- Dashboard pull secret status, Environment Status label, popover, Pull Secret tab, URL tab navigation, status persistence   |
++| `tlsVerification.spec.ts`    | 3     | Advanced Options -- "Skip TLS verification for source registries" off by default, opt-in sends `skipSourceTlsVerify`, warning popover |
++| `dependencyDetection.spec.ts` | 1    | Mirror Configuration -- auto-added dependencies use their real default channel (no guessed channel), unresolved required APIs shown as a warning |
+ 
+ 
+ Playwright reports are uploaded as CI artifacts (retained 14 days).
+@@ -149,9 +152,9 @@ npm run audit:fetch-catalogs
+ | Category         | Files  | Test Cases |
+ | ---------------- | ------ | ---------- |
+ | Unit             | 3      | 46         |
+-| Integration      | 13     | 71         |
+-| Scripts          | 3      | 103        |
+-| E2E (Playwright) | 8      | 51         |
+-| **Total**        | **27** | **271**    |
++| Integration      | 13     | 80         |
++| Scripts          | 4      | 108        |
++| E2E (Playwright) | 10     | 55         |
++| **Total**        | **30** | **289**    |
+ 
+ 
+diff --git a/tests/e2e/dependencyDetection.spec.ts b/tests/e2e/dependencyDetection.spec.ts
+new file mode 100644
+index 0000000..6263e41
+--- /dev/null
++++ b/tests/e2e/dependencyDetection.spec.ts
+@@ -0,0 +1,54 @@
++import { test, expect, Route } from '@playwright/test';
++
++// The UI adds what GET /api/operators/:operator/dependencies returns: transitive dependencies
++// with their real default channels, and shows required APIs it could not resolve as a warning.
++
++test.describe('Mirror Configuration - dependency detection', () => {
++  test('adds transitive dependencies with real channels and warns about unresolved APIs', async ({ page }) => {
++    const depRequests: string[] = [];
++    await page.route('**/api/operators/odf-operator/dependencies*', (route: Route) => {
++      depRequests.push(route.request().url());
++      return route.fulfill({
++        status: 200,
++        contentType: 'application/json',
++        body: JSON.stringify({
++          operator: 'odf-operator',
++          channel: 'stable-4.21',
++          resolution: 'graph',
++          dependencies: [
++            { packageName: 'mcg-operator', reason: 'package', requiredBy: 'odf-operator', defaultChannel: 'stable-4.21' },
++            { packageName: 'e2e-api-provider', reason: 'api', api: 'example.com/v1/Widget', requiredBy: 'mcg-operator' },
++          ],
++          unresolvedApis: [
++            { api: 'monitoring.coreos.com/v1/ServiceMonitor', candidates: [], requiredBy: 'odf-operator' },
++          ],
++          count: 2,
++        }),
++      });
++    });
++
++    await page.goto('/config');
++    await page.getByRole('tab', { name: /Operators/ }).click();
++    await page.getByRole('button', { name: 'Add operator catalog' }).click();
++    await expect(page.getByRole('button', { name: /redhat-operator-index/ })).toBeVisible({ timeout: 10_000 });
++    await page.getByRole('button', { name: 'Add operator', exact: true }).click();
++    const operatorInput = page.getByPlaceholder('Type to search operators...');
++    await operatorInput.fill('odf');
++    await page.getByRole('option', { name: 'odf-operator' }).click();
++
++    await expect(page.getByText('Auto-added 2 dependency package(s) for odf-operator')).toBeVisible({ timeout: 10_000 });
++    const warning = page.locator('.pf-v6-c-alert.pf-m-warning');
++    await expect(warning).toContainText('monitoring.coreos.com/v1/ServiceMonitor');
++    await expect(warning).toContainText('no package in this catalog provides it');
++
++    expect(depRequests[0]).toContain('catalogUrl=');
++
++    await page.getByRole('tab', { name: /Preview/ }).click();
++    const yaml = (await page.locator('#yaml-preview').textContent()) ?? '';
++    expect(yaml).toContain('mcg-operator');
++    expect(yaml).toContain('stable-4.21');
++    // no guessed channel: a dependency without a known default channel has no channel filter
++    const providerBlock = yaml.slice(yaml.indexOf('e2e-api-provider'));
++    expect(providerBlock.split('\n').slice(0, 3).join('\n')).not.toMatch(/channels:/);
++  });
++});
+diff --git a/tests/e2e/tlsVerification.spec.ts b/tests/e2e/tlsVerification.spec.ts
+new file mode 100644
+index 0000000..c442d9b
+--- /dev/null
++++ b/tests/e2e/tlsVerification.spec.ts
+@@ -0,0 +1,70 @@
++import { test, expect, Route } from '@playwright/test';
++import { MINIMAL_ISC_YAML } from '../helpers/minimalConfig.js';
++
++// Source registry TLS is verified unless the user opts out for one operation.
++
++test.describe('Start Operation - source TLS verification', () => {
++  const createdConfigs: string[] = [];
++
++  test.afterAll(async ({ request }) => {
++    for (const name of createdConfigs) {
++      await request.delete(`/api/config/delete/${name}`).catch(() => {});
++    }
++  });
++
++  async function startWithCapturedFlags(page: import('@playwright/test').Page, skipTls: boolean) {
++    const configName = `e2e-tls-${skipTls ? 'skip' : 'default'}-${Date.now()}.yaml`;
++    createdConfigs.push(configName);
++    const saveRes = await page.request.post('/api/config/save', {
++      data: { config: MINIMAL_ISC_YAML, name: configName },
++    });
++    expect(saveRes.ok()).toBeTruthy();
++
++    let sentBody: Record<string, unknown> | null = null;
++    await page.route('**/api/operations/start', (route: Route) => {
++      if (route.request().method() !== 'POST') return route.fallback();
++      sentBody = route.request().postDataJSON();
++      return route.fulfill({
++        status: 200,
++        contentType: 'application/json',
++        body: JSON.stringify({ message: 'Operation started successfully', operationId: 'e2e-tls-op' }),
++      });
++    });
++
++    await page.goto('/operations');
++    await expect(page.getByRole('heading', { name: 'Start New Operation' })).toBeVisible({ timeout: 15000 });
++    const configToggle = page.getByLabel('Select ImageSetConfiguration file');
++    await configToggle.click();
++    await page.getByRole('option', { name: new RegExp(configName) }).click();
++
++    await page.getByRole('button', { name: /Advanced Options/i }).click();
++    const tlsSwitch = page.getByLabel('Skip TLS verification for source registries');
++    await expect(tlsSwitch).toBeVisible();
++    await expect(tlsSwitch).not.toBeChecked();
++    if (skipTls) {
++      await page.locator('#flag-skip-source-tls-verify').click({ force: true });
++      await expect(tlsSwitch).toBeChecked();
++    }
++
++    await page.getByRole('button', { name: 'Start Operation' }).click();
++    await expect.poll(() => sentBody, { timeout: 10000 }).not.toBeNull();
++    return sentBody as unknown as { optionalFlags?: Record<string, unknown> };
++  }
++
++  test('switch is off by default and the request does not skip TLS', async ({ page }) => {
++    const body = await startWithCapturedFlags(page, false);
++    expect(body.optionalFlags?.skipSourceTlsVerify).toBeUndefined();
++  });
++
++  test('turning the switch on sends skipSourceTlsVerify', async ({ page }) => {
++    const body = await startWithCapturedFlags(page, true);
++    expect(body.optionalFlags?.skipSourceTlsVerify).toBe(true);
++  });
++
++  test('the info popover warns against skipping TLS', async ({ page }) => {
++    await page.goto('/operations');
++    await page.getByRole('button', { name: /Advanced Options/i }).click();
++    await page.getByLabel('More info about skipping TLS verification').click();
++    await expect(page.getByText(/Not recommended/)).toBeVisible();
++  });
++});
+-- 
+2.43.0
+

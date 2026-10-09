@@ -1,7 +1,7 @@
 From 2101c2b22e3824c4143b1e5aa805843bd984eac1 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 9 Oct 2026 00:55:40 +0000
-Subject: [PATCH 4/4] Document WEB_BIND_ADDRESS in the scripts' help
+Subject: [PATCH 4/5] Document WEB_BIND_ADDRESS in the scripts' help
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_019qihKhjEgccdwcruX2zHff

@@ -1,7 +1,7 @@
 From 2773c9c9c05bab5f2a2ead77773a143af11320d8 Mon Sep 17 00:00:00 2001
 From: Claude <noreply@anthropic.com>
 Date: Fri, 9 Oct 2026 00:45:00 +0000
-Subject: [PATCH 3/4] Detect operator dependencies per channel, transitively,
+Subject: [PATCH 3/5] Detect operator dependencies per channel, transitively,
  including required APIs
 
 Dependency detection read only olm.package.required, only from the
