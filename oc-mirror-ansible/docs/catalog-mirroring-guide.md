@@ -191,6 +191,9 @@ The lab install from the mirrored catalog stays the check that the set is comple
 4. Copy the `packages:` block from the YAML preview into `vars/catalogs-<group>.yml`, review it in
    Git as usual, then continue with Step 3.
 
+Draft upstream issues for the TLS flags, the dependency gaps and the open port are in
+[`docs/upstream/mirror-gui-issues.md`](../../docs/upstream/mirror-gui-issues.md).
+
 ## Step 3 — Build the catalog ImageSet
 
 You describe each group of catalogs in a small, non-secret vars file. The playbook turns it into an ImageSet with the catalog tag set to `v` + the version. Use **two groups**, because the Red Hat catalog keeps its image signatures and the partner catalogs don't (see Step 5):
