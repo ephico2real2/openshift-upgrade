@@ -7,7 +7,7 @@ format: a single `<section>` with inline styles and, last, an `<aside>` of speak
 
 | Deck | Published at | Slides | Presents |
 |---|---|---|---|
-| [`openshift-update-plan/`](openshift-update-plan/) | https://claude.ai/artifact/Fo4b3ncXoHibc2Xo4p1ATY | 25 | [`../SOLUTIONS.md`](../SOLUTIONS.md), [`../PREREQUISITES.md`](../PREREQUISITES.md), [`../PROBLEM-STATEMENT.md`](../PROBLEM-STATEMENT.md), the recommendation and the decisions needed |
+| [`openshift-update-plan/`](openshift-update-plan/) | https://claude.ai/artifact/Fo4b3ncXoHibc2Xo4p1ATY | 26 | [`../SOLUTIONS.md`](../SOLUTIONS.md), [`../PREREQUISITES.md`](../PREREQUISITES.md), [`../PROBLEM-STATEMENT.md`](../PROBLEM-STATEMENT.md), the recommendation and the decisions needed |
 | [`threat-model/`](threat-model/) | https://claude.ai/artifact/WsUCY5bQkUzHVaKAtCKZgS | 12 | [`../enterprise-proxy/THREAT-MODEL.md`](../enterprise-proxy/THREAT-MODEL.md): the proxy approach as a threat model, who decides, and the one condition for security |
 
 The slides embed figures as `/_blob/<id>` uploads of the artifact. Every one is a light PNG from
