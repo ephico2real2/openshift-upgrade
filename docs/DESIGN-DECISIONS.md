@@ -47,7 +47,7 @@ research found*
 
 | ID | Question | Recommendation | Waiting on |
 |---|---|---|---|
-| D1 | Which design do we build? | **Team position, 2026-10-05, refined 2026-10-09:** two approaches. Preferred: Option 1, the proxy approach, which other teams (VMware, TKG) already update through. Fallback: the mirror approach automated, the Ansible playbooks on a schedule into the new registries, with Option 2's Red Hat Quay on-prem as that registry once built | Security's answer on which machines may reach Red Hat; for the alternative, a Red Hat Consulting engagement and a Quay specialist |
+| D1 | Which design do we build? | **Team position, 2026-10-05, refined 2026-10-09:** two independent options. Preferred: Option 1, the proxy approach, which other teams (VMware, TKG) already update through; it needs no mirror at all. Fallback only: the mirror approach automated, the Ansible playbooks on a schedule into the new registries. Option 2, Red Hat Quay on-prem, would only change the registry product of that same mirror approach: not a third option | Security's answer on which machines may reach Red Hat; for the alternative, a Red Hat Consulting engagement and a Quay specialist |
 | D2 | Filtered catalog (model A) or allowlist on the stock catalog (model B)? | Model A, keeping a mirror registry for the catalog image alone | D1 (the registry product is answered: mirror registry for Red Hat OpenShift, [`PREREQUISITES.md`](PREREQUISITES.md)) |
 | D3 | Keep telemetry and Insights on? | Security team's call | Security |
 | D4 | Will the proxy decrypt traffic to Red Hat hosts? | **Answered 2026-10-09: yes.** The proxy re-signs with the enterprise CA, which every node trusts; the same CA goes into `trustedCA`; `sso.redhat.com` excluded from re-encryption | Red Hat's support position on inspecting `quay.io` and `registry.redhat.io` (still unverified) |
@@ -73,10 +73,11 @@ How that position sits against the research of 2026-09-25:
   the table below; Red Hat does not document it.
 
 **Refined (2026-10-09).** The recommendation is two-fold ([`SOLUTIONS.md`](SOLUTIONS.md),
-Recommendation), two approaches rather than steps in sequence: the proxy approach first, since other
-teams already update VMware and Tanzu Kubernetes Grid through the same enterprise proxy; and, as the
-fallback, the mirror approach automated, the Ansible playbooks on a schedule into the new registries,
-with Quay on-prem as that registry once built.
+Recommendation), two independent options rather than steps in sequence: the proxy approach first,
+which needs no mirror at all, since other teams already update VMware and Tanzu Kubernetes Grid
+through the same enterprise proxy; and, as the fallback only, the mirror approach automated, the
+Ansible playbooks on a schedule into the new registries. Red Hat Quay on-prem would only change the
+registry product of that mirror approach; it is not a third option and adds no value of its own.
 
 The choice turns on one security answer: which machines may reach Red Hat through the proxy.
 

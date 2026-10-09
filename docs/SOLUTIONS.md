@@ -356,43 +356,44 @@ Detail: [`quay-onprem/README.md`](quay-onprem/README.md).
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/three-steps/decision.dark.png">
   <source srcset="diagrams/three-steps/decision.light.png">
-  <img alt="How the team chooses, two approaches side by side. Now, the Ansible playbooks take the clusters from 4.18.17 to 4.20 with the mirror as today, because 4.18's EUS term ends on 25 February 2027. In parallel security answers one question: may cluster nodes reach Red Hat's hosts through the enterprise proxy? Yes leads to the preferred path, the proxy approach: the retrofit runbook, lower environments first; VMware and TKG already update through this proxy; the mirror is kept only until each cluster is retrofitted. No leads to the fallback, the mirror approach automated: build the new registries, run the Ansible playbooks on a timer, Red Hat Quay on-prem once it is built; the playbooks become the engine." src="diagrams/three-steps/decision.light.png">
+  <img alt="How the team chooses: two independent options. Security answers one question: may cluster nodes reach Red Hat's hosts through the enterprise proxy? Yes leads to the preferred option, the proxy approach, which needs no mirror at all: no mirror, no sync, no local Update Service; VMware and TKG already update through this proxy; the retrofit runbook, lower environments first; updates then come straight from Red Hat. No leads to the fallback only, the mirror approach automated: the Ansible playbooks on a timer into the new registries, a local Update Service stays required, and a person no longer runs the sync. Red Hat Quay on-prem would only change the registry product of that same mirror approach; it is not a third option. Under either option the clusters must be on 4.20 before 4.18's EUS term ends on 25 February 2027." src="diagrams/three-steps/decision.light.png">
 </picture>
 
-*Proposed decision flow, two approaches. Only the Ansible playbooks exist today.*
+*Proposed decision flow: two independent options. Only the Ansible playbooks exist today.*
 
-The recommendation is two-fold, and the two are approaches, not steps in sequence:
+The recommendation is two-fold. The two are independent options, not steps in sequence, and the
+proxy approach needs no mirror at all:
 
-1. **Preferred: the proxy approach** ([`enterprise-proxy/`](enterprise-proxy/README.md)). Other teams
-   already update their platforms through the same enterprise proxy, among them VMware and Tanzu
-   Kubernetes Grid (TKG), so platform egress through the proxy to a vendor's hosts is established
-   practice in our network. The proxy approach extends it to the OpenShift nodes, with only Red Hat's
-   documented hosts allowed. It uses only documented configuration and removes the sync entirely.
-2. **Fallback: the mirror approach, automated.** Build the two bastions and three registries
-   ([`PREREQUISITES.md`](PREREQUISITES.md)) and run the Ansible playbooks on a schedule
-   ([`quay-onprem/`](quay-onprem/README.md) is that design), so no person runs the sync; Red Hat Quay
-   on-prem is the registry for it once built.
+1. **Preferred: the proxy approach** ([`enterprise-proxy/`](enterprise-proxy/README.md)). No
+   mirror, no sync, no local Update Service: the clusters take their updates straight from Red Hat
+   through the enterprise proxy, as a connected cluster does. Other teams already update their
+   platforms through the same proxy, among them VMware and Tanzu Kubernetes Grid (TKG), so platform
+   egress through the proxy to a vendor's hosts is established practice in our network. The proxy
+   approach extends it to the OpenShift nodes, with only Red Hat's documented hosts allowed, using
+   only documented configuration.
+2. **Fallback only: the mirror approach, automated.** If security does not approve node egress, the
+   Ansible playbooks run on a schedule into the new registries, so a person no longer runs the sync;
+   a local Update Service stays required. Red Hat Quay on-prem ([`quay-onprem/`](quay-onprem/README.md))
+   would only change the registry product of this same approach; it is not a third option and adds
+   no value of its own.
 
 ```text
-Now: the Ansible playbooks take the clusters to 4.20, mirror as today (4.18 EUS ends 25 Feb 2027)
-  -> security: may cluster nodes reach Red Hat's hosts through the proxy?
-       yes -> 1 · preferred: the proxy approach, the retrofit runbook   (mirror kept until each cluster is retrofitted)
-       no  -> 2 · fallback: the mirror approach, automated              (the playbooks become the engine)
+Security: may cluster nodes reach Red Hat's hosts through the proxy?
+  yes -> 1 · preferred: the proxy approach, the retrofit runbook; no mirror at all   (mirror retired per cluster)
+  no  -> 2 · fallback only: the mirror approach, automated on the new registries      (mirror stays, on a schedule)
+Either option: the clusters must be on 4.20 before 4.18's EUS term ends on 25 Feb 2027.
 ```
 
 In order:
 
-1. **First:** build the two bastions and three registries ([`PREREQUISITES.md`](PREREQUISITES.md)).
-   Both approaches need them.
-2. **Now:** use the Ansible playbooks to take the clusters from 4.18.17 to 4.20, mirroring the road
-   back to back before any cluster updates. 4.18's EUS term ends on 25 February 2027, so this cannot
-   wait for the decision.
-3. **In parallel:** take the proxy approach to security, with the precedent that VMware and TKG
-   already update through the proxy.
-4. **If security approves node egress:** run the retrofit runbook in lower environments, then
-   production, one cluster per window.
-5. **If security does not approve it:** put the Ansible playbooks on a schedule into the new
-   registries, and build Quay on-prem as that registry.
+1. **Now:** take the proxy approach to security, with the precedent that VMware and TKG already
+   update through the proxy.
+2. **If security approves node egress:** run the retrofit runbook in lower environments, then
+   production, one cluster per window. The mirror is retired as each cluster is retrofitted.
+3. **If security does not approve it:** build the two bastions and three registries
+   ([`PREREQUISITES.md`](PREREQUISITES.md)) and put the Ansible playbooks on a schedule into them.
+4. **Under either option:** the clusters must be on 4.20 before 4.18's EUS term ends on 25 February
+   2027, so the decision has to come early enough to run the chosen approach by then.
 
 ## Decisions needed
 
