@@ -6,6 +6,8 @@ Issue 3 exposes a credential, so consider sending it to Red Hat's security conta
 
 Fixes for all three, as patches for a fork, are in [`mirror-gui-fork/`](mirror-gui-fork/).
 
+Threat model with a diagram: [`mirror-gui-fork/THREAT-MODEL.md`](mirror-gui-fork/THREAT-MODEL.md).
+
 Why these matter for us: [catalog guide, Step 2](../../oc-mirror-ansible/docs/catalog-mirroring-guide.md#optional-plan-the-operator-list-with-mirror-gui).
 
 ---

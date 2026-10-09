@@ -12,6 +12,8 @@ commits are kept here as [`patches/`](patches/).
 | `0005` | 1 and 2 | E2E tests for the TLS switch and the dependency UI, as `AGENTS.md` asks for UI workflows; `API.md` and `TESTS.md` updated |
 | `0003` | 2, dependencies | `catalog_metadata.py` writes `dependency-graph.json`: per channel head, package dependencies plus required APIs resolved to the one package providing them; ambiguous or unprovided APIs are listed, not guessed. The API follows dependencies of dependencies for the chosen channel; the UI re-checks when the channel changes, uses real default channels and warns about unresolved APIs |
 
+The threat model behind these fixes, with a data-flow diagram, is in [`THREAT-MODEL.md`](THREAT-MODEL.md).
+
 ## What was tested, and where
 
 In the Claude Code cloud container (Ubuntu, Node 22, as root), on 2026-10-09:

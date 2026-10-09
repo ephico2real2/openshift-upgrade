@@ -1,0 +1,173 @@
+<!-- Started from the diagram-kit template (MIT-0), https://github.com/ephico2real2/diagram-kit. Figure for docs/upstream/mirror-gui-fork/THREAT-MODEL.md. -->
+<title>Mirror-GUI Threat Model</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root {
+  --ground: #f5f6f8; --surface: #ffffff; --ink: #18212c; --muted: #58636f; --rule: #d7dce3;
+  --host: #a55a0b; --host-wash: #fbf1e4; --remote: #0e6f68; --remote-wash: #e3f3f1;
+  --gap: #b3261e; --gap-wash: #fbe9e7; --none: #5f6a77; --none-wash: #eef0f3;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --ground: #0e131a; --surface: #151c25; --ink: #e5e9ef; --muted: #9aa5b3; --rule: #2a3440;
+    --host: #f0a53c; --host-wash: #2a2014; --remote: #3fcfc0; --remote-wash: #122a28;
+    --gap: #f2857c; --gap-wash: #2d1614; --none: #9aa5b3; --none-wash: #1b232d;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground: #0e131a; --surface: #151c25; --ink: #e5e9ef; --muted: #9aa5b3; --rule: #2a3440;
+  --host: #f0a53c; --host-wash: #2a2014; --remote: #3fcfc0; --remote-wash: #122a28;
+  --gap: #f2857c; --gap-wash: #2d1614; --none: #9aa5b3; --none-wash: #1b232d;
+}
+* { box-sizing: border-box; }
+body { background: var(--ground); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.55; margin: 0; }
+.page { max-width: 1060px; margin: 0 auto; padding-inline: 16px; padding-block: 40px 72px; display: grid; gap: 44px; }
+header { display: grid; gap: 10px; }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font-size: clamp(26px, 4vw, 36px); line-height: 1.15; margin: 0; font-weight: 700; text-wrap: balance; }
+h2 { font-size: 20px; margin: 0 0 6px; font-weight: 600; text-wrap: balance; }
+p { margin: 0; max-width: 72ch; }
+.lede { font-size: 17px; max-width: 70ch; }
+.muted { color: var(--muted); }
+code { font-family: var(--font-mono); font-size: .9em; }
+section { display: grid; gap: 14px; }
+figure { margin: 0; display: grid; gap: 10px; }
+.fig-scroll { overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 12px; }
+.fig-scroll svg { display: block; width: 100%; min-width: 760px; height: auto; color: var(--ink); }
+figcaption { font-size: 13.5px; color: var(--muted); max-width: 80ch; }
+.tbl { overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 10px 14px; border-bottom: 1px solid var(--rule); }
+th { font-size: 12px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); background: var(--ground); }
+tr:last-child td { border-bottom: 0; }
+.yes { color: var(--remote); font-weight: 600; } .no { color: var(--gap); font-weight: 600; }
+.cell-gap { background: var(--gap-wash); }
+.decisions { display: grid; gap: 12px; }
+.decision { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 16px 20px; display: grid; gap: 8px; }
+.decision .id { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+.decision .q { font-weight: 600; }
+.decision .rec { font-size: 14px; border-left: 3px solid var(--remote); padding-left: 10px; }
+.decision .rec.warn { border-left-color: var(--host); }
+a { color: var(--remote); }
+:focus-visible { outline: 2px solid var(--remote); outline-offset: 2px; }
+</style>
+<div class="page">
+  <header>
+    <div class="eyebrow">openshift-upgrade · upstream · 2026-10-09</div>
+    <h1>Threat model: mirror-gui on a mirroring bastion</h1>
+    <p class="lede">Where the three issues sit in the data flow, the trust boundaries they cross, and what the fork changes.</p>
+  </header>
+
+  <section>
+    <h2>Data flow and threats</h2>
+    <p class="muted">T1 to T3 are the upstream issues; M1 to M3 are the fixes on the fork.</p>
+    <figure>
+      <div class="fig-scroll">
+<svg viewBox="0 0 1000 720" role="img" aria-label="Threat model of mirror-gui on a mirroring bastion. Red Hat's registries on the internet are reached through the enterprise proxy over TLS. Threat T1 is an interception on that path, which upstream mirror-gui cannot detect because it always passes tls-verify=false to oc-mirror; mitigation M1 verifies source TLS by default. On the bastion, the mirror-gui container holds the unauthenticated API, the pull secret, oc-mirror, the catalog metadata and the mirror archive. Threat T3: upstream publishes port 3000 on every interface, so other hosts on the corporate network can read or replace the pull secret and start runs; mitigation M3 publishes on 127.0.0.1 only, and the admin reaches it through an SSH tunnel. Residual risk: any local user on the bastion can still reach 127.0.0.1:3000, because the API has no authentication. Threat T2: the operator list misses dependencies, so the archive carried to the disconnected registry is incomplete and the install fails on the cluster; mitigation M2 resolves dependencies per channel, transitively, including required APIs, and warns about the ones it cannot resolve.">
+<defs><marker id="tm1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
+<g font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="currentColor">
+<rect x="20" y="14" width="960" height="74" rx="10" fill="none" stroke="var(--gap)" stroke-width="1.6" stroke-dasharray="9 5"/>
+<text x="32" y="32" fill="var(--gap)" font-family="IBM Plex Mono, monospace" font-size="11.5" font-weight="600">TRUST BOUNDARY · INTERNET</text>
+<rect x="300" y="34" width="400" height="46" rx="8" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.5"/>
+<text x="500.0" y="52" fill="var(--remote)" font-weight="600" text-anchor="middle">Red Hat registries</text>
+<text x="500.0" y="69" fill="currentColor" font-family="IBM Plex Mono, monospace" font-size="12" text-anchor="middle">registry.redhat.io · quay.io · TCP 443</text>
+<rect x="20" y="104" width="960" height="38" fill="var(--none-wash)" stroke="var(--rule)" stroke-dasharray="6 5"/>
+<text x="420" y="128" fill="var(--none)" font-weight="600" text-anchor="middle">enterprise proxy: Red Hat hosts only, TLS passes through</text>
+<rect x="728" y="115" width="30" height="20" rx="10" fill="var(--gap-wash)" stroke="var(--gap)" stroke-width="1.5"/>
+<text x="743" y="129.5" fill="var(--gap)" font-family="IBM Plex Mono, monospace" font-size="11.5" font-weight="700" text-anchor="middle">T1</text>
+<text x="766" y="129" fill="var(--gap)" font-weight="600">interception on the TLS path</text>
+<rect x="20" y="162" width="960" height="336" rx="10" fill="none" stroke="var(--gap)" stroke-width="1.6" stroke-dasharray="9 5"/>
+<text x="32" y="180" fill="var(--gap)" font-family="IBM Plex Mono, monospace" font-size="11.5" font-weight="600">TRUST BOUNDARY · MIRRORING BASTION (RHEL 9, SHARED BY ADMINS)</text>
+<rect x="40" y="194" width="660" height="196" rx="8" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5"/>
+<text x="56" y="214" fill="var(--host)" font-weight="600">mirror-gui container (Podman)</text>
+<rect x="56" y="228" width="190" height="66" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="72" y="248.5" fill="currentColor" font-weight="600">Express API :3001</text>
+<text x="72" y="265.5" fill="var(--gap)">no authentication</text>
+<text x="72" y="282.5" fill="var(--muted)">UI, config, operations</text>
+<rect x="262" y="228" width="236" height="66" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="278" y="248.5" fill="currentColor" font-weight="600">pull secret</text>
+<text x="278" y="265.5" fill="var(--muted)" font-family="IBM Plex Mono, monospace" font-size="12">GET /api/pull-secret/content</text>
+<text x="278" y="282.5" fill="var(--gap)">returns it in full</text>
+<rect x="514" y="228" width="170" height="66" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="530" y="248.5" fill="currentColor" font-weight="600">oc-mirror v2</text>
+<text x="530" y="265.5" fill="var(--muted)">child process, m2d</text>
+<text x="530" y="282.5" fill="var(--muted)">pulls from Red Hat</text>
+<rect x="262" y="308" width="236" height="66" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="278" y="328.5" fill="currentColor" font-weight="600">catalog metadata</text>
+<text x="278" y="345.5" fill="var(--muted)">operators, dependencies,</text>
+<text x="278" y="362.5" fill="var(--muted)">dependency-graph.json (M2)</text>
+<rect x="514" y="308" width="170" height="66" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="530" y="328.5" fill="currentColor" font-weight="600">archive and cache</text>
+<text x="530" y="345.5" fill="currentColor" font-family="IBM Plex Mono, monospace" font-size="12">/data on the bastion</text>
+<text x="530" y="362.5" fill="var(--muted)">taken across the gap</text>
+<path d="M600,228 L600,146" fill="none" stroke="var(--remote)" stroke-width="1.4" marker-end="url(#tm1)"/>
+<path d="M600,100 L600,84" fill="none" stroke="var(--remote)" stroke-width="1.4" marker-end="url(#tm1)"/>
+<text x="592" y="158" fill="var(--remote)" text-anchor="end">TLS 443</text>
+<rect x="608" y="167" width="30" height="20" rx="10" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5"/>
+<text x="623" y="181.5" fill="var(--host)" font-family="IBM Plex Mono, monospace" font-size="11.5" font-weight="700" text-anchor="middle">M1</text>
+<text x="644" y="181" fill="var(--host)" font-weight="600">fork: verify TLS by default</text>
+<path d="M600,294 L600,304" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#tm1)"/>
+<rect x="60" y="404" width="300" height="46" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="76" y="422" fill="currentColor" font-weight="600">host port 3000 → container 3001</text>
+<text x="76" y="439" fill="var(--gap)">upstream: 0.0.0.0, every interface</text>
+<path d="M150,404 L150,298" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#tm1)"/>
+<rect x="372" y="414" width="30" height="20" rx="10" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5"/>
+<text x="387" y="428.5" fill="var(--host)" font-family="IBM Plex Mono, monospace" font-size="11.5" font-weight="700" text-anchor="middle">M3</text>
+<text x="408" y="428" fill="var(--host)" font-weight="600">fork: 127.0.0.1 only</text>
+<rect x="716" y="194" width="248" height="112" rx="8" fill="var(--gap-wash)" stroke="var(--gap)" stroke-width="1.5"/>
+<text x="732" y="216" fill="var(--gap)" font-weight="600">Residual risk</text>
+<text x="732" y="233" fill="var(--gap)">The API still has no login: any</text>
+<text x="732" y="250" fill="var(--gap)">local user on the bastion can</text>
+<text x="732" y="267" fill="var(--gap)">reach 127.0.0.1:3000.</text>
+<text x="732" y="284" fill="var(--muted)">Use a single-user bastion or a</text>
+<text x="732" y="301" fill="var(--muted)">dedicated user; long term, auth.</text>
+<rect x="20" y="518" width="280" height="124" rx="10" fill="none" stroke="var(--gap)" stroke-width="1.6" stroke-dasharray="9 5"/>
+<text x="32" y="536" fill="var(--gap)" font-family="IBM Plex Mono, monospace" font-size="11.5" font-weight="600">ADMIN WORKSTATION</text>
+<rect x="36" y="548" width="248" height="76" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="52" y="573.5" fill="currentColor" font-weight="600">browser</text>
+<text x="52" y="590.5" fill="var(--muted)" font-family="IBM Plex Mono, monospace" font-size="12">ssh -L 3000:127.0.0.1:3000</text>
+<text x="52" y="607.5" fill="var(--host)">the only way in after M3</text>
+<path d="M160,548 L160,454" fill="none" stroke="var(--host)" stroke-width="1.4" marker-end="url(#tm1)"/>
+<text x="168" y="474" fill="var(--host)" font-weight="600">SSH tunnel</text>
+<rect x="320" y="518" width="280" height="124" rx="10" fill="none" stroke="var(--gap)" stroke-width="1.6" stroke-dasharray="9 5"/>
+<text x="332" y="536" fill="var(--gap)" font-family="IBM Plex Mono, monospace" font-size="11.5" font-weight="600">CORPORATE NETWORK</text>
+<rect x="336" y="548" width="248" height="76" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="352" y="573.5" fill="currentColor" font-weight="600">other hosts and users</text>
+<text x="352" y="590.5" fill="var(--gap)">upstream: read or replace the</text>
+<text x="352" y="607.5" fill="var(--gap)">pull secret, start mirror runs</text>
+<path d="M460,548 L460,480 L300,480 L300,454" fill="none" stroke="var(--gap)" stroke-width="1.4" stroke-dasharray="6 5" marker-end="url(#tm1)"/>
+<rect x="412" y="467" width="30" height="20" rx="10" fill="var(--gap-wash)" stroke="var(--gap)" stroke-width="1.5"/>
+<text x="427" y="481.5" fill="var(--gap)" font-family="IBM Plex Mono, monospace" font-size="11.5" font-weight="700" text-anchor="middle">T3</text>
+<text x="450" y="472" fill="var(--host)" font-size="11.5">blocked by M3</text>
+<rect x="620" y="518" width="360" height="124" rx="10" fill="none" stroke="var(--gap)" stroke-width="1.6" stroke-dasharray="9 5"/>
+<text x="632" y="536" fill="var(--gap)" font-family="IBM Plex Mono, monospace" font-size="11.5" font-weight="600">DISCONNECTED SIDE</text>
+<rect x="636" y="540" width="150" height="52" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="652" y="560" fill="currentColor" font-weight="600">mirror registry</text>
+<text x="652" y="577" fill="var(--muted)">disk-to-mirror</text>
+<rect x="806" y="540" width="158" height="52" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="822" y="560" fill="currentColor" font-weight="600">OpenShift clusters</text>
+<text x="822" y="577" fill="var(--muted)">install operators</text>
+<path d="M786,566 L802,566" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#tm1)"/>
+<path d="M600,374 L600,456 L760,456 L760,536" fill="none" stroke="currentColor" stroke-width="1.4" stroke-dasharray="6 5" marker-end="url(#tm1)"/>
+<text x="608" y="446" fill="var(--muted)">archive carried across</text>
+<rect x="636" y="601" width="30" height="20" rx="10" fill="var(--gap-wash)" stroke="var(--gap)" stroke-width="1.5"/>
+<text x="651" y="615.5" fill="var(--gap)" font-family="IBM Plex Mono, monospace" font-size="11.5" font-weight="700" text-anchor="middle">T2</text>
+<text x="672" y="615" fill="var(--gap)" font-weight="600">missing dependency: install fails</text>
+<rect x="636" y="621" width="30" height="20" rx="10" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5"/>
+<text x="651" y="635.5" fill="var(--host)" font-family="IBM Plex Mono, monospace" font-size="11.5" font-weight="700" text-anchor="middle">M2</text>
+<text x="672" y="635" fill="var(--host)" font-weight="600">fork: per channel, transitive, warns</text>
+<text x="20" y="674" fill="var(--muted)">T = threat in upstream 3cec34f.  M = mitigation on ephico2real2/mirror-gui fix/tls-deps-bind.  Red dashed outline = trust boundary.</text>
+<text x="20" y="698" fill="var(--host)" font-weight="600">Mitigations are written and tested in the cloud container, not yet run on CentOS Stream 9 or in a real deployment.</text>
+</g>
+</svg>
+      </div>
+      <figcaption>Residual risk: the API still has no authentication, so local users on the bastion are trusted.</figcaption>
+    </figure>
+  </section>
+</div>
