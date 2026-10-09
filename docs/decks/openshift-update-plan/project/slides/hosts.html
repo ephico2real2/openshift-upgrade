@@ -1,0 +1,13 @@
+<section id="hosts" data-section="The new bastions and registries, and how clusters move to them." data-transition="fade" style="background:#F5F6F8;color:#18212C;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:40px">
+<h2 style="font-size:64px;font-weight:700;line-height:1.1">New hosts before any step</h2>
+<div style="display:flex;gap:48px;align-items:start">
+<img src="/_blob/1c24524fe76df8ce57a95896e091c15a" alt="Target layout: a RHEL 9 mirroring bastion in each datacenter reaches Red Hat through the enterprise proxy and pushes over TCP 8443 to its registries: the lab and DC1 production registries in datacenter 1, the DC2 production registry in datacenter 2. Clusters pull from their own registry. The three old 1.x registries serve until their clusters switch, then retire." style="width:1040px;height:667px;object-fit:contain;background:#FFFFFF;border-radius:16px;border:1px solid #D7DCE3">
+<div style="flex:1;display:flex;flex-direction:column;gap:32px">
+<div style="display:flex;flex-direction:column;gap:4px"><p style="font-size:72px;font-weight:700;color:#0E6F68;line-height:1.1">2</p><p style="font-size:28px;line-height:1.4">mirroring bastions, one per datacenter; every Ansible and oc-mirror command runs there</p></div>
+<div style="display:flex;flex-direction:column;gap:4px"><p style="font-size:72px;font-weight:700;color:#0E6F68;line-height:1.1">3</p><p style="font-size:28px;line-height:1.4">new mirror registries: lab, DC1 and DC2 production</p></div>
+<div style="display:flex;flex-direction:column;gap:4px"><p style="font-size:72px;font-weight:700;color:#A55A0B;line-height:1.1">3</p><p style="font-size:28px;line-height:1.4">old registries retire once their clusters have moved</p></div>
+</div>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#58636F">All new hosts on RHEL 9 · PREREQUISITES.md · 19</p>
+<aside>Five new RHEL 9 hosts in total. The bastions need about 2 TB of backed-up disk each for the cache and archives; each registry host about 2 TB as well, sized from the dry-runs.</aside>
+</section>

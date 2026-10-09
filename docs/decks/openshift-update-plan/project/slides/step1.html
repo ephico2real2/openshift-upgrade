@@ -1,0 +1,22 @@
+<section id="step1" data-transition="fade" style="background:#F5F6F8;color:#18212C;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:40px">
+<p style="font-family:'IBM Plex Mono', 'Courier New', monospace;font-size:24px;letter-spacing:2px;text-transform:uppercase;color:#0E6F68">Step 1 · built</p>
+<h2 style="font-size:64px;font-weight:700;line-height:1.1">Today's process, run by Ansible</h2>
+<div style="display:flex;gap:48px">
+<div style="flex:1;display:flex;flex-direction:column;gap:28px">
+<p style="font-size:36px;line-height:1.35">A bastion in each datacenter downloads Red Hat content once, then pushes that same copy into the lab registry and, after testing, into production.</p>
+<p style="font-size:30px;line-height:1.4;background:#FBF1E4;color:#7A4208;padding:24px 32px;border-radius:12px">What it doesn't change: we still mirror everything ourselves, and a person starts each run.</p>
+</div>
+<div style="flex:1;background:#FFFFFF;border:1px solid #D7DCE3;border-radius:16px;padding:40px">
+<ul style="font-size:28px;line-height:1.45;color:#18212C">
+<li>Two playbooks: releases, and operator catalogs per version</li>
+<li>Red Hat pull secret and registry logins in Ansible Vault</li>
+<li>Persistent cache: later runs fetch only what changed</li>
+<li>One archive for lab and production: same content</li>
+<li>Local Update Service: the same upgrade paths as a connected cluster</li>
+<li>Release signatures kept, as 4.21 and later require</li>
+</ul>
+</div>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#58636F">oc-mirror-ansible/ in the repository · tested with stand-ins, not yet against our registries · 4</p>
+<aside>The playbooks run oc-mirror v2 in two halves: download to disk with a cache that lasts the whole 4.18 to 4.22 road, then push the archive into one registry at a time. The registry namespace is one parameter, ocp4v2, the same on every registry.</aside>
+</section>

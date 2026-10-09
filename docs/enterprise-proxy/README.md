@@ -54,7 +54,7 @@ come out only after a connected update has worked.
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../diagrams/three-steps/retrofit.dark.png">
   <source srcset="../diagrams/three-steps/retrofit.light.png">
-  <img alt="The Step 2 runbook converts a disconnected cluster in ten phases. Phases 0 to 3 touch no nodes beyond a CRI-O reload: approval, backup, the Red Hat pull secret and the image allowlist. Phase 4 turns on the cluster-wide proxy and drains and reboots every node. Phases 5 to 7 lock workloads out of the proxy, point update checks at Red Hat and move the operator catalogs, with no node effect. Phase 8 runs one update with the mirror still in place, and only then phase 9 removes the mirror, which drains the nodes again." src="../diagrams/three-steps/retrofit.light.png">
+  <img alt="The Step 2 runbook converts a disconnected cluster in ten phases. Phases 0 to 3 touch no nodes beyond a CRI-O reload: approval, backup, the Red Hat pull secret and the image allowlist. Phase 4 turns on the cluster-wide proxy and drains and reboots every node. Phase 5 is optional, since the proxy never reaches application pods; phases 6 and 7 point update checks at Red Hat and move the operator catalogs, with no node effect. Phase 8 runs one update with the mirror still in place, and only then phase 9 removes the mirror, which drains the nodes again." src="../diagrams/three-steps/retrofit.light.png">
 </picture>
 
 *Proposed runbook, not run on any cluster. The table below carries the same phases and node effects.*

@@ -1,0 +1,26 @@
+<section id="unlocks" data-transition="fade" style="background:#F5F6F8;color:#18212C;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:40px">
+<h2 style="font-size:64px;font-weight:700;line-height:1.1">What the proxy unlocks</h2>
+<div style="display:flex;gap:28px">
+<div style="flex:1;background:#FFFFFF;border:1px solid #D7DCE3;border-radius:16px;padding:36px;display:flex;flex-direction:column;gap:16px">
+<x-icon name="Clock" style="color:#0E6F68;width:56px;height:56px"></x-icon>
+<h3 style="font-size:36px;font-weight:600">Keep up with updates</h3>
+<p style="font-size:26px;line-height:1.4;color:#4A5563">Every z-stream, weekly for the newest minor, with its upgrade guidance, as Red Hat publishes it</p>
+<p style="font-size:24px;line-height:1.4;color:#B3261E">Today: each waits for a mirror run</p>
+</div>
+<div style="flex:1;background:#FFFFFF;border:1px solid #D7DCE3;border-radius:16px;padding:36px;display:flex;flex-direction:column;gap:16px">
+<x-icon name="Tool" style="color:#0E6F68;width:56px;height:56px"></x-icon>
+<h3 style="font-size:36px;font-weight:600">Build new clusters</h3>
+<p style="font-size:26px;line-height:1.4;color:#4A5563">install-config.yaml names the proxy; the installer pulls the current release from Red Hat</p>
+<p style="font-size:24px;line-height:1.4;color:#B3261E">Today: mirror the release first, then a disconnected install</p>
+</div>
+<div style="flex:1;background:#FFFFFF;border:1px solid #D7DCE3;border-radius:16px;padding:36px;display:flex;flex-direction:column;gap:16px">
+<x-icon name="Star" style="color:#0E6F68;width:56px;height:56px"></x-icon>
+<h3 style="font-size:36px;font-weight:600">New features and operators</h3>
+<p style="font-size:26px;line-height:1.4;color:#4A5563">Available when Red Hat ships them; we still choose what the catalog shows</p>
+<p style="font-size:24px;line-height:1.4;color:#B3261E">Today: each operator and dependency mirrored by hand</p>
+</div>
+</div>
+<p style="font-size:30px;line-height:1.4">156 CVEs have been fixed in 4.18 advisories so far in 2026. Each one reaches a synced cluster only after a successful sync.</p>
+<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#58636F">SOLUTIONS.md, Step 2 · 16</p>
+<aside>New clusters: with the proxy, a new cluster is installed like a connected one, with the proxy in install-config.yaml, so it starts on the current release with no mirror prepared first. New operators: the catalog stays under our control through the filtered catalog or the allowlist and the admission policies; what changes is that an approved operator needs no mirroring.</aside>
+</section>

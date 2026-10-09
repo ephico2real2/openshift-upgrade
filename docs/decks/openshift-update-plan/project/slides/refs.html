@@ -1,0 +1,15 @@
+<section id="refs" data-transition="fade" style="background:#F5F6F8;color:#18212C;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:32px">
+<h2 style="font-size:64px;font-weight:700;line-height:1.1">References</h2>
+<table style="font-size:24px;color:#18212C">
+<tr style="background:#E9EDF1"><th style="width:7%"> </th><th style="width:40%">Red Hat source (openshift-docs, enterprise-4.18)</th><th style="width:53%">What it says</th></tr>
+<tr><td>R1</td><td>networking/…/enable-cluster-wide-proxy.adoc</td><td>"The system-wide proxy affects system components only, not user workloads." Same in 4.22</td></tr>
+<tr style="background:#FFFFFF"><td>R2</td><td>modules/olm-overriding-proxy-settings.adoc</td><td>OLM operators "inherit the cluster-wide proxy settings"; they "must handle" proxy for their pods; empty values unset it</td></tr>
+<tr><td>R3</td><td>modules/images-configuration-allowed.adoc</td><td>"Registries not in your allowlist are blocked."</td></tr>
+<tr style="background:#FFFFFF"><td>R4</td><td>modules/installation-configure-proxy.adoc</td><td>"Production environments can deny direct access to the internet and instead have an HTTP or HTTPS proxy available."</td></tr>
+<tr><td>R5</td><td>modules/update-process-workflow.adoc</td><td>Signed statements identify release images by "image SHA digests"; the CVO checks them with built-in keys</td></tr>
+<tr style="background:#FFFFFF"><td>R6</td><td>modules/nw-proxy-configure-object.adoc</td><td>Configuring the Proxy object on a running cluster</td></tr>
+<tr><td>R7</td><td>installing/install_config/configuring-firewall.adoc</td><td>The hosts a cluster needs: our proxy allowlist</td></tr>
+</table>
+<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#58636F">github.com/openshift/openshift-docs, read 2026-10-08 · full list in SOLUTIONS.md, Step 2 · 25</p>
+<aside>Every Red Hat quote in this deck was checked against the 4.18 source of the OpenShift documentation. The same links are in SOLUTIONS.md, Step 2, and the runbook's Sources section.</aside>
+</section>

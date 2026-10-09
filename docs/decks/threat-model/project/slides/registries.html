@@ -1,0 +1,18 @@
+<section id="registries" data-transition="fade" style="background:#F5F6F8;color:#18212C;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:44px">
+<h2 style="font-size:64px;font-weight:700;line-height:1.1">Only allowed registries: two layers</h2>
+<div style="display:flex;gap:32px">
+<div style="flex:1;background:#FFFFFF;border:1px solid #D7DCE3;border-radius:16px;padding:40px;display:flex;flex-direction:column;gap:16px">
+<p style="font-family:'IBM Plex Mono', 'Courier New', monospace;font-size:24px;letter-spacing:2px;text-transform:uppercase;color:#58636F">Nodes · every pull</p>
+<h3 style="font-size:40px;font-weight:600;color:#0E6F68">image.config allowedRegistries (C5)</h3>
+<p style="font-size:28px;line-height:1.45;color:#4A5563">CRI-O refuses any other repository. Red Hat: "Registries not in your allowlist are blocked."</p>
+</div>
+<div style="flex:1;background:#E3F3F1;border:1px solid #0E6F68;border-radius:16px;padding:40px;display:flex;flex-direction:column;gap:16px">
+<p style="font-family:'IBM Plex Mono', 'Courier New', monospace;font-size:24px;letter-spacing:2px;text-transform:uppercase;color:#0E6F68">Admission · before a pod exists</p>
+<h3 style="font-size:40px;font-weight:600;color:#0E6F68">Kyverno allowed registries (C8)</h3>
+<p style="font-size:28px;line-height:1.45;color:#4A5563">A pod naming any other registry is refused at oc apply. The list lives in a ConfigMap.</p>
+</div>
+</div>
+<p style="font-size:32px;line-height:1.4"><b>Allowed:</b> Red Hat's registries and our internal registries. Nothing else.</p>
+<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#58636F">Red Hat: images-configuration-allowed.adoc · C8 is our policy · 8</p>
+<aside>The nodes enforce the allowlist on every pull, including builds and static pods. The admission policy stops a bad image earlier, with a clear error, before a pod is created. We use Kyverno's standard allowed-registries policy; another policy engine, such as the built-in ValidatingAdmissionPolicy, could do the same. The internal registry names in the list are illustrations: the enterprise registry, whether Artifactory, a GitLab container registry, Harbor or Quay, and the oc-mirror registry until it is retired.</aside>
+</section>
