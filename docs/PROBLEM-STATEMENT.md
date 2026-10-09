@@ -170,6 +170,13 @@ firewall; they differ in which machines use them: the mirroring bastions (Steps 
 (Step 2). No step needs two-headed DNS. Each still needs a plan for operator catalogs
 ([`DESIGN-DECISIONS.md`](DESIGN-DECISIONS.md), D2).*
 
+We are not looking for two-headed DNS but for a sustainable way to update our clusters that keeps pace
+with our growth. The disconnected setup we run was carried over from OpenShift 3.x, where it was the
+sound choice because the proxy setup was a mess. OpenShift 4.x is far more advanced, and we have to be ready for the growth that
+follows it (OpenShift 5.x, for example): the cluster-wide proxy is Red Hat's documented, supported way for enterprise
+customers to take updates and fixes as they ship, which is what operations and vulnerability management
+need. That is the SME's recommendation in [`SOLUTIONS.md`](SOLUTIONS.md), Recommendation.
+
 ```text
             STEP 1: Ansible (built)        STEP 2: enterprise proxy (proposed)   STEP 3: Quay on-prem (proposed)
 INSIDE      OpenShift cluster              OpenShift cluster                     OpenShift cluster
@@ -210,7 +217,7 @@ hand.
 | Release signatures | Have to be mirrored, with an acknowledgment before 4.21 | Checked against Red Hat directly once the mirror sets are gone | oc-mirror v2 mirrors signatures by default |
 | Two-headed DNS | Not applicable | Not needed. Nodes resolve only the proxy | Not needed. oc-mirror v2 uses the proxy |
 | What we run | Today three old mirror registries 1.x (over three years old); refined: two mirroring bastions and three new mirror registries 2.0.x on RHEL 9 ([`PREREQUISITES.md`](PREREQUISITES.md)), Ansible run by hand | A highly available proxy | Highly available Quay per datacenter, the two bastions, OSUS, and the proxy for the bastions |
-| What it costs to get there | Five new RHEL 9 hosts and a cutover of every cluster to its new registry | Security approval for node egress; one reboot of every node | A Consulting engagement, a Quay specialist, and a new registry to size and operate |
+| What it costs to get there | Five new RHEL 9 hosts and a cutover of every cluster to its new registry | Security's approval of the change, taken to it on the threat model with one condition, that applications cannot use the proxy by default; one reboot of every node | A Consulting engagement, a Quay specialist, and a new registry to size and operate |
 
 The team's assessment is that our backlog of fixes and our limits on upgrading come from this
 process, not from OpenShift. The measurements are consistent with that: Red Hat has shipped 156
@@ -227,8 +234,9 @@ them in is our choice.
   old (team report, 2026-10-07). They are replaced, not upgraded: two mirroring bastions and three new 2.0.x registries
   on RHEL 9 ([`PREREQUISITES.md`](PREREQUISITES.md)). Which datacenter holds the lab, and how many
   clusters each production registry serves, are still to confirm.
-- Security has not yet said whether cluster nodes may reach Red Hat through the proxy. The
-  preferred design depends on that answer.
+- The platform owner decides, and the decision is the proxy approach. The change goes to security on
+  the threat model ([`enterprise-proxy/THREAT-MODEL.md`](enterprise-proxy/THREAT-MODEL.md)) with
+  one condition: applications cannot use the proxy by default. Security has not yet approved it.
 - Order of work: the cluster-wide proxy is a documented configuration on 4.18. Enabling it before
   the updates would let the hops to 4.20 and 4.22 run without any sync. Red Hat Support should
   confirm that removing the mirror sets also removes the signature acknowledgment before 4.21.

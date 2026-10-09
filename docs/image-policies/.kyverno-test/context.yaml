@@ -11,8 +11,14 @@ spec:
       namespace: kyverno
     data:
       registries: |
+        # Red Hat
         registry.redhat.io
         registry.access.redhat.com
         registry.connect.redhat.com
+        # The cluster's own image registry
         image-registry.openshift-image-registry.svc:5000
+        # Our internal registries (illustrative names). The enterprise registry may be
+        # Artifactory, a GitLab container registry, Harbor or Quay; the datacenter's
+        # oc-mirror registry stays until runbook phase 9.
+        registry.example.com
         registry-dc1.example.com:8443

@@ -5,7 +5,7 @@
 | Researched | 2026-09-25, against OpenShift 4.22 docs and `release-4.22` product source |
 | Hosts | Two mirroring bastions and three registries (lab, DC1, DC2) on RHEL 9, replacing the three old mirror registries 1.x: [`PREREQUISITES.md`](PREREQUISITES.md); all three steps side by side: [`SOLUTIONS.md`](SOLUTIONS.md) |
 | Evidence | [`openshift-update-egress.html`](openshift-update-egress.html) (section names are cited below as *§ name*); the problem is stated in [`PROBLEM-STATEMENT.md`](PROBLEM-STATEMENT.md) |
-| Status | **No decision is ratified yet.** The team stated its position on D1 on 2026-10-05; it still depends on security approval. Every other entry in [Decisions](#decisions) is a recommendation waiting on the input named beside it. |
+| Status | **The platform owner decides, and the decision is the proxy approach (D1).** The change goes to security on the threat model ([`enterprise-proxy/THREAT-MODEL.md`](enterprise-proxy/THREAT-MODEL.md)) with one condition: applications cannot use the proxy by default. Not yet approved. Every other entry in [Decisions](#decisions) is a recommendation waiting on the input named beside it. |
 
 Version-specific facts here were true on 2026-09-25. Re-check them if a newer 4.x has shipped.
 
@@ -47,10 +47,10 @@ research found*
 
 | ID | Question | Recommendation | Waiting on |
 |---|---|---|---|
-| D1 | Which design do we build? | **Team position, 2026-10-05:** Option 1 preferred; Option 2 (full Red Hat Quay on-prem) as the alternative | Security's answer on which machines may reach Red Hat; for the alternative, a Red Hat Consulting engagement and a Quay specialist |
+| D1 | Which design do we build? | **Team position, 2026-10-05, refined 2026-10-09:** two independent options. Preferred: Option 1, the proxy approach, which other teams (VMware, TKG) already update through; it needs no mirror at all. Fallback only: the mirror approach automated, the Ansible playbooks on a schedule into the new registries. Option 2, Red Hat Quay on-prem, would only change the registry product of that same mirror approach: not a third option. **The platform owner decides**; the change goes to security on the threat model ([`enterprise-proxy/THREAT-MODEL.md`](enterprise-proxy/THREAT-MODEL.md)) with one condition: applications cannot use the proxy by default | Security's approval of the change; for the fallback, a Red Hat Consulting engagement and a Quay specialist only if Quay is picked |
 | D2 | Filtered catalog (model A) or allowlist on the stock catalog (model B)? | Model A, keeping a mirror registry for the catalog image alone | D1 (the registry product is answered: mirror registry for Red Hat OpenShift, [`PREREQUISITES.md`](PREREQUISITES.md)) |
 | D3 | Keep telemetry and Insights on? | Security team's call | Security |
-| D4 | Will the proxy decrypt traffic to Red Hat hosts? | Exempt the Red Hat hosts from interception until Support answers | A Red Hat support answer |
+| D4 | Will the proxy decrypt traffic to Red Hat hosts? | **Answered 2026-10-09: yes.** The proxy re-signs with the enterprise CA, which every node trusts; the same CA goes into `trustedCA`; `sso.redhat.com` excluded from re-encryption | Red Hat's support position on inspecting `quay.io` and `registry.redhat.io` (still unverified) |
 | D5 | How often do we update? | Monthly z-stream window; EUS-to-EUS minors for production, which matches the team's 4.18 → 4.20 → 4.22 plan | Team agreement on the z-stream window |
 
 ### D1 · Which design
@@ -72,7 +72,32 @@ How that position sits against the research of 2026-09-25:
   from the clusters. The team's position names Option 2 as the fallback instead. Option 3 stays on
   the table below; Red Hat does not document it.
 
-The choice turns on one security answer: which machines may reach Red Hat through the proxy.
+**Refined (2026-10-09).** The recommendation is two-fold ([`SOLUTIONS.md`](SOLUTIONS.md),
+Recommendation), two independent options rather than steps in sequence: the proxy approach first,
+which needs no mirror at all, since other teams already update VMware and Tanzu Kubernetes Grid
+through the same enterprise proxy; and, as the fallback only, the mirror approach automated, the
+Ansible playbooks on a schedule into the new registries. Red Hat Quay on-prem would only change the
+registry product of that mirror approach; it is not a third option and adds no value of its own.
+
+The SMEs and the Product Owner shape the direction of this platform offering; this is the SME's
+professional recommendation, from experience and modern best practice. The Ansible mirror is a lot of
+work to maintain, and that time is better spent on the update process itself, through the proxy.
+Ansible is used under both options: with the proxy approach it drives the retrofit and the updates;
+with the mirror approach it also has to run and maintain the mirror. The difference is the manual
+mirror, which the proxy approach eliminates.
+
+**Why the proxy approach.** We are not looking for two-headed DNS, and no option needs it. We are
+looking for a sustainable way to update our clusters that keeps pace with our growth. The disconnected
+setup we run today was carried over from OpenShift 3.x, where it was the sound choice because the proxy
+setup was a mess. OpenShift 4.x is far more advanced, and we have to be ready for the growth that follows it (OpenShift
+5.x, for example): the
+cluster-wide proxy is Red Hat's documented, supported way for enterprise customers to take updates and
+fixes as they ship ("Production environments can deny direct access to the internet and instead have
+an HTTP or HTTPS proxy available" (`modules/installation-configure-proxy.adoc`, 4.18)), which is what operations and vulnerability management need.
+
+The platform owner decides. The change goes to security on the threat model, and the one condition
+is that consumers and applications cannot use the proxy by default: the platform gives them no proxy
+settings (C2) and they have no route out (C1), proven by the runbook's tests 6 and 8.
 
 - **Node egress to the four host groups is approved** → Option 1. It uses only documented
   configuration and needs no mirror to run.
@@ -102,10 +127,13 @@ recommendations. It can be turned on later without touching nodes. *§ Decisions
 
 ### D4 · TLS interception
 
-Interception is the only way to filter `quay.io` by repository at the network layer, and it needs
-the proxy CA in `trustedCA`. Red Hat's support position on it could not be verified. Payload
-integrity does not depend on the proxy: the CVO checks GPG signatures and CRI-O checks sigstore
-signatures. *§ Decisions, D4*
+**Answered 2026-10-09:** the enterprise proxy inspects TLS and re-signs it with the enterprise CA,
+and every OpenShift node already carries the enterprise trust bundle. The CA must also be in
+`user-ca-bundle` (`trustedCA` on `proxy/cluster`) so platform components trust it, and Red Hat asks
+that `sso.redhat.com` is not re-encrypted. Inspection is also what makes filtering `quay.io` by
+repository possible at the network layer. Red Hat's support position on inspecting `quay.io` and
+`registry.redhat.io` traffic could not be verified. Payload integrity does not depend on the proxy:
+the CVO checks GPG signatures and CRI-O checks sigstore signatures. *§ Decisions, D4*
 
 ### D5 · Cadence
 

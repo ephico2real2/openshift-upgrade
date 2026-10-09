@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Proposed runbook. Not run on any of our clusters, not approved by security |
+| Status | Proposed runbook. Not run on any of our clusters. The platform owner's decision; the change is with security on [`THREAT-MODEL.md`](THREAT-MODEL.md), condition: applications cannot use the proxy by default; not yet approved |
 | Researched | 2026-10-07, against `openshift/openshift-docs` branches `enterprise-4.18`, `enterprise-4.21` and `enterprise-4.22`; earlier findings in [`openshift-update-egress.html`](../openshift-update-egress.html) (2026-09-25) |
 | Starting point | OpenShift 4.18.17 on `eus-4.18`, disconnected: IDMS/ITMS from oc-mirror pointing at the datacenter's mirror registry (`registry-dc1` in the examples), mirrored CatalogSources, a local OpenShift Update Service, default OperatorHub sources off |
 | Where commands run | The mirroring bastion of the cluster's datacenter ([`PREREQUISITES.md`](../PREREQUISITES.md)); it needs `oc`, `jq`, Ansible Vault and the cluster API on 6443 |
@@ -22,6 +22,9 @@ server and OperatorHub procedures. Where a step rests on our own reading and not
 sentence, it says so.
 
 ## How it fits together
+
+The threat model of this design, with each flow, its caller and its control, is in
+[`THREAT-MODEL.md`](THREAT-MODEL.md).
 
 ```text
 RED HAT          quay.io + CDN, registry.redhat.io, api.openshift.com, mirror.openshift.com
@@ -73,10 +76,12 @@ Do it per cluster, lower environments first.
 
 ## Phase 0: approve and prepare outside the cluster
 
-1. **Security sign-off** on the host list below and on the controls in
+1. **Security sign-off** on the change, taken to security by the platform owner on the threat model
+   ([`THREAT-MODEL.md`](THREAT-MODEL.md)); the condition is that applications cannot use the proxy by
+   default (tests 6 and 8). Also the host list below and the controls in
    [`openshift-update-egress.html`](../openshift-update-egress.html), "Security controls for the
-   approval request". The open telemetry question (D3) and TLS interception question (D4) must be
-   answered before phase 2 and phase 4.
+   approval request". The open telemetry question (D3) must be answered before phase 2. TLS
+   inspection (D4) is answered: see item 4.
 2. **Firewall:** cluster nodes may reach the proxy and internal services only. Nothing goes out
    directly.
 3. **Proxy:** highly available. A proxy outage stops every image pull from Red Hat, so it needs the
@@ -89,6 +94,7 @@ Do it per cluster, lower environments first.
    | `registry.redhat.io` | Core images, operator catalogs and operator images | Always |
    | `api.openshift.com` | "API endpoint for cluster tokens and update checks" | Always |
    | `mirror.openshift.com` | Release signatures ("the Cluster Version Operator needs only a single functioning source") | Always |
+   | `storage.googleapis.com/openshift-release` | The other documented source of release signatures, same sentence | Not needed: the CVO tries it too, the proxy denies it, and `mirror.openshift.com` serves the signature. Expect that deny in the proxy logs (test 11) |
    | `quayio-production-s3.s3.amazonaws.com` | "Required to access Quay image content in AWS" | As listed; ask Red Hat whether on-prem needs it |
    | `console.redhat.com`, `sso.redhat.com` | Cluster tokens and authentication | Listed under updates; whether updates fail without them is unverified |
    | `registry.access.redhat.com`, `access.redhat.com` | Ecosystem Catalog images and their signature store | If anything pulls from that registry |
@@ -103,10 +109,16 @@ Do it per cluster, lower environments first.
    - **Proxy login:** prefer a proxy that admits the cluster's node subnets without a password. A
      user name and password in `httpProxy` are readable by anyone who can read `proxy/cluster`, and
      they end up in the environment of every platform pod.
-4. **TLS interception (D4):** until Red Hat Support answers, exempt the hosts above from
-   interception. If the proxy does intercept, the proxy's CA must go into `trustedCA` (phase 4)
-   and `sso.redhat.com` must not be re-encrypted (`modules/cluster-wide-proxy-preqs.adoc`, ROSA/OSD
-   context).
+4. **TLS inspection (D4), answered 2026-10-09:** the enterprise proxy inspects TLS to the Red Hat
+   hosts and re-signs it with the enterprise CA, and every node already carries the enterprise trust
+   bundle. The same CA must also be in `user-ca-bundle`, which `proxy/cluster` names in `trustedCA`
+   (phase 4a): Red Hat: that bundle "is merged with the RHCOS trust bundle and injected into the trust
+   store of platform components that make egress HTTPS calls"
+   (`security/certificate_types_descriptions/proxy-certificates.adoc`). Red Hat also says a proxy that
+   re-encrypts egress traffic must exclude `sso.redhat.com` from re-encryption
+   (`modules/cluster-wide-proxy-preqs.adoc`; the same table lists `observatorium-mst.api.openshift.com`,
+   managed-OpenShift telemetry). Payload integrity does not depend on TLS: the CVO checks GPG
+   signatures and CRI-O sigstore signatures.
 5. **Red Hat credentials:** a Registry Service Account for `registry.redhat.io` ("recommended… in
    place of an individual's Customer Portal credentials"), or the organisation's pull secret from
    `console.redhat.com`. Keep it Vault-encrypted as in Step 1 (`vars/redhat-pull-secret.json`).
@@ -528,7 +540,7 @@ Run these after phase 6 and again after phase 9; keep the output as evidence for
 | 8 | A workload pod cannot go direct | `oc exec t -- curl -s -m 10 https://quay.io` | Times out (firewall) |
 | 9 | Pulls outside the allowlist fail | `oc run t2 --image=quay.io/libpod/alpine:latest --restart=Never -- true; oc get pod t2` | `ErrImagePull`, "not allowed" in `oc describe` |
 | 10 | Platform still healthy | `oc get co` | All `Available=True`, none `Degraded` |
-| 11 | Proxy logs | Ask the network team for a week of the clusters' requests | Sources are node IPs only; destinations are on the allowlist; denies reviewed |
+| 11 | Proxy logs | Ask the network team for a week of the clusters' requests | Sources are node IPs only; destinations are on the allowlist; denies reviewed (the CVO's attempts on `storage.googleapis.com` are expected, phase 0) |
 
 Tests 6 to 9 need a namespace created the way users create them, with no proxy set by us. Test 6
 is the guarantee: the platform injects nothing.
@@ -541,9 +553,11 @@ our own.
 
 ## Still open
 
-- **Security:** approval of the host list, node egress through the proxy, and D3 (telemetry).
+- **Security:** approval of the change on the threat model (the condition: applications cannot use the
+  proxy by default, tests 6 and 8), the host list, and D3 (telemetry).
 - **Red Hat Support case:**
-  - TLS interception (D4).
+  - Whether Red Hat supports TLS inspection of `quay.io` and `registry.redhat.io` traffic (D4 is
+    decided on our side; Red Hat's position is not verified).
   - Whether updates need `console.redhat.com`/`sso.redhat.com`, and whether on-prem clusters need
     `quayio-production-s3.s3.amazonaws.com`.
   - Whether `allowedRegistries: quay.io/openshift-release-dev` is enough.

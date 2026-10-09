@@ -30,8 +30,11 @@ allowed list in a ConfigMap in the cluster ([kyverno/policies](https://github.co
 
 - [`allowed-image-registries.yaml`](allowed-image-registries.yaml): the **list**, ConfigMap
   `kyverno/allowed-image-registries`, one registry or registry/path prefix per line. Adding a
-  registry means editing this list, not the policy. Replace `registry-dc1.example.com:8443` with
-  each cluster's mirror registry, and add what the phase 1 inventory shows applications pull from.
+  registry means editing this list, not the policy. The internal names are illustrations:
+  `registry.example.com` stands for the enterprise registry, whatever it is (Artifactory, a GitLab
+  container registry, Harbor or Quay), and `registry-dc1.example.com:8443` for the datacenter's
+  oc-mirror registry, kept until runbook phase 9. Put each cluster's real names there, and add what
+  the phase 1 inventory shows applications pull from.
 - [`kyverno-workload-image-repos.yaml`](kyverno-workload-image-repos.yaml): the **policy**, a Kyverno
   `ValidatingPolicy` (CEL; Kyverno 1.19 deprecates `kyverno.io/v1` `ClusterPolicy`) that reads the
   list with `resource.Get`.
