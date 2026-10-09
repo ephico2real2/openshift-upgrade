@@ -162,10 +162,10 @@ a { color: var(--remote); }
 
   <section>
     <h2>How the team chooses</h2>
-    <p class="muted">One security answer decides between Step 2 and Step 3; Step 1 runs now regardless.</p>
+    <p class="muted">Two-fold: the proxy (Step 2) preferred, automated Ansible mirroring into the new registries as the fallback. One security answer decides; Step 1 runs now regardless.</p>
     <figure>
       <div class="fig-scroll">
-<svg viewBox="0 0 1000 470" role="img" aria-label="How the team chooses. Now, Step 1 takes the clusters from 4.18.17 to 4.20 because 4.18's EUS term ends on 25 February 2027. In parallel security answers one question: may cluster nodes reach Red Hat's hosts through the enterprise proxy? Yes leads to the Step 2 runbook, lower environments first. No leads to building Red Hat Quay on-prem, Step 3. Either way the Step 1 playbooks stay, as Step 2's fallback or as Step 3's engine.">
+<svg viewBox="0 0 1000 487" role="img" aria-label="How the team chooses, two-fold. Now, Step 1 takes the clusters from 4.18.17 to 4.20 because 4.18's EUS term ends on 25 February 2027. In parallel security answers one question: may cluster nodes reach Red Hat's hosts through the enterprise proxy? Yes leads to the preferred path, Step 2, the enterprise proxy runbook, lower environments first; other teams, VMware and TKG, already update through this proxy. No leads to the fallback: automate the Ansible approach by building the new registries and running the Step 1 playbooks on a timer, the Step 3 design, with Red Hat Quay on-prem when it is built. Either way the Step 1 playbooks stay, as Step 2's fallback or as the engine of the automated mirroring.">
 <defs><marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
 <g font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="currentColor">
 <rect x="300" y="20" width="400" height="70" rx="8" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5" stroke-dasharray="5 4"/>
@@ -182,25 +182,27 @@ a { color: var(--remote); }
 <text x="200" y="156" fill="var(--remote)" font-weight="600">yes</text>
 <path d="M700,165 L810,165 L810,246" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ah2)"/>
 <text x="760" y="156" fill="var(--gap)" font-weight="600">no</text>
-<rect x="30" y="250" width="420" height="86" rx="8" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5" stroke-dasharray="5 4"/>
-<text x="46" y="272.0" fill="var(--host)" font-weight="600">Step 2 · enterprise proxy runbook</text>
-<text x="46" y="289.0" fill="currentColor">lower environments first, one window per cluster</text>
-<text x="46" y="306.0" fill="currentColor">every node reboots once when the proxy goes on</text>
-<text x="46" y="323.0" fill="var(--muted)">then no mirror, no sync, no local OSUS</text>
-<rect x="550" y="250" width="420" height="86" rx="8" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5" stroke-dasharray="5 4"/>
-<text x="566" y="272.0" fill="var(--host)" font-weight="600">Step 3 · build Red Hat Quay on-prem</text>
-<text x="566" y="289.0" fill="currentColor">subscription, platform, build partner</text>
-<text x="566" y="306.0" fill="currentColor">the Step 1 playbooks run on a timer</text>
-<text x="566" y="323.0" fill="var(--muted)">a local OSUS is required</text>
-<path d="M240,336 L240,372" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ah2)"/>
-<path d="M760,336 L760,372" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ah2)"/>
-<rect x="30" y="376" width="420" height="46" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
-<text x="46" y="394" fill="currentColor" font-weight="600">Step 1 stays as the fallback</text>
-<text x="46" y="411" fill="var(--muted)">if a cluster can't take the proxy yet</text>
-<rect x="550" y="376" width="420" height="46" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
-<text x="566" y="394" fill="currentColor" font-weight="600">Step 1 becomes the engine</text>
-<text x="566" y="411" fill="var(--muted)">the same playbooks fill Quay</text>
-<text x="20" y="456" fill="var(--host)" font-weight="600">Dashed = proposed. Only Step 1's playbooks exist today; the decision is open (DESIGN-DECISIONS.md, D1).</text>
+<rect x="30" y="250" width="420" height="103" rx="8" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="46" y="272.0" fill="var(--host)" font-weight="600">Preferred · Step 2, the enterprise proxy runbook</text>
+<text x="46" y="289.0" fill="currentColor">VMware and TKG already update through this proxy</text>
+<text x="46" y="306.0" fill="currentColor">lower environments first, one window per cluster</text>
+<text x="46" y="323.0" fill="currentColor">every node reboots once when the proxy goes on</text>
+<text x="46" y="340.0" fill="var(--muted)">then no mirror, no sync, no local OSUS</text>
+<rect x="550" y="250" width="420" height="103" rx="8" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5" stroke-dasharray="5 4"/>
+<text x="566" y="272.0" fill="var(--host)" font-weight="600">Fallback · automate the Ansible approach</text>
+<text x="566" y="289.0" fill="currentColor">build the new registries (PREREQUISITES.md)</text>
+<text x="566" y="306.0" fill="currentColor">the Step 1 playbooks run on a timer (Step 3)</text>
+<text x="566" y="323.0" fill="currentColor">Red Hat Quay on-prem when it is built</text>
+<text x="566" y="340.0" fill="var(--muted)">a local OSUS is required</text>
+<path d="M240,353 L240,389" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ah2)"/>
+<path d="M760,353 L760,389" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ah2)"/>
+<rect x="30" y="393" width="420" height="46" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="46" y="411" fill="currentColor" font-weight="600">Step 1 stays as the fallback</text>
+<text x="46" y="428" fill="var(--muted)">if a cluster can't take the proxy yet</text>
+<rect x="550" y="393" width="420" height="46" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="566" y="411" fill="currentColor" font-weight="600">Step 1 becomes the engine</text>
+<text x="566" y="428" fill="var(--muted)">the same playbooks fill the new registries</text>
+<text x="20" y="473" fill="var(--host)" font-weight="600">Dashed = proposed. Only Step 1's playbooks exist today; the decision is open (DESIGN-DECISIONS.md, D1).</text>
 </g>
 </svg>
       </div>

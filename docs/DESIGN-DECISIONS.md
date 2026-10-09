@@ -47,7 +47,7 @@ research found*
 
 | ID | Question | Recommendation | Waiting on |
 |---|---|---|---|
-| D1 | Which design do we build? | **Team position, 2026-10-05:** Option 1 preferred; Option 2 (full Red Hat Quay on-prem) as the alternative | Security's answer on which machines may reach Red Hat; for the alternative, a Red Hat Consulting engagement and a Quay specialist |
+| D1 | Which design do we build? | **Team position, 2026-10-05, refined 2026-10-09:** two-fold. Preferred: Option 1, the enterprise proxy, which other teams (VMware, TKG) already update through. Fallback: automate the Ansible mirroring into the new registries (Step 3's schedule), with Option 2's Red Hat Quay on-prem as that registry once built | Security's answer on which machines may reach Red Hat; for the alternative, a Red Hat Consulting engagement and a Quay specialist |
 | D2 | Filtered catalog (model A) or allowlist on the stock catalog (model B)? | Model A, keeping a mirror registry for the catalog image alone | D1 (the registry product is answered: mirror registry for Red Hat OpenShift, [`PREREQUISITES.md`](PREREQUISITES.md)) |
 | D3 | Keep telemetry and Insights on? | Security team's call | Security |
 | D4 | Will the proxy decrypt traffic to Red Hat hosts? | **Answered 2026-10-09: yes.** The proxy re-signs with the enterprise CA, which every node trusts; the same CA goes into `trustedCA`; `sso.redhat.com` excluded from re-encryption | Red Hat's support position on inspecting `quay.io` and `registry.redhat.io` (still unverified) |
@@ -71,6 +71,11 @@ How that position sits against the research of 2026-09-25:
 - The research recommended Option 3 as the fallback when security approves only update metadata
   from the clusters. The team's position names Option 2 as the fallback instead. Option 3 stays on
   the table below; Red Hat does not document it.
+
+**Refined (2026-10-09).** The recommendation is two-fold ([`SOLUTIONS.md`](SOLUTIONS.md),
+Recommendation): the proxy first, since other teams already update VMware and Tanzu Kubernetes Grid
+through the same enterprise proxy; and, as the fallback, the Ansible approach automated on the new
+registries, with Quay on-prem as that registry once built.
 
 The choice turns on one security answer: which machines may reach Red Hat through the proxy.
 
