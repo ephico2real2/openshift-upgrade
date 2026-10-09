@@ -22,7 +22,7 @@ this repository, rendered with diagram-kit from the `source.html` beside it:
 | `1929238e031f7f72a8fa4f713ab577ba`, `2dfbc875d3bfef4e77075359ecba47c5` | [`../enterprise-proxy/diagrams/threat-model/proxy-update-steps.light.png`](../enterprise-proxy/diagrams/threat-model/proxy-update-steps.light.png) | plan: `threatsteps`; threat model: `steps` |
 | `5473f7abd3f5c90a897f4ca93c43cdeb` | [`../diagrams/three-steps/quay-sync.light.png`](../diagrams/three-steps/quay-sync.light.png) | plan: `step3` |
 | `1c24524fe76df8ce57a95896e091c15a` | [`../diagrams/prerequisites/topology.light.png`](../diagrams/prerequisites/topology.light.png) | plan: `hosts` |
-| `264c952367291bb5f6652f44b68e79bf` | [`../diagrams/three-steps/decision.light.png`](../diagrams/three-steps/decision.light.png) | plan: `recommend` |
+| `4737c5d7b96a8fb29cb86076b2d227f0` | [`../diagrams/three-steps/decision.light.png`](../diagrams/three-steps/decision.light.png) | plan: `recommend` |
 
 When a figure is re-rendered, upload the new PNG to the deck, point the slide's `<img src>` at the
 new id, and update this table. When a slide changes, copy the published file back here. The text

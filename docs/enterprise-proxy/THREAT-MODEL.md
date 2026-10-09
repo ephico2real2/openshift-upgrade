@@ -12,8 +12,8 @@ a sustainable way to update our clusters that keeps pace with our growth. The di
 run was carried over from OpenShift 3.x, where the proxy setup was a mess; OpenShift 4.x is far more
 advanced, and we have to be ready for the growth that follows it (OpenShift 5.x, for example). The
 cluster-wide proxy is Red Hat's documented, supported way for enterprise customers to take updates
-and fixes as they ship, which is what operations and vulnerability management need. Ansible is used
-either way; what this change eliminates is the manual mirror and its upkeep.
+and fixes as they ship, which is what operations and vulnerability management need. Ansible automates the
+upgrade either way, under the proxy too; what this change eliminates is the manual mirror and its upkeep.
 
 **The decision and the condition.** The platform owner decides on the proxy approach and takes the
 change to security on this document. The one condition is point 3 below: consumers and applications

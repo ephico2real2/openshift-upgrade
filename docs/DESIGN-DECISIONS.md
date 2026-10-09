@@ -82,9 +82,9 @@ registry product of that mirror approach; it is not a third option and adds no v
 The SMEs and the Product Owner shape the direction of this platform offering; this is the SME's
 professional recommendation, from experience and modern best practice. The Ansible mirror is a lot of
 work to maintain, and that time is better spent on the update process itself, through the proxy.
-Ansible is used under both options: with the proxy approach it drives the retrofit and the updates;
-with the mirror approach it also has to run and maintain the mirror. The difference is the manual
-mirror, which the proxy approach eliminates.
+Ansible automates the upgrade under both options. With the proxy approach the playbooks drive the
+retrofit and the updates themselves; with the mirror approach they also have to run and maintain the
+mirror. The difference is the manual mirror, which the proxy approach eliminates.
 
 **Why the proxy approach.** We are not looking for two-headed DNS, and no option needs it. We are
 looking for a sustainable way to update our clusters that keeps pace with our growth. The disconnected
