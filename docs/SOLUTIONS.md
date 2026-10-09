@@ -235,6 +235,9 @@ Application pods get no proxy settings, and the firewall still lets nothing out 
 platform components reach only what the proxy allows, and our allowlist is Red Hat's documented
 hosts and nothing else [R7].
 
+The threat model of an update through the proxy, with a diagram, is in
+[`enterprise-proxy/THREAT-MODEL.md`](enterprise-proxy/THREAT-MODEL.md).
+
 **Our guarantee: the platform's proxy setting does not reach non-platform applications.** Nothing in
 the platform writes proxy variables into an application pod [R1]. Application teams are already
 allowed to set a proxy in their own deployments; a team that does so makes a deliberate choice under

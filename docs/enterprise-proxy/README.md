@@ -23,6 +23,9 @@ sentence, it says so.
 
 ## How it fits together
 
+The threat model of this design, with each flow, its caller and its control, is in
+[`THREAT-MODEL.md`](THREAT-MODEL.md).
+
 ```text
 RED HAT          quay.io + CDN, registry.redhat.io, api.openshift.com, mirror.openshift.com
                     ^ TCP 443, HTTP CONNECT

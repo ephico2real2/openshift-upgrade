@@ -1,0 +1,157 @@
+<!-- Started from the diagram-kit template (MIT-0), https://github.com/ephico2real2/diagram-kit. Figure for docs/enterprise-proxy/THREAT-MODEL.md. -->
+<title>Proxy Update Threat Model</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root {
+  --ground: #f5f6f8; --surface: #ffffff; --ink: #18212c; --muted: #58636f; --rule: #d7dce3;
+  --host: #a55a0b; --host-wash: #fbf1e4; --remote: #0e6f68; --remote-wash: #e3f3f1;
+  --gap: #b3261e; --gap-wash: #fbe9e7; --none: #5f6a77; --none-wash: #eef0f3;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --ground: #0e131a; --surface: #151c25; --ink: #e5e9ef; --muted: #9aa5b3; --rule: #2a3440;
+    --host: #f0a53c; --host-wash: #2a2014; --remote: #3fcfc0; --remote-wash: #122a28;
+    --gap: #f2857c; --gap-wash: #2d1614; --none: #9aa5b3; --none-wash: #1b232d;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground: #0e131a; --surface: #151c25; --ink: #e5e9ef; --muted: #9aa5b3; --rule: #2a3440;
+  --host: #f0a53c; --host-wash: #2a2014; --remote: #3fcfc0; --remote-wash: #122a28;
+  --gap: #f2857c; --gap-wash: #2d1614; --none: #9aa5b3; --none-wash: #1b232d;
+}
+* { box-sizing: border-box; }
+body { background: var(--ground); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.55; margin: 0; }
+.page { max-width: 1060px; margin: 0 auto; padding-inline: 16px; padding-block: 40px 72px; display: grid; gap: 44px; }
+header { display: grid; gap: 10px; }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font-size: clamp(26px, 4vw, 36px); line-height: 1.15; margin: 0; font-weight: 700; text-wrap: balance; }
+h2 { font-size: 20px; margin: 0 0 6px; font-weight: 600; text-wrap: balance; }
+p { margin: 0; max-width: 72ch; }
+.lede { font-size: 17px; max-width: 70ch; }
+.muted { color: var(--muted); }
+code { font-family: var(--font-mono); font-size: .9em; }
+section { display: grid; gap: 14px; }
+figure { margin: 0; display: grid; gap: 10px; }
+.fig-scroll { overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 12px; }
+.fig-scroll svg { display: block; width: 100%; min-width: 760px; height: auto; color: var(--ink); }
+figcaption { font-size: 13.5px; color: var(--muted); max-width: 80ch; }
+.tbl { overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 10px 14px; border-bottom: 1px solid var(--rule); }
+th { font-size: 12px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); background: var(--ground); }
+tr:last-child td { border-bottom: 0; }
+.yes { color: var(--remote); font-weight: 600; } .no { color: var(--gap); font-weight: 600; }
+.cell-gap { background: var(--gap-wash); }
+.decisions { display: grid; gap: 12px; }
+.decision { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 16px 20px; display: grid; gap: 8px; }
+.decision .id { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+.decision .q { font-weight: 600; }
+.decision .rec { font-size: 14px; border-left: 3px solid var(--remote); padding-left: 10px; }
+.decision .rec.warn { border-left-color: var(--host); }
+a { color: var(--remote); }
+:focus-visible { outline: 2px solid var(--remote); outline-offset: 2px; }
+</style>
+<div class="page">
+  <header>
+    <div class="eyebrow">openshift-upgrade · enterprise proxy · 2026-10-09</div>
+    <h1>Threat model: updating a cluster through the proxy</h1>
+    <p class="lede">The Option 1 update, step by step, with the trust boundary between the platform and the applications and the control on each flow.</p>
+  </header>
+
+  <section>
+    <h2>One update, with its controls</h2>
+    <p class="muted">The platform starts every flow; every flow is TCP 443 through the proxy to a Red Hat host.</p>
+    <figure>
+      <div class="fig-scroll">
+<svg viewBox="0 0 1000 760" role="img" aria-label="Threat model of a cluster update through the enterprise proxy. Inside the cluster, the platform (the nodes and the openshift namespaces) starts every update: the Cluster Version Operator asks api.openshift.com for the update graph, an admin picks the target, the CVO checks the release signature at mirror.openshift.com, CRI-O on each node pulls the payload from quay.io and its CDN and checks each pull against the repository allowlist and the sigstore signature, and OLM installs only approved operators from registry.redhat.io. Every request is HTTPS on TCP 443 through the proxy, whose allowlist holds only Red Hat hosts and refuses everything else. Application pods are outside that boundary: the platform gives them no proxy settings, and the firewall gives them no direct route, so a pod cannot reach the internet. Controls: C1 firewall lets only the proxy out; C2 the cluster-wide proxy affects system components only; C3 proxy allowlist; C4 release and image signature checks; C5 repository allowlist and admission policy; C6 catalog control.">
+<defs><marker id="pt1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
+<g font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="currentColor">
+<rect x="20" y="14" width="410" height="30" rx="6" fill="var(--host-wash)" stroke="var(--host)"/>
+<text x="225.0" y="34" fill="var(--host)" font-family="IBM Plex Mono, monospace" font-size="13" font-weight="600" text-anchor="middle">INSIDE · the cluster</text>
+<rect x="450" y="14" width="190" height="30" rx="6" fill="var(--none-wash)" stroke="var(--none)"/>
+<text x="545.0" y="34" fill="var(--none)" font-family="IBM Plex Mono, monospace" font-size="13" font-weight="600" text-anchor="middle">EGRESS · proxy</text>
+<rect x="660" y="14" width="320" height="30" rx="6" fill="var(--remote-wash)" stroke="var(--remote)"/>
+<text x="820.0" y="34" fill="var(--remote)" font-family="IBM Plex Mono, monospace" font-size="13" font-weight="600" text-anchor="middle">RED HAT · TCP 443</text>
+<rect x="450" y="52" width="190" height="588" fill="var(--none-wash)" stroke="var(--rule)" stroke-dasharray="6 5"/>
+<text x="545" y="70" fill="var(--none)" font-size="12" font-weight="600" text-anchor="middle">allowlist: Red Hat only</text>
+<text x="545" y="86" fill="var(--none)" font-size="12" text-anchor="middle">CONNECT :443, else 403</text>
+<rect x="20" y="52" width="420" height="452" rx="10" fill="none" stroke="var(--gap)" stroke-width="1.6" stroke-dasharray="9 5"/>
+<text x="32" y="70" fill="var(--gap)" font-family="IBM Plex Mono, monospace" font-size="11.5" font-weight="600">PLATFORM · STARTS EVERY UPDATE</text>
+<rect x="36" y="82" width="388" height="58" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="52" y="106" fill="currentColor" font-weight="600">① CVO checks for updates</text>
+<text x="52" y="123" fill="var(--muted)" font-family="IBM Plex Mono, monospace" font-size="12">openshift-cluster-version</text>
+<rect x="660" y="82" width="320" height="58" rx="8" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.5"/>
+<text x="676" y="106" fill="currentColor" font-family="IBM Plex Mono, monospace" font-size="12">api.openshift.com</text>
+<text x="676" y="123" fill="var(--muted)">update graph: digests, edges, risks</text>
+<path d="M424,111 L656,111" fill="none" stroke="var(--remote)" stroke-width="1.4" marker-end="url(#pt1)"/>
+<rect x="36" y="152" width="388" height="58" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="52" y="176" fill="currentColor" font-weight="600">② An admin picks the target</text>
+<text x="52" y="193" fill="currentColor" font-family="IBM Plex Mono, monospace" font-size="12">oc adm upgrade --to=4.22.z</text>
+<text x="545" y="185" fill="var(--muted)" text-anchor="middle">no egress</text>
+<rect x="36" y="222" width="388" height="58" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="52" y="246" fill="currentColor" font-weight="600">③ CVO verifies the release</text>
+<text x="52" y="263" fill="var(--muted)">GPG signature, by release digest</text>
+<rect x="660" y="222" width="320" height="58" rx="8" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.5"/>
+<text x="676" y="246" fill="currentColor" font-family="IBM Plex Mono, monospace" font-size="12">mirror.openshift.com</text>
+<text x="676" y="263" fill="var(--muted)">release signature store</text>
+<path d="M424,251 L656,251" fill="none" stroke="var(--remote)" stroke-width="1.4" marker-end="url(#pt1)"/>
+<rect x="530" y="242" width="30" height="20" rx="10" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5"/>
+<text x="545" y="256.5" fill="var(--host)" font-family="IBM Plex Mono, monospace" font-size="11.5" font-weight="700" text-anchor="middle">C4</text>
+<rect x="36" y="292" width="388" height="58" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="52" y="316" fill="currentColor" font-weight="600">④ CRI-O pulls the payload</text>
+<text x="52" y="333" fill="var(--muted)">each node, ocp-release + components</text>
+<rect x="660" y="292" width="320" height="58" rx="8" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.5"/>
+<text x="676" y="316" fill="currentColor" font-family="IBM Plex Mono, monospace" font-size="12">quay.io → cdn01–06.quay.io</text>
+<text x="676" y="333" fill="var(--muted)">image layers from the CDN</text>
+<path d="M424,321 L656,321" fill="none" stroke="var(--remote)" stroke-width="1.4" marker-end="url(#pt1)"/>
+<rect x="530" y="312" width="30" height="20" rx="10" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5"/>
+<text x="545" y="326.5" fill="var(--host)" font-family="IBM Plex Mono, monospace" font-size="11.5" font-weight="700" text-anchor="middle">C5</text>
+<rect x="36" y="362" width="388" height="58" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="52" y="386" fill="currentColor" font-weight="600">⑤ CRI-O checks each pull</text>
+<text x="52" y="403" fill="var(--muted)">allowedRegistries + ClusterImagePolicy</text>
+<rect x="660" y="362" width="320" height="58" rx="8" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.5"/>
+<text x="676" y="386" fill="currentColor" font-family="IBM Plex Mono, monospace" font-size="12">quay.io · sha256-&lt;digest&gt;.sig</text>
+<text x="676" y="403" fill="var(--muted)">sigstore, Red Hat's key</text>
+<path d="M424,391 L656,391" fill="none" stroke="var(--remote)" stroke-width="1.4" marker-end="url(#pt1)"/>
+<rect x="530" y="382" width="30" height="20" rx="10" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5"/>
+<text x="545" y="396.5" fill="var(--host)" font-family="IBM Plex Mono, monospace" font-size="11.5" font-weight="700" text-anchor="middle">C4</text>
+<rect x="36" y="432" width="388" height="58" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="52" y="456" fill="currentColor" font-weight="600">⑥ OLM installs approved operators</text>
+<text x="52" y="473" fill="var(--muted)">only from catalogs we control</text>
+<rect x="660" y="432" width="320" height="58" rx="8" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.5"/>
+<text x="676" y="456" fill="currentColor" font-family="IBM Plex Mono, monospace" font-size="12">registry.redhat.io</text>
+<text x="676" y="473" fill="var(--muted)">catalog, bundle, operator images</text>
+<path d="M424,461 L656,461" fill="none" stroke="var(--remote)" stroke-width="1.4" marker-end="url(#pt1)"/>
+<rect x="530" y="452" width="30" height="20" rx="10" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5"/>
+<text x="545" y="466.5" fill="var(--host)" font-family="IBM Plex Mono, monospace" font-size="11.5" font-weight="700" text-anchor="middle">C6</text>
+<rect x="20" y="520" width="420" height="120" rx="10" fill="none" stroke="var(--gap)" stroke-width="1.6" stroke-dasharray="9 5"/>
+<text x="32" y="538" fill="var(--gap)" font-family="IBM Plex Mono, monospace" font-size="11.5" font-weight="600">APPLICATION NAMESPACES</text>
+<rect x="36" y="548" width="388" height="76" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="52" y="573.5" fill="currentColor" font-weight="600">application pods</text>
+<text x="52" y="590.5" fill="var(--host)">no proxy settings from the platform (C2)</text>
+<text x="52" y="607.5" fill="var(--host)">no direct route out: firewall (C1)</text>
+<rect x="660" y="548" width="320" height="76" rx="8" fill="var(--gap-wash)" stroke="var(--gap)" stroke-width="1.5"/>
+<text x="676" y="573.5" fill="var(--gap)" font-weight="600">any other internet host</text>
+<text x="676" y="590.5" fill="var(--gap)">not reachable from the cluster</text>
+<text x="676" y="607.5" fill="var(--gap)">not on the proxy allowlist (C3)</text>
+<path d="M424,586 L656,586" fill="none" stroke="var(--gap)" stroke-width="1.4" stroke-dasharray="6 5" marker-end="url(#pt1)"/>
+<rect x="530" y="577" width="30" height="20" rx="10" fill="var(--gap-wash)" stroke="var(--gap)" stroke-width="1.5"/>
+<text x="545" y="591.5" fill="var(--gap)" font-family="IBM Plex Mono, monospace" font-size="11.5" font-weight="700" text-anchor="middle">T1</text>
+<text x="470" y="576" fill="var(--gap)" font-weight="600">blocked</text>
+<text x="20" y="668" fill="currentColor">Every flow is HTTPS on TCP 443 through the proxy; nodes have no direct route (C1). Nodes resolve only the proxy; no split DNS.</text>
+<text x="20" y="690" fill="var(--muted)">Red Hat: “The system-wide proxy affects system components only, not user workloads.” (enable-cluster-wide-proxy.adoc, C2)</text>
+<text x="20" y="712" fill="var(--muted)">C = control, T = threat; the table in THREAT-MODEL.md lists each one with its runbook phase and test.</text>
+<text x="20" y="736" fill="var(--host)" font-weight="600">Proposed design: none of this is configured today.</text>
+</g>
+</svg>
+      </div>
+      <figcaption>Proposed: not configured on any cluster yet.</figcaption>
+    </figure>
+  </section>
+</div>
