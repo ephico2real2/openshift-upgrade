@@ -45,7 +45,10 @@ RED HAT     quay.io, registry.redhat.io, api.openshift.com, mirror.openshift.com
 **The platform owner decides (position of 2026-10-05, refined 2026-10-09):** the proxy approach, with the
 mirror approach, automated, as the fallback only. The change goes to security on the threat model
 ([`enterprise-proxy/THREAT-MODEL.md`](enterprise-proxy/THREAT-MODEL.md)) with one condition: consumers
-and applications cannot use the proxy by default. With that met, we are good.
+and applications cannot use the proxy by default. With that met, we are good. The SMEs and the Product
+Owner shape the direction of this platform offering; this is the SME's recommendation, from experience
+and modern best practice. Ansible is used in both cases; the difference is the manual mirror, which
+the proxy approach eliminates.
 
 ## Where we are
 
@@ -360,7 +363,7 @@ Detail: [`quay-onprem/README.md`](quay-onprem/README.md).
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/three-steps/decision.dark.png">
   <source srcset="diagrams/three-steps/decision.light.png">
-  <img alt="How the team chooses. The platform owner decides: the proxy approach, with no mirror, no sync and no local Update Service. The change goes to security on the threat model, with one condition: applications cannot use the proxy by default; the platform gives them no proxy settings (C2) and they have no route out (C1), proven by the runbook's tests 6 and 8. Approved leads to the preferred option, the proxy approach: VMware and TKG already update through this proxy; the retrofit runbook, lower environments first; the mirror is retired per cluster. Not approved leads to the fallback only, the mirror approach automated: the Ansible playbooks on a timer into the new registries, a local Update Service stays required; Red Hat Quay on-prem would only change the registry product, not a third option. Under either option the clusters must be on 4.20 before 4.18's EUS term ends on 25 February 2027." src="diagrams/three-steps/decision.light.png">
+  <img alt="How the team chooses. The SMEs and the Product Owner shape the direction of this platform offering; this is the SME's recommendation from experience and modern best practice. The platform owner decides: the proxy approach, with no mirror, no sync and no local Update Service. The change goes to security on the threat model, with one condition: applications cannot use the proxy by default; the platform gives them no proxy settings (C2) and they have no route out (C1), proven by the runbook's tests 6 and 8. Approved leads to the preferred option, the proxy approach: VMware and TKG already update through this proxy; the retrofit runbook, lower environments first; the mirror is retired per cluster. Not approved leads to the fallback only, the mirror approach automated: the Ansible playbooks on a timer into the new registries, a local Update Service stays required; Red Hat Quay on-prem would only change the registry product, not a third option. Under either option the clusters must be on 4.20 before 4.18's EUS term ends on 25 February 2027. Ansible is used in both cases; the difference is the manual mirror, which the proxy approach eliminates." src="diagrams/three-steps/decision.light.png">
 </picture>
 
 *Proposed decision flow. The platform owner's decision, the change with security, and the fallback. Only
@@ -371,6 +374,13 @@ the threat model ([`enterprise-proxy/THREAT-MODEL.md`](enterprise-proxy/THREAT-M
 condition to meet: consumers and applications cannot use the proxy by default. The platform gives
 application pods no proxy settings (C2) and they have no route out (C1); the runbook's tests 6 and 8
 prove it on every cluster. With that condition met, we are good.
+
+**Who shapes it.** The SMEs and the Product Owner shape the direction of this platform offering.
+This is the SME's professional recommendation, from experience and modern best practice: the Ansible
+mirror is a lot of work to maintain, and that time is better spent on the update process itself,
+through the proxy. Ansible is used under both options: with the proxy approach it drives the retrofit
+and the updates; with the mirror approach it also has to run and maintain the mirror. The difference
+is the manual mirror, which the proxy approach eliminates.
 
 The recommendation is two-fold. The two are independent options, not steps in sequence, and the
 proxy approach needs no mirror at all:
@@ -394,6 +404,7 @@ Platform owner decides: the proxy approach
      approved     -> 1 · preferred: the proxy approach, the retrofit runbook; no mirror at all   (mirror retired per cluster)
      not approved -> 2 · fallback only: the mirror approach, automated on the new registries      (mirror stays, on a schedule)
 Either option: the clusters must be on 4.20 before 4.18's EUS term ends on 25 Feb 2027.
+Ansible in both cases; the proxy approach eliminates the manual mirror and its upkeep.
 ```
 
 In order:

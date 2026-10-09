@@ -79,6 +79,13 @@ through the same enterprise proxy; and, as the fallback only, the mirror approac
 Ansible playbooks on a schedule into the new registries. Red Hat Quay on-prem would only change the
 registry product of that mirror approach; it is not a third option and adds no value of its own.
 
+The SMEs and the Product Owner shape the direction of this platform offering; this is the SME's
+professional recommendation, from experience and modern best practice. The Ansible mirror is a lot of
+work to maintain, and that time is better spent on the update process itself, through the proxy.
+Ansible is used under both options: with the proxy approach it drives the retrofit and the updates;
+with the mirror approach it also has to run and maintain the mirror. The difference is the manual
+mirror, which the proxy approach eliminates.
+
 The platform owner decides. The change goes to security on the threat model, and the one condition
 is that consumers and applications cannot use the proxy by default: the platform gives them no proxy
 settings (C2) and they have no route out (C1), proven by the runbook's tests 6 and 8.
