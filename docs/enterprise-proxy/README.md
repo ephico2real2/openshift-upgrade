@@ -26,6 +26,11 @@ sentence, it says so.
 The threat model of this design, with each flow, its caller and its control, is in
 [`THREAT-MODEL.md`](THREAT-MODEL.md).
 
+The phases below, and the updates that follow them, are to be run from Ansible, as the mirroring
+playbooks are today: the retrofit phase by phase, the hops themselves, the update service and registry
+settings, catalog gating through GitOps, and the Verify tests as evidence. Run the retrofit on 4.18 and
+before the updates: the hops to 4.20 and 4.22 then need no sync at all.
+
 ```text
 RED HAT          quay.io + CDN, registry.redhat.io, api.openshift.com, mirror.openshift.com
                     ^ TCP 443, HTTP CONNECT

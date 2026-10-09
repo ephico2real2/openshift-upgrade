@@ -367,7 +367,7 @@ Detail: [`quay-onprem/README.md`](quay-onprem/README.md).
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/three-steps/decision.dark.png">
   <source srcset="diagrams/three-steps/decision.light.png">
-  <img alt="How the team chooses. The SMEs and the Product Owner shape the direction of this platform offering; this is the SME's recommendation from experience and modern best practice. The platform owner decides: the proxy approach, with no mirror, no sync and no local Update Service. The change goes to security on the threat model, with one condition: applications cannot use the proxy by default; the platform gives them no proxy settings (C2) and they have no route out (C1), proven by the runbook's tests 6 and 8. Approved leads to the preferred option, the proxy approach: VMware and TKG already update through this proxy; the retrofit runbook, lower environments first; the mirror is retired per cluster. Not approved leads to the fallback only, the mirror approach automated: the Ansible playbooks on a timer into the new registries, a local Update Service stays required; Red Hat Quay on-prem would only change the registry product, not a third option. Under either option the clusters must be on 4.20 before 4.18's EUS term ends on 25 February 2027. Ansible automates the upgrade in both cases, under the proxy option too; the difference is the manual mirror, which the proxy approach eliminates." src="diagrams/three-steps/decision.light.png">
+  <img alt="How the team chooses. The SMEs and the Product Owner shape the direction of this platform offering; this is the SME's recommendation from experience and modern best practice. The platform owner decides: the proxy approach, with no mirror, no sync and no local Update Service. The change goes to security on the threat model, with one condition: applications cannot use the proxy by default; the platform gives them no proxy settings (C2) and they have no route out (C1), proven by the runbook's tests 6 and 8. Approved leads to the preferred option, the proxy approach: VMware and TKG already update through this proxy; the retrofit runbook, lower environments first; the mirror is retired per cluster. Not approved leads to the fallback only, the mirror approach automated: the Ansible playbooks on a timer into the new registries, a local Update Service stays required; Red Hat Quay on-prem would only change the registry product, not a third option. Under either option the clusters must be on 4.20 before 4.18's EUS term ends on 25 February 2027. Ansible automates the upgrade in both cases, under the proxy option too: the hops, the update service, the registry settings and catalog gating; the difference is the manual mirror, which the proxy approach eliminates. With the proxy enabled on 4.18 first, the hops to 4.20 and 4.22 need no sync." src="diagrams/three-steps/decision.light.png">
 </picture>
 
 *Proposed decision flow. The platform owner's decision, the change with security, and the fallback. Only
@@ -386,6 +386,23 @@ through the proxy. Ansible automates the upgrade under both options. With the pr
 playbooks drive the retrofit and the updates themselves: the update runs, the checks and the evidence,
 as the Step 1 playbooks do for mirroring today. With the mirror approach they also have to run and
 maintain the mirror. The difference is the manual mirror, which the proxy approach eliminates.
+
+**What Ansible automates under the proxy approach.** The work that stays in every option
+([`PROBLEM-STATEMENT.md`](PROBLEM-STATEMENT.md), "What the proposal removes, and what stays") becomes
+playbooks, as the mirroring is today:
+
+- the updates themselves: each control-plane hop (`oc adm upgrade`), the waits and the health checks;
+- the update service: clear `spec.upstream` and set the channel, so the cluster reads Red Hat's graph;
+- the cluster registry configuration: the Red Hat pull secret, `allowedRegistries`, the proxy and its
+  CA, and the mirror sets removed after the first connected update;
+- catalog gating through GitOps: Git owns every CatalogSource and Subscription, the admission policies
+  enforce the approved list;
+- the retrofit itself, phase by phase, and the runbook's Verify tests as evidence.
+
+**Order of work.** The cluster-wide proxy is a documented configuration on 4.18. Enabled first, it lets
+the hops to 4.20 and 4.22 run straight from Red Hat with no sync at all, which is how the proxy approach
+meets the 4.20 deadline without a mirror. Red Hat Support should confirm that removing the mirror sets
+also removes the signature acknowledgment before 4.21 (runbook, phase 8).
 
 **Why the proxy approach.** We are not looking for two-headed DNS, and no option needs it. We are
 looking for a sustainable way to update our clusters that keeps pace with our growth. The disconnected
@@ -418,7 +435,7 @@ Platform owner decides: the proxy approach
      approved     -> 1 · preferred: the proxy approach, the retrofit runbook; no mirror at all   (mirror retired per cluster)
      not approved -> 2 · fallback only: the mirror approach, automated on the new registries      (mirror stays, on a schedule)
 Either option: the clusters must be on 4.20 before 4.18's EUS term ends on 25 Feb 2027.
-Ansible automates the upgrade in both cases, under the proxy too; the proxy approach eliminates the manual mirror.
+Proxy first on 4.18, then the hops to 4.20 and 4.22 run with no sync; Ansible automates the hops either way.
 ```
 
 In order:
@@ -427,11 +444,13 @@ In order:
    that VMware and TKG already update through the proxy, and the condition that applications cannot
    use the proxy by default.
 2. **If security approves the change:** run the retrofit runbook in lower environments, then
-   production, one cluster per window. The mirror is retired as each cluster is retrofitted.
+   production, one cluster per window, on 4.18 and before the updates. The hops to 4.20 and 4.22 then
+   run straight from Red Hat with no sync; the mirror is retired as each cluster is retrofitted.
 3. **If security does not approve it:** build the two bastions and three registries
    ([`PREREQUISITES.md`](PREREQUISITES.md)) and put the Ansible playbooks on a schedule into them.
 4. **Under either option:** the clusters must be on 4.20 before 4.18's EUS term ends on 25 February
-   2027, so the decision has to come early enough to run the chosen approach by then.
+   2027, so the decision has to come early enough to run the chosen approach by then. Ansible runs the
+   hops in both cases.
 
 ## Decisions needed
 

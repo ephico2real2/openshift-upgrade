@@ -196,7 +196,9 @@ RED HAT     quay.io, registry.redhat.io, api.openshift.com, mirror.openshift.com
 Neither design makes the remaining work go away. The updates still have to be run, the clusters
 still have to be pointed at an update service and a registry, and the operator catalog still has to
 be gated through GitOps so that only approved items are exposed. That work exists today and in both
-designs.
+designs, and under the proxy approach it is what Ansible automates: the hops, the update service, the
+registry configuration and the catalog gating become playbooks, as the mirroring is today
+([`SOLUTIONS.md`](SOLUTIONS.md), Recommendation).
 
 | Stays in every option | Today | Preferred: proxy | Alternative: Quay on-prem |
 |---|---|---|---|

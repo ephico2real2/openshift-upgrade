@@ -6,7 +6,7 @@
 <ul style="font-size:28px;line-height:1.45">
 <li>Each cluster's Proxy setting sends platform traffic to the enterprise proxy, which allows only Red Hat's documented hosts</li>
 <li>Application pods are blocked from the proxy; an image allowlist stops arbitrary pulls</li>
-<li>No mirror, no sync, no local Update Service, no two-headed DNS</li>
+<li>No mirror, no sync, no local Update Service, no two-headed DNS. Proxy first on 4.18, and the hops to 4.20 and 4.22 need no sync</li>
 <li>Cost: one reboot of every node when the proxy goes on, one drain when the mirror is removed</li>
 </ul>
 <p style="font-size:28px;line-height:1.4;background:#FBF1E4;color:#7A4208;padding:20px 28px;border-radius:12px">Needs: security's approval of the change, on the threat model. One condition: applications cannot use the proxy by default</p>
@@ -14,5 +14,5 @@
 <img src="/_blob/0a3b7fe89702e3b1b2f4ff53ef425f24" alt="The Step 2 runbook converts a disconnected cluster in ten phases. Phases 0 to 3 touch no nodes beyond a CRI-O reload: approval, backup, the Red Hat pull secret and the image allowlist. Phase 4 turns on the cluster-wide proxy and drains and reboots every node. Phase 5 is optional, since the proxy never reaches application pods; phases 6 and 7 point update checks at Red Hat and move the operator catalogs, with no node effect. Phase 8 runs one update with the mirror still in place, and only then phase 9 removes the mirror, which drains the nodes again." style="width:760px;height:582px;object-fit:contain;background:#FFFFFF;border-radius:16px;border:1px solid #D7DCE3">
 </div>
 <p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#58636F">docs/enterprise-proxy/ · runbook not run on any cluster yet · 6</p>
-<aside>The runbook orders the work so that nothing touches the nodes until the proxy phase, which gets its own window, and the mirror comes out only after one connected update has worked. Verification includes proving application pods cannot use the proxy. The platform owner decides on this approach and takes the change to security on the threat model; the one condition is that applications cannot use the proxy by default.</aside>
+<aside>The runbook orders the work so that nothing touches the nodes until the proxy phase, which gets its own window, and the mirror comes out only after one connected update has worked. Verification includes proving application pods cannot use the proxy. Ansible runs the retrofit and the hops that follow, as it runs the mirroring today; enabled on 4.18 first, the proxy lets the hops to 4.20 and 4.22 run with no sync at all. The platform owner decides on this approach and takes the change to security on the threat model; the one condition is that applications cannot use the proxy by default.</aside>
 </section>

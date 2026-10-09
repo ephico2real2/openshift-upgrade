@@ -84,7 +84,10 @@ professional recommendation, from experience and modern best practice. The Ansib
 work to maintain, and that time is better spent on the update process itself, through the proxy.
 Ansible automates the upgrade under both options. With the proxy approach the playbooks drive the
 retrofit and the updates themselves; with the mirror approach they also have to run and maintain the
-mirror. The difference is the manual mirror, which the proxy approach eliminates.
+mirror. The difference is the manual mirror, which the proxy approach eliminates. The work that stays
+in every option, the hops themselves, the update service, the registry configuration and catalog gating
+through GitOps, becomes playbooks ([`SOLUTIONS.md`](SOLUTIONS.md), Recommendation). With the proxy
+enabled on 4.18 first, the hops to 4.20 and 4.22 run with no sync at all.
 
 **Why the proxy approach.** We are not looking for two-headed DNS, and no option needs it. We are
 looking for a sustainable way to update our clusters that keeps pace with our growth. The disconnected
