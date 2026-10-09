@@ -69,7 +69,7 @@ a { color: var(--remote); }
     <p class="muted">The platform starts every flow; every flow is TCP 443 through the proxy to a Red Hat host.</p>
     <figure>
       <div class="fig-scroll">
-<svg viewBox="0 0 1000 984" role="img" aria-label="Threat model of updating a cluster through our enterprise proxy, platform side. Inside the OpenShift cluster, the platform (the nodes and the openshift namespaces) starts every update. The Cluster Version Operator fetches the update graph from api.openshift.com and the release signature from mirror.openshift.com, and checks it with Red Hat's keys. CRI-O on each node pulls the release images from quay.io and checks their sigstore signatures. OLM pulls operator images from registry.redhat.io, from approved catalogs only. Every one of these flows is HTTPS on TCP 443 through the enterprise proxy, which allows only these Red Hat hosts, answers anything else with 403, and inspects TLS with the enterprise CA that the platform trusts through the proxy's trustedCA bundle. The firewall lets only the proxy out. Application pods get no proxy settings from the platform and have no route out, so they are stopped at the firewall. An admission policy (Kyverno) lets pods use images only from the allowed registries, Red Hat's and our internal ones, on top of the nodes' allowedRegistries. The cluster admin only picks the target with oc adm upgrade. Each control is taken from Red Hat's OpenShift documentation, except the admission policy, which is ours.">
+<svg viewBox="0 0 1000 984" role="img" aria-label="Threat model of updating a cluster through our enterprise proxy, platform side. Inside the OpenShift cluster, the platform (the nodes and the openshift namespaces) starts every update. The Cluster Version Operator fetches the update graph from api.openshift.com and the release signature from mirror.openshift.com, and checks the signature with Red Hat's keys. CRI-O on each node pulls the release images from quay.io and, from OpenShift 4.21, checks their sigstore signatures. OLM installs operators from approved catalogs only; CRI-O pulls their images from registry.redhat.io. Every one of these flows is HTTPS on TCP 443 through the enterprise proxy, which allows only these Red Hat hosts, answers anything else with 403, and inspects TLS with the enterprise CA that the platform trusts through the proxy's trustedCA bundle. The firewall lets only the proxy out. Application pods get no proxy settings from the platform and have no route out, so they are stopped at the firewall. An admission policy (Kyverno) lets pods use images only from the allowed registries, Red Hat's and our internal ones, on top of the nodes' allowedRegistries. The cluster admin only picks the target with oc adm upgrade. Each control is taken from Red Hat's OpenShift documentation, except the admission policy, which is ours.">
 <defs><marker id="pt1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
 <g font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="currentColor">
 <rect x="20" y="14" width="960" height="100" rx="10" fill="none" stroke="var(--gap)" stroke-width="1.6" stroke-dasharray="9 5"/>
@@ -90,7 +90,6 @@ a { color: var(--remote); }
 <text x="875.0" y="66" fill="var(--gap)" font-weight="600" text-anchor="middle">any other host</text>
 <text x="875.0" y="83" fill="var(--gap)" text-anchor="middle">not reachable</text>
 <rect x="20" y="132" width="960" height="140" rx="10" fill="none" stroke="var(--gap)" stroke-width="1.6" stroke-dasharray="9 5"/>
-<text x="32" y="150" fill="var(--gap)" font-family="IBM Plex Mono, monospace" font-size="11.5" font-weight="600"></text>
 <text x="700" y="150" fill="var(--gap)" font-family="IBM Plex Mono, monospace" font-size="11.5" font-weight="600">OUR ENTERPRISE NETWORK</text>
 <rect x="40" y="160" width="728" height="96" rx="8" fill="var(--none-wash)" stroke="var(--none)" stroke-width="2"/>
 <text x="404" y="184" fill="var(--none)" font-size="14" font-weight="700" text-anchor="middle">Enterprise proxy (highly available)</text>
@@ -106,17 +105,16 @@ a { color: var(--remote); }
 <path d="M497,160 L497,104" fill="none" stroke="var(--remote)" stroke-width="1.4" marker-end="url(#pt1)"/>
 <path d="M683,160 L683,104" fill="none" stroke="var(--remote)" stroke-width="1.4" marker-end="url(#pt1)"/>
 <rect x="20" y="296" width="960" height="300" rx="10" fill="none" stroke="var(--gap)" stroke-width="1.6" stroke-dasharray="9 5"/>
-<text x="32" y="314" fill="var(--gap)" font-family="IBM Plex Mono, monospace" font-size="11.5" font-weight="600"></text>
 <text x="140" y="314" fill="var(--gap)" font-family="IBM Plex Mono, monospace" font-size="11.5" font-weight="600">OPENSHIFT CLUSTER</text>
 <rect x="40" y="324" width="728" height="256" rx="8" fill="var(--host-wash)" stroke="var(--host)" stroke-width="1.5"/>
 <rect x="56" y="340" width="340" height="72" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
 <text x="72" y="363.5" fill="currentColor" font-weight="600">Cluster Version Operator</text>
-<text x="72" y="380.5" fill="var(--muted)">update graph and release signature,</text>
+<text x="72" y="380.5" fill="var(--muted)">update graph; release signature</text>
 <text x="72" y="397.5" fill="var(--host)">checked with Red Hat's keys (C4)</text>
 <rect x="412" y="340" width="170" height="72" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
 <text x="428" y="363.5" fill="currentColor" font-weight="600">CRI-O, each node</text>
 <text x="428" y="380.5" fill="var(--muted)">pulls release images,</text>
-<text x="428" y="397.5" fill="var(--host)">checks sigstore (C4)</text>
+<text x="428" y="397.5" fill="var(--host)">sigstore, 4.21+ (C4)</text>
 <rect x="598" y="340" width="154" height="72" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
 <text x="614" y="363.5" fill="currentColor" font-weight="600">OLM</text>
 <text x="614" y="380.5" fill="var(--muted)">approved catalogs</text>
@@ -147,7 +145,6 @@ a { color: var(--remote); }
 <path d="M683,340 L683,260" fill="none" stroke="var(--remote)" stroke-width="1.4" marker-end="url(#pt1)"/>
 <text x="675" y="290" fill="var(--remote)" text-anchor="end">443</text>
 <rect x="784" y="324" width="182" height="256" rx="10" fill="none" stroke="var(--gap)" stroke-width="1.6" stroke-dasharray="9 5"/>
-<text x="796" y="342" fill="var(--gap)" font-family="IBM Plex Mono, monospace" font-size="11.5" font-weight="600"></text>
 <text x="796" y="566" fill="var(--gap)" font-family="IBM Plex Mono, monospace" font-size="11.5" font-weight="600">APP NAMESPACES</text>
 <rect x="798" y="356" width="154" height="96" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
 <text x="814" y="383.0" fill="currentColor" font-weight="600">application pods</text>
@@ -161,7 +158,7 @@ a { color: var(--remote); }
 <rect x="20" y="614" width="400" height="92" rx="10" fill="none" stroke="var(--gap)" stroke-width="1.6" stroke-dasharray="9 5"/>
 <text x="32" y="632" fill="var(--gap)" font-family="IBM Plex Mono, monospace" font-size="11.5" font-weight="600">CLUSTER ADMIN</text>
 <rect x="40" y="642" width="360" height="50" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
-<text x="56" y="662" fill="currentColor" font-weight="600">oc adm upgrade --to=4.22.z</text>
+<text x="56" y="662" fill="currentColor" font-weight="600">oc adm upgrade --to=&lt;version&gt;</text>
 <text x="56" y="679" fill="var(--muted)">picks the target; the CVO does the rest; no egress</text>
 <path d="M218,642 L218,416" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#pt1)"/>
 <rect x="20" y="724" width="960" height="220" rx="8" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.5"/>
@@ -187,7 +184,7 @@ a { color: var(--remote); }
     <p class="muted">The same update in order: who calls which Red Hat host, and the controls on each step.</p>
     <figure>
       <div class="fig-scroll">
-<svg viewBox="0 0 1000 900" role="img" aria-label="The same update step by step. Each step names the platform component that makes the request, the Red Hat host it reaches over TCP 443 through the enterprise proxy, and the controls that apply. Step 1: the Cluster Version Operator asks api.openshift.com for the update graph. Step 2: the cluster admin picks the target with oc adm upgrade; no egress. Step 3: the CVO fetches the release signature from mirror.openshift.com and checks it with Red Hat's keys. Step 4: CRI-O on each node pulls the release images from quay.io and its CDN, only from allowed repositories. Step 5: CRI-O checks each image's sigstore signature. Step 6: OLM installs operators from approved catalogs on registry.redhat.io. Step 7: application pods are admitted only with images from the allowed registries and have no proxy settings and no route out. Every request crosses the enterprise proxy, which allows only Red Hat hosts and re-signs TLS with the enterprise CA the platform trusts.">
+<svg viewBox="0 0 1000 900" role="img" aria-label="The same update step by step. Each step names the platform component that makes the request, the Red Hat host it reaches over TCP 443 through the enterprise proxy, and the controls that apply. Step 1: the Cluster Version Operator asks api.openshift.com for the update graph. Step 2: the cluster admin picks the target with oc adm upgrade; no egress. Step 3: the CVO fetches the release signature from mirror.openshift.com and checks it with Red Hat's keys. Step 4: CRI-O on each node pulls the release images from quay.io and its CDN, only from allowed repositories. Step 5: from OpenShift 4.21, CRI-O checks each image's sigstore signature. Step 6: OLM installs operators from approved catalogs only; CRI-O pulls their images from registry.redhat.io. Step 7: application pods are admitted only with images from the allowed registries and have no proxy settings and no route out. Every request crosses the enterprise proxy, which allows only Red Hat hosts and re-signs TLS with the enterprise CA the platform trusts.">
 <defs><marker id="pt2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
 <g font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="currentColor">
 <rect x="20" y="14" width="400" height="30" rx="6" fill="var(--host-wash)" stroke="var(--host)"/>
@@ -213,7 +210,7 @@ a { color: var(--remote); }
 <text x="570" y="153.5" fill="var(--host)" font-family="IBM Plex Mono, monospace" font-size="11.5" font-weight="700" text-anchor="middle">C7</text>
 <rect x="36" y="210" width="384" height="64" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
 <text x="52" y="236" fill="currentColor" font-weight="600">② Pick the target</text>
-<text x="52" y="253" fill="currentColor" font-family="IBM Plex Mono, monospace" font-size="12">cluster admin: oc adm upgrade --to=4.22.z</text>
+<text x="52" y="253" fill="currentColor" font-family="IBM Plex Mono, monospace" font-size="12">cluster admin: oc adm upgrade --to=&lt;version&gt;</text>
 <text x="540" y="246" fill="var(--muted)" text-anchor="middle">no egress</text>
 <rect x="36" y="290" width="384" height="64" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
 <text x="52" y="316" fill="currentColor" font-weight="600">③ Verify the release</text>
@@ -237,7 +234,7 @@ a { color: var(--remote); }
 <text x="570" y="393.5" fill="var(--host)" font-family="IBM Plex Mono, monospace" font-size="11.5" font-weight="700" text-anchor="middle">C7</text>
 <rect x="36" y="450" width="384" height="64" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
 <text x="52" y="476" fill="currentColor" font-weight="600">⑤ Check each image</text>
-<text x="52" y="493" fill="var(--muted)">CRI-O: sigstore signature</text>
+<text x="52" y="493" fill="var(--muted)">CRI-O: sigstore signature, from 4.21</text>
 <rect x="660" y="450" width="320" height="64" rx="8" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.5"/>
 <text x="676" y="476" fill="currentColor" font-family="IBM Plex Mono, monospace" font-size="12">quay.io · sha256-&lt;digest&gt;.sig</text>
 <text x="676" y="493" fill="var(--muted)">sigstore signature</text>
@@ -246,7 +243,7 @@ a { color: var(--remote); }
 <text x="510" y="473.5" fill="var(--host)" font-family="IBM Plex Mono, monospace" font-size="11.5" font-weight="700" text-anchor="middle">C4</text>
 <rect x="36" y="530" width="384" height="64" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
 <text x="52" y="556" fill="currentColor" font-weight="600">⑥ Install approved operators</text>
-<text x="52" y="573" fill="var(--muted)">OLM, approved catalogs only</text>
+<text x="52" y="573" fill="var(--muted)">OLM, approved catalogs only; CRI-O pulls</text>
 <rect x="660" y="530" width="320" height="64" rx="8" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.5"/>
 <text x="676" y="556" fill="currentColor" font-family="IBM Plex Mono, monospace" font-size="12">registry.redhat.io</text>
 <text x="676" y="573" fill="var(--muted)">operator images</text>
