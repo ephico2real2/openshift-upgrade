@@ -77,6 +77,6 @@
           </g>
         </svg>
 </div>
-<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#58636F">Two EUS-to-EUS updates, four control-plane hops · versions as of 2026-10-05 · PROBLEM-STATEMENT.md · 4</p>
+<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#58636F">Two EUS-to-EUS updates, four control-plane hops · versions as of 2026-10-05 · PROBLEM-STATEMENT.md · sources on slide 28 · 4</p>
 <aside>Between EUS releases the control plane passes through the odd minor while the workers stay paused: 4.18 to 4.19 to 4.20, then 4.20 to 4.21 to 4.22. Red Hat's update graph recommends a path from 4.18 to 4.20 today; every edge from 4.21 into 4.22 is conditional, meaning it carries a declared risk the cluster has to evaluate. Under today's process each hop first needs its release payload of 187 to 191 images synced by hand; the hops into 4.21 and 4.22 also need sigstore signatures, and leaving 4.20 needs an administrator acknowledgment that the signatures are mirrored. Under the proxy approach, enabled on 4.18 first, the same four hops run straight from Red Hat with no sync at all, and Ansible runs them.</aside>
 </section>
