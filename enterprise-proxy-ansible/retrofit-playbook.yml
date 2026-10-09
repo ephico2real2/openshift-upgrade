@@ -1,0 +1,419 @@
+---
+# The proxy approach, phases 1 to 7 of docs/enterprise-proxy/README.md, as a playbook.
+# Runs on the mirroring bastion against one cluster (vars/cluster-<name>.yml). Each phase is a tag,
+# so the runbook's order can be kept: --tags backup,check first, then pull-secret, image-policy,
+# proxy (the maintenance window: every node reboots), update-service, catalogs. Phase 8 is
+# update-playbook.yml and phase 9 remove-mirror-playbook.yml; verify-playbook.yml is the Verify table.
+# Red Hat's steps for the catalog side are in KB "Converting a disconnected cluster to a connected
+# cluster" (Solution Verified, updated 29 October 2025): default sources back on, the mirrored
+# CatalogSource and ICSP removed, each Subscription re-pointed; the proxy and the pull secret first.
+- name: Retrofit a disconnected cluster to reach Red Hat through the enterprise proxy
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - vars/common.yml
+
+  tasks:
+    # ---------------------------------------------------------------- phase 1: back up and check
+    - name: "Phase 1: back up every object this runbook changes"
+      tags: [backup, always]
+      block:
+        - name: Create the backup folder (on the bastion only, mode 0700)
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: directory
+            mode: "0700"
+          loop: ["{{ backup_dir }}", "{{ work_dir }}"]
+
+        - name: Save each object as YAML
+          ansible.builtin.shell: "{{ oc }} get {{ item.what }} -o yaml > {{ backup_dir }}/{{ item.file }}"
+          loop:
+            - { what: "proxy/cluster", file: "proxy.yaml" }
+            - { what: "image.config.openshift.io/cluster", file: "image-config.yaml" }
+            - { what: "clusterversion version", file: "clusterversion.yaml" }
+            - { what: "operatorhub cluster", file: "operatorhub.yaml" }
+            - { what: "imagedigestmirrorset,imagetagmirrorset,imagecontentsourcepolicy", file: "mirror-sets.yaml" }
+            - { what: "catalogsource -n openshift-marketplace", file: "catalogsources.yaml" }
+            - { what: "subscriptions.operators.coreos.com -A", file: "subscriptions.yaml" }
+            - { what: "configmap -n openshift-config", file: "openshift-config-cms.yaml" }
+            - { what: "secret/pull-secret -n openshift-config", file: "pull-secret.yaml" }
+          changed_when: true
+
+        - name: Keep the backups private (pull-secret.yaml holds credentials)
+          ansible.builtin.file:
+            path: "{{ backup_dir }}/{{ item }}"
+            mode: "0600"
+          loop: [proxy.yaml, image-config.yaml, clusterversion.yaml, operatorhub.yaml, mirror-sets.yaml, catalogsources.yaml, subscriptions.yaml, openshift-config-cms.yaml, pull-secret.yaml]
+
+    - name: "Phase 1: check the cluster is healthy and nothing will block a reboot"
+      tags: [check, always]
+      block:
+        - name: Read ClusterVersion, ClusterOperators, MachineConfigPools and PodDisruptionBudgets
+          ansible.builtin.command: "{{ oc }} get {{ item }} -o json"
+          loop: ["clusterversion version", "co", "mcp", "pdb -A"]
+          register: health_raw
+          changed_when: false
+
+        - name: Judge them
+          ansible.builtin.set_fact:
+            cv: "{{ health_raw.results[0].stdout | from_json }}"
+            cos: "{{ (health_raw.results[1].stdout | from_json)['items'] }}"
+            pools: "{{ (health_raw.results[2].stdout | from_json)['items'] }}"
+            zero_pdbs: >-
+              {{ (health_raw.results[3].stdout | from_json)['items'] | selectattr('status.disruptionsAllowed', 'defined')
+                 | selectattr('status.disruptionsAllowed', 'equalto', 0) | map(attribute='metadata.name') | list }}
+
+        - name: List the ClusterOperators that are not Available, or Progressing, or Degraded
+          ansible.builtin.set_fact:
+            unhealthy_cos: >-
+              {{ unhealthy_cos | default([]) + [item.metadata.name] }}
+          loop: "{{ cos }}"
+          loop_control:
+            label: "{{ item.metadata.name }}"
+          when: >-
+            (item.status.conditions | selectattr('type', 'equalto', 'Available') | map(attribute='status') | first | default('False')) != 'True'
+            or (item.status.conditions | selectattr('type', 'equalto', 'Progressing') | map(attribute='status') | first | default('False')) != 'False'
+            or (item.status.conditions | selectattr('type', 'equalto', 'Degraded') | map(attribute='status') | first | default('False')) != 'False'
+
+        - name: List the pools that are paused, updating or degraded
+          ansible.builtin.set_fact:
+            unready_pools: "{{ unready_pools | default([]) + [item.metadata.name] }}"
+          loop: "{{ pools }}"
+          loop_control:
+            label: "{{ item.metadata.name }}"
+          when: >-
+            (item.spec.paused | default(false)) | bool
+            or (item.status.conditions | selectattr('type', 'equalto', 'Updated') | map(attribute='status') | first | default('False')) != 'True'
+            or (item.status.conditions | selectattr('type', 'equalto', 'Degraded') | map(attribute='status') | first | default('False')) != 'False'
+
+        - name: Stop unless the cluster is healthy
+          ansible.builtin.assert:
+            that:
+              - (cv.status.conditions | selectattr('type', 'equalto', 'Available') | map(attribute='status') | first) == 'True'
+              - (cv.status.conditions | selectattr('type', 'equalto', 'Progressing') | map(attribute='status') | first) == 'False'
+              - (cv.status.conditions | selectattr('type', 'equalto', 'Degraded') | map(attribute='status') | first | default('False')) == 'False'
+              - (unhealthy_cos | default([])) | length == 0
+              - (unready_pools | default([])) | length == 0
+            fail_msg: >-
+              Not healthy. ClusterOperators not Available/Progressing/Degraded: {{ unhealthy_cos | default([]) }};
+              pools paused, not updated or degraded: {{ unready_pools | default([]) }} (a worker pool left paused after
+              an EUS update will not pick up the proxy; unpause it first). Fix these, then run again.
+            quiet: true
+
+        - name: Warn about PodDisruptionBudgets with no disruptions allowed (they stall the drain in phase 4)
+          ansible.builtin.debug:
+            msg: "PDBs with ALLOWED DISRUPTIONS 0: {{ zero_pdbs }}. Resolve them before phase 4."
+          when: zero_pdbs | length > 0
+
+        - name: Inventory the registries running pods pull from (for allowed_registries)
+          ansible.builtin.command: "{{ oc }} get pods -A -o json"
+          register: pods_raw
+          changed_when: false
+
+        - name: Show that inventory
+          ansible.builtin.debug:
+            msg: "Registries in use: {{ (pods_raw.stdout | from_json)['items'] | map(attribute='spec.containers') | flatten | map(attribute='image') | map('regex_replace', '/.*$', '') | unique | sort }}"
+
+    # ---------------------------------------------------------------- phase 2: the pull secret
+    - name: "Phase 2: Red Hat credentials in the global pull secret"
+      tags: [pull-secret]
+      block:
+        - name: Load the Red Hat pull secret from Vault
+          ansible.builtin.set_fact:
+            redhat_pull_secret: "{{ lookup('ansible.builtin.file', pull_secret_file) | from_json }}"
+          no_log: true
+
+        - name: Check it covers the Red Hat registries
+          ansible.builtin.assert:
+            that:
+              - "'quay.io' in redhat_pull_secret.auths"
+              - "'registry.redhat.io' in redhat_pull_secret.auths"
+            fail_msg: "{{ pull_secret_file }} is missing quay.io or registry.redhat.io. Copy it again from console.redhat.com."
+            quiet: true
+
+        - name: Read the cluster's pull secret (it keeps its mirror registry login until phase 9)
+          ansible.builtin.command: "{{ oc }} get secret/pull-secret -n openshift-config -o json"
+          register: cluster_ps_raw
+          changed_when: false
+          no_log: true
+
+        - name: Merge the two (the Red Hat entries win where a name is in both)
+          ansible.builtin.set_fact:
+            merged_pull_secret: >-
+              {{ (cluster_ps_raw.stdout | from_json)['data']['.dockerconfigjson'] | b64decode | from_json
+                 | combine(redhat_pull_secret, recursive=True) }}
+          no_log: true
+
+        - name: Drop cloud.openshift.com unless D3 keeps telemetry on (the entry turns Telemetry and Insights on)
+          ansible.builtin.set_fact:
+            merged_pull_secret: "{{ merged_pull_secret | combine({'auths': merged_pull_secret.auths | dict2items | rejectattr('key', 'equalto', 'cloud.openshift.com') | items2dict}) }}"
+          when: not (telemetry_enabled | bool)
+          no_log: true
+
+        - name: Show the registry names in the merged secret (never the tokens)
+          ansible.builtin.debug:
+            msg: "Pull secret will hold: {{ merged_pull_secret.auths.keys() | list | sort }}"
+
+        - name: Write it to a private work file
+          ansible.builtin.copy:
+            dest: "{{ work_dir }}/merged-pull-secret.json"
+            content: "{{ merged_pull_secret | to_json }}"
+            mode: "0600"
+          no_log: true
+
+        - name: Set the global pull secret (no drain, no reboot; the MCO still rolls it to every node)
+          ansible.builtin.command: "{{ oc }} set data secret/pull-secret -n openshift-config --from-file=.dockerconfigjson={{ work_dir }}/merged-pull-secret.json"
+          changed_when: true
+
+        - name: Wait for the pools to settle
+          ansible.builtin.include_tasks:
+            file: tasks/wait-for-pools.yml
+            apply:
+              tags: [always]
+
+        - name: Check a node can read it
+          ansible.builtin.include_tasks:
+            file: tasks/node-auths.yml
+            apply:
+              tags: [always]
+      always:
+        - name: Remove the work copy of the pull secret
+          ansible.builtin.file:
+            path: "{{ work_dir }}/merged-pull-secret.json"
+            state: absent
+
+    # ---------------------------------------------------------------- phase 3: image policy
+    - name: "Phase 3: limit what any pod may pull (allowedRegistries)"
+      tags: [image-policy]
+      block:
+        - name: Read image.config
+          ansible.builtin.command: "{{ oc }} get image.config.openshift.io/cluster -o json"
+          register: imgcfg_raw
+          changed_when: false
+
+        - name: Stop if blockedRegistries is set and may not be removed (the two settings cannot coexist)
+          ansible.builtin.assert:
+            that: >-
+              (imgcfg_raw.stdout | from_json).spec.registrySources.blockedRegistries is not defined
+              or (remove_blocked_registries | bool)
+            fail_msg: "image.config has blockedRegistries. Set remove_blocked_registries: true to replace it with allowedRegistries."
+            quiet: true
+
+        - name: Remove blockedRegistries first
+          ansible.builtin.command: >-
+            {{ oc }} patch image.config.openshift.io/cluster --type json
+            -p '[{"op":"remove","path":"/spec/registrySources/blockedRegistries"}]'
+          when: (imgcfg_raw.stdout | from_json).spec.registrySources.blockedRegistries is defined
+          changed_when: true
+
+        - name: Set allowedRegistries (CRI-O reloads; no drain)
+          ansible.builtin.command: >-
+            {{ oc }} patch image.config.openshift.io/cluster --type merge
+            -p '{{ {"spec": {"registrySources": {"allowedRegistries": allowed_registries}}} | to_json }}'
+          changed_when: true
+
+    # ---------------------------------------------------------------- phase 4: the cluster-wide proxy
+    - name: "Phase 4: the cluster-wide proxy (maintenance window: every node drains and reboots)"
+      tags: [proxy, never]
+      block:
+        - name: "4a: read {{ trusted_ca_configmap }}, if it exists"
+          ansible.builtin.command: "{{ oc }} get configmap {{ trusted_ca_configmap }} -n openshift-config -o json"
+          register: cabundle_raw
+          failed_when: cabundle_raw.rc != 0 and 'NotFound' not in cabundle_raw.stderr
+          changed_when: false
+          when: proxy_ca_file | default('') | length > 0
+
+        - name: "4a: read the proxy CA"
+          ansible.builtin.set_fact:
+            proxy_ca: "{{ lookup('ansible.builtin.file', proxy_ca_file) }}"
+            existing_bundle: "{{ (cabundle_raw.stdout | from_json).data['ca-bundle.crt'] if cabundle_raw.rc == 0 else '' }}"
+          when: proxy_ca_file | default('') | length > 0
+
+        - name: "4a: write the bundle: the existing one (the mirror CA is often in it) plus the proxy CA, once"
+          ansible.builtin.copy:
+            dest: "{{ work_dir }}/ca-bundle.crt"
+            content: "{{ existing_bundle | trim }}{{ '\n' if existing_bundle | trim else '' }}{{ proxy_ca if proxy_ca | trim not in existing_bundle else '' }}"
+            mode: "0600"
+          when: proxy_ca_file | default('') | length > 0
+
+        - name: "4a: create the ConfigMap (key ca-bundle.crt)"
+          ansible.builtin.command: "{{ oc }} create configmap {{ trusted_ca_configmap }} -n openshift-config --from-file=ca-bundle.crt={{ work_dir }}/ca-bundle.crt"
+          when: proxy_ca_file | default('') | length > 0 and cabundle_raw.rc != 0
+          changed_when: true
+
+        - name: "4a: or update it"
+          ansible.builtin.command: "{{ oc }} set data configmap/{{ trusted_ca_configmap }} -n openshift-config --from-file=ca-bundle.crt={{ work_dir }}/ca-bundle.crt"
+          when: proxy_ca_file | default('') | length > 0 and cabundle_raw.rc == 0 and proxy_ca | trim not in existing_bundle
+          changed_when: true
+
+        - name: "4b: write the Proxy patch"
+          ansible.builtin.copy:
+            dest: "{{ work_dir }}/proxy-patch.json"
+            mode: "0600"
+            content: >-
+              {{ {"spec": {"httpProxy": proxy_url, "httpsProxy": proxy_url, "noProxy": no_proxy | join(','),
+                           "readinessEndpoints": readiness_endpoints,
+                           "trustedCA": {"name": trusted_ca_configmap if (proxy_ca_file | default('') | length > 0) else ''}}} | to_nice_json }}
+
+        - name: "4b: patch proxy/cluster (the only Proxy object; this reboots all nodes, pool by pool)"
+          ansible.builtin.command: "{{ oc }} patch proxy/cluster --type merge --patch-file {{ work_dir }}/proxy-patch.json"
+          changed_when: true
+
+        - name: "4b: wait until the readiness endpoints passed and the settings are in status"
+          ansible.builtin.command: "{{ oc }} get proxy/cluster -o json"
+          register: proxy_status_raw
+          until: (proxy_status_raw.stdout | from_json).status.httpsProxy | default('') == proxy_url
+          retries: 20
+          delay: "{{ wait_delay_seconds }}"
+          changed_when: false
+
+        - name: "4b: wait for every pool to drain, reboot and come back"
+          ansible.builtin.include_tasks:
+            file: tasks/wait-for-pools.yml
+            apply:
+              tags: [always]
+
+        - name: "4b: check the ClusterOperators after the reboot"
+          ansible.builtin.include_tasks:
+            file: tasks/check-operators.yml
+            apply:
+              tags: [always]
+
+        - name: "4b: show the node-level settings (/etc/mco/proxy.env)"
+          ansible.builtin.include_tasks:
+            file: tasks/node-proxy-env.yml
+            apply:
+              tags: [always]
+
+    # ---------------------------------------------------------------- phase 5: optional
+    - name: "Phase 5 (optional): EgressFirewall denying the proxy in the namespaces listed"
+      tags: [egress-firewall, never]
+      block:
+        - name: Write the EgressFirewall
+          ansible.builtin.copy:
+            dest: "{{ work_dir }}/egressfirewall-deny-proxy.yaml"
+            mode: "0600"
+            content: |
+              apiVersion: k8s.ovn.org/v1
+              kind: EgressFirewall
+              metadata:
+                name: default
+              spec:
+                egress:
+              {% for ip in proxy_ips %}
+                - type: Deny
+                  to:
+                    cidrSelector: {{ ip }}
+              {% endfor %}
+          when: egress_firewall_namespaces | length > 0 and proxy_ips | length > 0
+
+        - name: Apply it only to the namespaces security named (teams that use the proxy stay out)
+          ansible.builtin.command: "{{ oc }} apply -n {{ item }} -f {{ work_dir }}/egressfirewall-deny-proxy.yaml"
+          loop: "{{ egress_firewall_namespaces }}"
+          when: proxy_ips | length > 0
+          changed_when: true
+
+    # ---------------------------------------------------------------- phase 6: update checks from Red Hat
+    - name: "Phase 6: update checks from Red Hat (clear spec.upstream, keep the channel)"
+      tags: [update-service]
+      block:
+        - name: Read ClusterVersion
+          ansible.builtin.command: "{{ oc }} get clusterversion version -o json"
+          register: cv_raw
+          changed_when: false
+
+        - name: Remove spec.upstream (the default is api.openshift.com)
+          ansible.builtin.command: >-
+            {{ oc }} patch clusterversion version --type json -p '[{"op":"remove","path":"/spec/upstream"}]'
+          when: (cv_raw.stdout | from_json).spec.upstream is defined
+          changed_when: true
+
+        - name: Wait for RetrievedUpdates=True (if False, the message usually names api.openshift.com missing from the allowlist, or a CA problem)
+          ansible.builtin.command: "{{ oc }} get clusterversion version -o json"
+          register: cv_after
+          until: >-
+            ((cv_after.stdout | from_json).status.conditions | selectattr('type', 'equalto', 'RetrievedUpdates') | map(attribute='status') | first | default('False')) == 'True'
+          retries: 20
+          delay: "{{ wait_delay_seconds }}"
+          changed_when: false
+
+        - name: Show the recommended updates
+          ansible.builtin.command: "{{ oc }} adm upgrade"
+          register: upgrade_list
+          changed_when: false
+
+        - name: Print them
+          ansible.builtin.debug:
+            msg: "{{ upgrade_list.stdout_lines }}"
+
+    # ---------------------------------------------------------------- phase 7: catalogs from Red Hat
+    - name: "Phase 7: operator catalogs from Red Hat (the KB's steps)"
+      tags: [catalogs]
+      block:
+        - name: Build the sources list (each approved default source, enabled)
+          ansible.builtin.set_fact:
+            approved_sources: "{{ approved_sources | default([]) + [{'name': item, 'disabled': false}] }}"
+          loop: "{{ default_catalog_sources }}"
+
+        - name: Turn on only the default sources we approve
+          ansible.builtin.command: >-
+            {{ oc }} patch operatorhub cluster --type merge
+            -p '{{ {"spec": {"disableAllDefaultSources": true, "sources": approved_sources}} | to_json }}'
+          changed_when: true
+
+        - name: Wait until each approved source lists packages
+          ansible.builtin.command: "{{ oc }} get packagemanifests -l catalog={{ item }} -o json"
+          loop: "{{ default_catalog_sources }}"
+          register: pm_raw
+          until: (pm_raw.stdout | from_json)['items'] | length > 0
+          retries: 20
+          delay: "{{ wait_delay_seconds }}"
+          changed_when: false
+
+        - name: Read every Subscription
+          ansible.builtin.command: "{{ oc }} get subscriptions.operators.coreos.com -A -o json"
+          register: subs_raw
+          changed_when: false
+
+        - name: Select the ones on a mirrored source
+          ansible.builtin.set_fact:
+            subs_to_move: "{{ (subs_raw.stdout | from_json)['items'] | selectattr('spec.source', 'in', mirrored_catalog_sources) | list }}"
+
+        - name: Set installPlanApproval Manual first (the stock catalog may hold newer versions)
+          ansible.builtin.command: >-
+            {{ oc }} patch subscription.operators.coreos.com {{ item.metadata.name }} -n {{ item.metadata.namespace }}
+            --type merge -p '{"spec":{"installPlanApproval":"Manual"}}'
+          loop: "{{ subs_to_move }}"
+          loop_control:
+            label: "{{ item.metadata.namespace }}/{{ item.metadata.name }}"
+          when: (subscription_manual_approval | bool) and item.spec.installPlanApproval | default('Automatic') != 'Manual'
+          changed_when: true
+
+        - name: Move each Subscription to the approved source, keeping its channel
+          ansible.builtin.command: >-
+            {{ oc }} patch subscription.operators.coreos.com {{ item.metadata.name }} -n {{ item.metadata.namespace }}
+            --type merge -p '{{ {"spec": {"source": subscription_target_source, "sourceNamespace": "openshift-marketplace"}} | to_json }}'
+          loop: "{{ subs_to_move }}"
+          loop_control:
+            label: "{{ item.metadata.namespace }}/{{ item.metadata.name }}"
+          changed_when: true
+
+        - name: Read them back
+          ansible.builtin.command: "{{ oc }} get subscription.operators.coreos.com {{ item.metadata.name }} -n {{ item.metadata.namespace }} -o json"
+          loop: "{{ subs_to_move }}"
+          loop_control:
+            label: "{{ item.metadata.namespace }}/{{ item.metadata.name }}"
+          register: moved_raw
+          changed_when: false
+
+        - name: Report any that the stock catalog cannot resolve (leave those on the mirrored source and raise them)
+          ansible.builtin.assert:
+            that: (item.stdout | from_json).status.state | default('') != 'ResolutionFailed'
+            fail_msg: >-
+              {{ item.item.metadata.namespace }}/{{ item.item.metadata.name }}: ResolutionFailed on {{ subscription_target_source }}.
+              Its installed version is not in the stock catalog's channel; move it back to {{ item.item.spec.source }} and raise it.
+            quiet: true
+          loop: "{{ moved_raw.results }}"
+          loop_control:
+            label: "{{ item.item.metadata.namespace }}/{{ item.item.metadata.name }}"

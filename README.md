@@ -4,7 +4,7 @@ How disconnected OpenShift clusters can stay current: why an offline image sync 
 release cadence, the designs that replace it, the decisions still open, and the admission policies that limit which
 operator catalogs a cluster may use. Everything is in [`docs/`](docs/README.md).
 
-The plan, in three steps: (1) today's mirroring, run by the Ansible playbooks in [`oc-mirror-ansible/`](oc-mirror-ansible/README.md) (built); (2) the proxy approach, the platform owner's decision: clusters reach Red Hat through the enterprise proxy ([`docs/enterprise-proxy/`](docs/enterprise-proxy/README.md)), with Ansible running the retrofit and the updates; (3) the fallback only: the same playbooks on a schedule into the new registries, where Red Hat Quay on-prem ([`docs/quay-onprem/`](docs/quay-onprem/README.md)) would only change the registry product. All three are compared in [`docs/SOLUTIONS.md`](docs/SOLUTIONS.md), with the recommendation and the threat model the change goes to security on.
+The plan, in three steps: (1) today's mirroring, run by the Ansible playbooks in [`oc-mirror-ansible/`](oc-mirror-ansible/README.md) (built); (2) the proxy approach, the platform owner's decision: clusters reach Red Hat through the enterprise proxy ([`docs/enterprise-proxy/`](docs/enterprise-proxy/README.md)), with Ansible running the retrofit and the updates ([`enterprise-proxy-ansible/`](enterprise-proxy-ansible/README.md)); (3) the fallback only: the same playbooks on a schedule into the new registries, where Red Hat Quay on-prem ([`docs/quay-onprem/`](docs/quay-onprem/README.md)) would only change the registry product. All three are compared in [`docs/SOLUTIONS.md`](docs/SOLUTIONS.md), with the recommendation and the threat model the change goes to security on.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/three-steps/three-steps.dark.png">
@@ -35,6 +35,7 @@ Every step needs the new hosts first: a mirroring bastion in each datacenter and
 | [`docs/openshift-update-egress.html`](docs/openshift-update-egress.html) | The full plan, opened directly in a browser |
 | [`docs/image-policies/`](docs/image-policies/) | Kyverno's standard allowed-registries policy for application pods, the list kept in a ConfigMap in the cluster, on top of `allowedRegistries`; with its tests |
 | [`docs/catalog-policies/`](docs/catalog-policies/) | ValidatingAdmissionPolicy, Kyverno and Gatekeeper rules for operator catalogs, with their tests |
+| [`enterprise-proxy-ansible/`](enterprise-proxy-ansible/README.md) | Step 2 as playbooks: retrofit a cluster to the proxy phase by phase, run the updates with the signature check, remove the mirror, and write the Verify evidence; tested offline against a stand-in cluster |
 | [`oc-mirror-ansible/`](oc-mirror-ansible/README.md) | How we mirror today: oc-mirror v2 Ansible playbooks and step-by-step guides for release images (4.18 → 4.20 → 4.22, Update Service) and operator catalogs |
 
 The figures are rendered with [diagram-kit](https://github.com/ephico2real2/diagram-kit) (MPL-2.0), which checks

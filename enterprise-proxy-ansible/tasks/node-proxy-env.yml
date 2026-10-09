@@ -1,0 +1,22 @@
+---
+# Show the node-level proxy settings the MCO wrote (/etc/mco/proxy.env).
+- name: Pick a node
+  ansible.builtin.include_tasks:
+    file: pick-node.yml
+    apply:
+      tags: [always]
+
+- name: Read /etc/mco/proxy.env
+  ansible.builtin.command: "{{ oc }} debug node/{{ node }} -q -- chroot /host cat /etc/mco/proxy.env"
+  register: proxy_env
+  changed_when: false
+
+- name: Check it names our proxy
+  ansible.builtin.assert:
+    that: "'HTTPS_PROXY=' + proxy_url in proxy_env.stdout_lines"
+    fail_msg: "{{ node }}: /etc/mco/proxy.env does not hold HTTPS_PROXY={{ proxy_url }}: {{ proxy_env.stdout_lines }}"
+    quiet: true
+
+- name: Show it
+  ansible.builtin.debug:
+    msg: "{{ proxy_env.stdout_lines }}"

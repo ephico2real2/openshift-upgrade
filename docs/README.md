@@ -13,6 +13,7 @@
 | [`PREREQUISITES.md`](PREREQUISITES.md) | The hosts every step needs: a mirroring bastion per datacenter, the lab and two production mirror registries on RHEL 9, sizing, flows, and moving clusters off the old registry |
 | [`SOLUTIONS.md`](SOLUTIONS.md) | The three steps side by side: Ansible for today's process, the proxy approach (the platform owner's decision), the mirror on a schedule as the fallback; with the recommendation and the decisions needed |
 | [`enterprise-proxy/`](enterprise-proxy/README.md) | Step 2, the proxy approach: runbook to retrofit a disconnected cluster so it reaches Red Hat through the enterprise proxy |
+| [`../enterprise-proxy-ansible/`](../enterprise-proxy-ansible/README.md) | The runbook as playbooks: retrofit (phases 1 to 7, one tag each), update (phase 8 and later hops, with the signature check), remove the mirror (phase 9), verify (the evidence file); tested offline against a stand-in cluster |
 | [`enterprise-proxy/THREAT-MODEL.md`](enterprise-proxy/THREAT-MODEL.md) | Threat model of an update through the proxy: the platform starts every flow, each flow is TCP 443 through the proxy to a named Red Hat host, application pods cannot reach the internet |
 | [`quay-onprem/`](quay-onprem/README.md) | Step 3's Quay variant: Red Hat Quay on-prem, filled on a schedule by oc-mirror v2, with the OpenShift Update Service; the fallback only |
 | [`PROBLEM-STATEMENT.md`](PROBLEM-STATEMENT.md) | Why the current offline image sync cannot keep pace, measured, and the two designs that replace it |

@@ -1,0 +1,22 @@
+---
+# Poll the MachineConfigPools until every pool is Updated and none is Updating or Degraded.
+- name: Wait for every MachineConfigPool (Updated=True, Updating=False, Degraded=False)
+  ansible.builtin.command: "{{ oc }} get mcp -o json"
+  register: mcp_wait_raw
+  until: >-
+    ((mcp_wait_raw.stdout | from_json)['items'] | map(attribute='status.conditions') | flatten
+     | selectattr('type', 'equalto', 'Updated') | selectattr('status', 'equalto', 'True') | list | length)
+    == ((mcp_wait_raw.stdout | from_json)['items'] | length)
+    and ((mcp_wait_raw.stdout | from_json)['items'] | map(attribute='status.conditions') | flatten
+     | selectattr('type', 'in', ['Updating', 'Degraded']) | selectattr('status', 'equalto', 'True') | list | length) == 0
+  retries: "{{ mcp_wait_retries }}"
+  delay: "{{ wait_delay_seconds }}"
+  changed_when: false
+
+- name: Show the pools
+  ansible.builtin.debug:
+    msg: >-
+      {{ (mcp_wait_raw.stdout | from_json)['items']
+         | map(attribute='metadata.name') | zip((mcp_wait_raw.stdout | from_json)['items']
+         | map(attribute='status.conditions') | map('selectattr', 'type', 'equalto', 'Updated')
+         | map('map', attribute='status') | map('first')) | map('join', ': Updated=') | list }}

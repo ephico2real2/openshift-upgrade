@@ -1,0 +1,6 @@
+---
+# The playbooks run on the bastion and talk to the cluster with oc; there is no other host.
+all:
+  hosts:
+    localhost:
+      ansible_connection: local

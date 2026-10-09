@@ -1,0 +1,18 @@
+---
+# Poll the ClusterOperators until all are Available and none is Progressing or Degraded.
+- name: Wait until every ClusterOperator is Available, not Progressing, not Degraded
+  ansible.builtin.command: "{{ oc }} get co -o json"
+  register: co_wait_raw
+  until: >-
+    ((co_wait_raw.stdout | from_json)['items'] | map(attribute='status.conditions') | flatten
+     | selectattr('type', 'equalto', 'Available') | selectattr('status', 'equalto', 'True') | list | length)
+    == ((co_wait_raw.stdout | from_json)['items'] | length)
+    and ((co_wait_raw.stdout | from_json)['items'] | map(attribute='status.conditions') | flatten
+     | selectattr('type', 'in', ['Progressing', 'Degraded']) | selectattr('status', 'equalto', 'True') | list | length) == 0
+  retries: "{{ co_wait_retries }}"
+  delay: "{{ wait_delay_seconds }}"
+  changed_when: false
+
+- name: Report
+  ansible.builtin.debug:
+    msg: "{{ (co_wait_raw.stdout | from_json)['items'] | length }} ClusterOperators Available, none Progressing or Degraded"

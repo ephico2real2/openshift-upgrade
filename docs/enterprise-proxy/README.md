@@ -5,7 +5,7 @@
 | Status | Proposed runbook. Not run on any of our clusters. The platform owner's decision; the change is with security on [`THREAT-MODEL.md`](THREAT-MODEL.md), condition: applications cannot use the proxy by default; not yet approved |
 | Researched | 2026-10-07, against `openshift/openshift-docs` branches `enterprise-4.18`, `enterprise-4.21` and `enterprise-4.22`; earlier findings in [`openshift-update-egress.html`](../openshift-update-egress.html) (2026-09-25) |
 | Starting point | OpenShift 4.18.17 on `eus-4.18`, disconnected: IDMS/ITMS from oc-mirror pointing at the datacenter's mirror registry (`registry-dc1` in the examples), mirrored CatalogSources, a local OpenShift Update Service, default OperatorHub sources off |
-| Where commands run | The mirroring bastion of the cluster's datacenter ([`PREREQUISITES.md`](../PREREQUISITES.md)); it needs `oc`, `jq`, Ansible Vault and the cluster API on 6443 |
+| Where commands run | The mirroring bastion of the cluster's datacenter ([`PREREQUISITES.md`](../PREREQUISITES.md)); it needs `oc`, `jq`, Ansible Vault and the cluster API on 6443. The playbooks: [`enterprise-proxy-ansible/`](../../enterprise-proxy-ansible/README.md) |
 | End point | The cluster pulls images, the update graph and signatures from Red Hat through the corporate proxy. No mirror, no local Update Service, no two-headed DNS |
 | In the design docs | Option 1 ([`DESIGN-DECISIONS.md`](../DESIGN-DECISIONS.md)); this runbook is its rollout order, phase by phase |
 
@@ -14,12 +14,24 @@ ourselves. Step 2 removes the mirror: the cluster-wide `Proxy` resource sends th
 traffic to the enterprise proxy, which lets through only Red Hat's documented hosts. Everything
 the cluster needs from Red Hat then arrives the same way a connected cluster gets it.
 
-**Red Hat has no single "disconnected to connected" procedure.** The closest document is the reverse
-("Converting a connected cluster to a disconnected cluster",
-`disconnected/connected-to-disconnected.adoc`), whose "Restoring the network" section deletes the
-mirror objects. This runbook puts that together with the documented proxy, pull secret, update
-server and OperatorHub procedures. Where a step rests on our own reading and not on a Red Hat
+**Red Hat's own steps for this direction** are in the Knowledgebase solution "Converting a disconnected
+cluster to a connected cluster" (Solution Verified, updated 29 October 2025): turn the default OperatorHub
+sources back on (`disableAllDefaultSources: false`), check the CatalogSources, delete the
+ImageContentSourcePolicy for the internal registry, delete the mirrored CatalogSource, point each
+Subscription at `redhat-operators` (or `certified-operators`), and update the global pull secret; a
+community note adds the cluster-wide proxy, with its reboots, and the pull secret first. The product
+documentation has only the reverse ("Converting a connected cluster to a disconnected cluster",
+`disconnected/connected-to-disconnected.adoc`), whose "Restoring the network" section deletes the mirror
+objects. This runbook puts the solution's steps in a safe order (the proxy and the pull secret first, the
+mirror objects out only after a connected update worked) together with the documented proxy, pull secret,
+update server and OperatorHub procedures. Where a step rests on our own reading and not on a Red Hat
 sentence, it says so.
+
+**The runbook as playbooks:** [`enterprise-proxy-ansible/`](../../enterprise-proxy-ansible/README.md) runs
+phases 1 to 7 (`retrofit-playbook.yml`, one tag per phase), phase 8 and every later hop
+(`update-playbook.yml`), phase 9 (`remove-mirror-playbook.yml`) and the Verify table (`verify-playbook.yml`,
+evidence file for security). The commands below are what the playbooks run; read them to review a phase, run
+the playbooks to do it.
 
 ## How it fits together
 
@@ -441,7 +453,8 @@ The signature ConfigMaps that Step 1 applied (`mirrored-release-signatures` in
 
 Today's Subscriptions point at the mirrored CatalogSources (`cs-redhat-operator-index-…`). Turn on
 the default Red Hat source only, move each Subscription to it, then delete the mirrored source in
-phase 9.
+phase 9. These are the Knowledgebase solution's steps; the solution turns all default sources on
+(`disableAllDefaultSources: false`), we enable only the approved ones.
 
 ```bash
 oc patch operatorhub cluster --type merge -p '{"spec":{"disableAllDefaultSources":true,"sources":[{"name":"redhat-operators","disabled":false}]}}'
@@ -594,6 +607,9 @@ Read from [`openshift/openshift-docs`](https://github.com/openshift/openshift-do
 - Sigstore: 4.21 `modules/rn-ocp-release-notes-new-features.adoc`, 4.22
   `modules/nodes-sigstore-configure-cluster-policy.adoc`, 4.20 `modules/update-preparing-ack-sigstore.adoc`,
   4.22 `modules/zstream-4-22-16.adoc`
+- Red Hat Knowledgebase: "Converting a disconnected cluster to a connected cluster" (access.redhat.com,
+  Solution Verified, updated 29 October 2025; the OperatorHub, CatalogSource, ICSP, Subscription and pull
+  secret steps, and the community note on the proxy)
 - Earlier research (2026-09-25): [`openshift-update-egress.html`](../openshift-update-egress.html) for
   the DNS conditions, node effects and security controls
 
