@@ -1,6 +1,6 @@
 # Draft issues for openshift/mirror-gui
 
-Not posted. Read at commit `3cec34f` (2026-10-07). Three separate issues; post only the ones you want.
+Not posted (this session cannot write to openshift/mirror-gui). Post from your account at https://github.com/openshift/mirror-gui/issues/new. Read at commit `3cec34f` (2026-10-07). Three separate issues; post only the ones you want.
 
 Issue 3 exposes a credential, so consider sending it to Red Hat's security contact instead of a public issue.
 
@@ -37,6 +37,13 @@ apply to release images, but not to every operator or additional image.
   with self-signed certificates.
 - Allow a custom CA bundle for the destination instead.
 
+**A fix is available:** branch
+[`ephico2real2/mirror-gui:fix/tls-deps-bind`](https://github.com/ephico2real2/mirror-gui/tree/fix/tls-deps-bind),
+commit `1e1b427` (tests and docs in `8b419ee`). It removes both flags, adds the per-operation opt-out
+`skipSourceTlsVerify` (UI switch, off by default, with a warning) and documents it in `API.md`. The
+destination is always a local `file://` directory, so only source TLS needs a setting. The new
+integration tests fail on `3cec34f`. Happy to open a PR.
+
 ---
 
 ## Issue 2: Dependency detection misses API dependencies, chosen channels and transitive dependencies
@@ -65,6 +72,13 @@ complete and find a missing operator only when the install fails in the disconne
   exists).
 - Use the dependency package's real default channel from the catalog data instead of a guess.
 - Until then, label the feature as partial in the UI and README.
+
+**A fix is available:** same branch, commit `2773c9c` (E2E tests and `API.md` in `8b419ee`).
+`catalog_metadata.py` also writes `dependency-graph.json` (per channel head; required APIs resolved to
+the one package providing them; ambiguous or unprovided APIs listed, not guessed). The dependencies API
+takes a `channel`, resolves transitively and returns `requiredBy`, the real `defaultChannel` and
+`unresolvedApis`; the UI warns about the unresolved ones. Older catalog data falls back to
+`dependencies.json`. The new API tests fail on `3cec34f`. Happy to open a PR.
 
 ---
 
