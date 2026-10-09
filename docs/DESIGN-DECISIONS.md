@@ -86,6 +86,14 @@ Ansible is used under both options: with the proxy approach it drives the retrof
 with the mirror approach it also has to run and maintain the mirror. The difference is the manual
 mirror, which the proxy approach eliminates.
 
+**Why the proxy approach.** We are not looking for two-headed DNS, and no option needs it. We are
+looking for a sustainable way to update our clusters that keeps pace with our growth. The disconnected
+setup we run today was carried over from OpenShift 3.x, where it was the sound choice because the proxy
+setup was a mess. OpenShift 4.x, and the major release that follows it, are far more advanced: the
+cluster-wide proxy is Red Hat's documented, supported way for enterprise customers to take updates and
+fixes as they ship ("Production environments can deny direct access to the internet and instead have
+an HTTP or HTTPS proxy available" (`modules/installation-configure-proxy.adoc`, 4.18)), which is what operations and vulnerability management need.
+
 The platform owner decides. The change goes to security on the threat model, and the one condition
 is that consumers and applications cannot use the proxy by default: the platform gives them no proxy
 settings (C2) and they have no route out (C1), proven by the runbook's tests 6 and 8.

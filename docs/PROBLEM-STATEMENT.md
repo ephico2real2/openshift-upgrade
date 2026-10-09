@@ -170,6 +170,13 @@ firewall; they differ in which machines use them: the mirroring bastions (Steps 
 (Step 2). No step needs two-headed DNS. Each still needs a plan for operator catalogs
 ([`DESIGN-DECISIONS.md`](DESIGN-DECISIONS.md), D2).*
 
+We are not looking for two-headed DNS but for a sustainable way to update our clusters that keeps pace
+with our growth. The disconnected setup we run was carried over from OpenShift 3.x, where it was the
+sound choice because the proxy setup was a mess. OpenShift 4.x, and the major release that follows it,
+are far more advanced: the cluster-wide proxy is Red Hat's documented, supported way for enterprise
+customers to take updates and fixes as they ship, which is what operations and vulnerability management
+need. That is the SME's recommendation in [`SOLUTIONS.md`](SOLUTIONS.md), Recommendation.
+
 ```text
             STEP 1: Ansible (built)        STEP 2: enterprise proxy (proposed)   STEP 3: Quay on-prem (proposed)
 INSIDE      OpenShift cluster              OpenShift cluster                     OpenShift cluster
