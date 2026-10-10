@@ -13,6 +13,15 @@ updates" part of the proxy approach ([`docs/SOLUTIONS.md`](../docs/SOLUTIONS.md)
 | Runs on | The mirroring bastion: `oc` logged in as cluster-admin, `ansible-core` (2.15 or later), the Red Hat pull secret in `../oc-mirror-ansible/vars/redhat-pull-secret.json` (Ansible Vault). No collections beyond `ansible.builtin` |
 | Red Hat's steps | KB ["Converting a disconnected cluster to a connected cluster"](https://access.redhat.com/solutions/6966995) (solution 6966995, Solution Verified, updated 29 October 2025): default OperatorHub sources back on, the mirrored CatalogSource and the ICSP removed, each Subscription re-pointed, the global pull secret updated; the community note adds the cluster-wide proxy and its reboots first. The runbook puts those steps in the order below |
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/automation/run-flow.dark.png">
+  <source srcset="docs/diagrams/automation/run-flow.light.png">
+  <img alt="The Step 2 automation, end to end. On the mirroring bastion, Ansible runs one cluster at a time. The retrofit playbook runs phases 1 to 3 (backup, health check, pull secret, image allowlist; it stops before any change if the cluster is not healthy), then phase 4 in a window (the proxy CA appended once, the proxy object patched, waits for readiness, every pool and every operator; every node drains and reboots), then phases 6 and 7 (update checks from Red Hat, the stock catalog, each Subscription set to Manual and moved; a ResolutionFailed is named and left on the mirror). The verify playbook runs tests 1 to 10 in a plain namespace and writes the evidence file; a proxy variable in a workload pod fails it. The update playbook runs the first connected update and stops unless the release signature was verified. The remove-mirror playbook, in a window, takes out the mirror sets, catalogs, Update Service, login, CA key and allowlist entry, refusing while a Subscription still uses a mirrored source. Then verify again, and every later hop is the update playbook alone, with no mirror, no sync and no local Update Service. The right column shows the cluster after each run and the node effect." src="docs/diagrams/automation/run-flow.light.png">
+</picture>
+
+*One cluster, end to end: the runs in the runbook's order, what stops each one, and the cluster after it.
+Source: [`docs/diagrams/automation/source.html`](docs/diagrams/automation/source.html), rendered with diagram-kit.*
+
 ## The four playbooks
 
 | Playbook | Runbook phases | Node effect | What it does |

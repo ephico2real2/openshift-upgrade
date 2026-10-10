@@ -25,6 +25,6 @@
 <p style="font-size:26px;line-height:1.4">1 · CRI-O pulls every pod's image through the proxy: it carries images only, never app traffic, and only from repositories on <b>allowedRegistries</b></p>
 <p style="font-size:26px;line-height:1.4">2 · Operators: <b>we control the catalog</b>, so only ones we approved can be installed, and a Subscription can unset the proxy for one that does not need it</p>
 </div>
-<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#58636F">[R2] olm-overriding-proxy-settings.adoc: operators "must handle" proxy settings for the pods they manage · 11</p>
+<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#58636F">[R2] olm-overriding-proxy-settings.adoc: operators "must handle" proxy settings for the pods they manage · 12</p>
 <aside>The proxy is a platform setting: the Machine Config Operator writes it to the nodes for CRI-O and the kubelet, and platform operators read it for their own deployments. Nothing writes it into application pods. OLM's Subscription spec.config.env can also set HTTP_PROXY, HTTPS_PROXY and NO_PROXY to empty values for an operator that does not need the proxy; Red Hat documents that empty values unset them.</aside>
 </section>
