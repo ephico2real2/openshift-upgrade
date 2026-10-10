@@ -409,8 +409,8 @@ This is the north star: Ansible does the conversion and the updates, and the run
 ([`enterprise-proxy/`](enterprise-proxy/README.md)) is the documentation and teaching copy of the same steps.
 The first four items are written: [`enterprise-proxy-ansible/`](../enterprise-proxy-ansible/README.md) holds
 the retrofit, update, remove-mirror and verify playbooks, tested offline against a stand-in cluster, waiting
-for the lab cluster and the security decision. Red Hat's Knowledgebase solution "Converting a disconnected
-cluster to a connected cluster" (Solution Verified, 2025) lists the catalog and pull secret steps they run.
+for the lab cluster and the security decision. Red Hat's Knowledgebase solution ["Converting a disconnected
+cluster to a connected cluster"](https://access.redhat.com/solutions/6966995) (solution 6966995, Solution Verified, 2025) lists the catalog and pull secret steps they run.
 
 **Order of work.** The cluster-wide proxy is a documented configuration on 4.18. Enabled first, it lets
 the hops to 4.20 and 4.22 run straight from Red Hat with no sync at all, which is how the proxy approach
