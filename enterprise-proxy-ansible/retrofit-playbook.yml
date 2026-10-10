@@ -5,7 +5,7 @@
 # proxy (the maintenance window: every node reboots), update-service, catalogs. Phase 8 is
 # update-playbook.yml and phase 9 remove-mirror-playbook.yml; verify-playbook.yml is the Verify table.
 # Red Hat's steps for the catalog side are in KB "Converting a disconnected cluster to a connected
-# cluster" (Solution Verified, updated 29 October 2025): default sources back on, the mirrored
+# cluster" (https://access.redhat.com/solutions/6966995, Solution Verified, updated 29 October 2025): default sources back on, the mirrored
 # CatalogSource and ICSP removed, each Subscription re-pointed; the proxy and the pull secret first.
 - name: Retrofit a disconnected cluster to reach Red Hat through the enterprise proxy
   hosts: localhost

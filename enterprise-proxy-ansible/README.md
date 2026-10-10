@@ -11,7 +11,7 @@ updates" part of the proxy approach ([`docs/SOLUTIONS.md`](../docs/SOLUTIONS.md)
 |---|---|
 | Status | Written and tested offline against a stand-in cluster ([`tests/`](tests/)). Not yet run on a real cluster: the change is with security on the threat model, condition: applications cannot use the proxy by default |
 | Runs on | The mirroring bastion: `oc` logged in as cluster-admin, `ansible-core` (2.15 or later), the Red Hat pull secret in `../oc-mirror-ansible/vars/redhat-pull-secret.json` (Ansible Vault). No collections beyond `ansible.builtin` |
-| Red Hat's steps | KB "Converting a disconnected cluster to a connected cluster" (Solution Verified, updated 29 October 2025): default OperatorHub sources back on, the mirrored CatalogSource and the ICSP removed, each Subscription re-pointed, the global pull secret updated; the community note adds the cluster-wide proxy and its reboots first. The runbook puts those steps in the order below |
+| Red Hat's steps | KB ["Converting a disconnected cluster to a connected cluster"](https://access.redhat.com/solutions/6966995) (solution 6966995, Solution Verified, updated 29 October 2025): default OperatorHub sources back on, the mirrored CatalogSource and the ICSP removed, each Subscription re-pointed, the global pull secret updated; the community note adds the cluster-wide proxy and its reboots first. The runbook puts those steps in the order below |
 
 ## The four playbooks
 

@@ -14,8 +14,8 @@ ourselves. Step 2 removes the mirror: the cluster-wide `Proxy` resource sends th
 traffic to the enterprise proxy, which lets through only Red Hat's documented hosts. Everything
 the cluster needs from Red Hat then arrives the same way a connected cluster gets it.
 
-**Red Hat's own steps for this direction** are in the Knowledgebase solution "Converting a disconnected
-cluster to a connected cluster" (Solution Verified, updated 29 October 2025): turn the default OperatorHub
+**Red Hat's own steps for this direction** are in the Knowledgebase solution ["Converting a disconnected
+cluster to a connected cluster"](https://access.redhat.com/solutions/6966995) (solution 6966995, Solution Verified, updated 29 October 2025): turn the default OperatorHub
 sources back on (`disableAllDefaultSources: false`), check the CatalogSources, delete the
 ImageContentSourcePolicy for the internal registry, delete the mirrored CatalogSource, point each
 Subscription at `redhat-operators` (or `certified-operators`), and update the global pull secret; a
@@ -609,8 +609,8 @@ Read from [`openshift/openshift-docs`](https://github.com/openshift/openshift-do
 - Sigstore: 4.21 `modules/rn-ocp-release-notes-new-features.adoc`, 4.22
   `modules/nodes-sigstore-configure-cluster-policy.adoc`, 4.20 `modules/update-preparing-ack-sigstore.adoc`,
   4.22 `modules/zstream-4-22-16.adoc`
-- Red Hat Knowledgebase: "Converting a disconnected cluster to a connected cluster" (access.redhat.com,
-  Solution Verified, updated 29 October 2025; the OperatorHub, CatalogSource, ICSP, Subscription and pull
+- Red Hat Knowledgebase: ["Converting a disconnected cluster to a connected cluster"](https://access.redhat.com/solutions/6966995)
+  (solution 6966995, Solution Verified, updated 29 October 2025; the OperatorHub, CatalogSource, ICSP, Subscription and pull
   secret steps, and the community note on the proxy)
 - Earlier research (2026-09-25): [`openshift-update-egress.html`](../openshift-update-egress.html) for
   the DNS conditions, node effects and security controls
