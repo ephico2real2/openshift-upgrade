@@ -421,7 +421,17 @@ This is the north star: Ansible does the conversion and the updates, and the run
 ([`enterprise-proxy/`](enterprise-proxy/README.md)) is the documentation and teaching copy of the same steps.
 The first four items are written: [`enterprise-proxy-ansible/`](../enterprise-proxy-ansible/README.md) holds
 the retrofit, update, remove-mirror and verify playbooks, tested offline against a stand-in cluster, waiting
-for the lab cluster and the security decision. Red Hat's Knowledgebase solution ["Converting a disconnected
+for the lab cluster and the security decision.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../enterprise-proxy-ansible/docs/diagrams/automation/update-flow.dark.png">
+  <source srcset="../enterprise-proxy-ansible/docs/diagrams/automation/update-flow.light.png">
+  <img alt="One update hop under the proxy approach. On the bastion, in a change window, update-playbook runs for one cluster: health check and no local Update Service in spec.upstream, else it stops with nothing started; the channel change when moving to 4.20, with RetrievedUpdates true, else stop and fix the allowlist or the CA; a recommended version from availableUpdates, else refused; then oc adm upgrade and the wait for a Completed history entry whose signature was verified, else stop before the next hop. The cluster's CVO then reads the graph from api.openshift.com, pulls the release by digest from quay.io and checks the signature with built-in keys; operators and pools roll, control plane then workers, CRI-O pulling through the proxy within the allowlist. All of it reaches Red Hat through the enterprise proxy with HTTP CONNECT on 443 to the documented hosts only. Back on the bastion: every operator and pool checked, the verify playbook writes the evidence file, and the next hop is the same run, 4.18 to 4.19 to 4.20 and later 4.22, with nothing to mirror first." src="../enterprise-proxy-ansible/docs/diagrams/automation/update-flow.light.png">
+</picture>
+
+*One update hop under the proxy approach, the counterpart of Step 3's scheduled sync: the update playbook
+on the bastion, the cluster's own update machinery through the proxy to Red Hat's documented hosts, the
+evidence file afterwards. Nothing to prepare before a hop but the window.* Red Hat's Knowledgebase solution ["Converting a disconnected
 cluster to a connected cluster"](https://access.redhat.com/solutions/6966995) (solution 6966995, Solution Verified, 2025) lists the catalog and pull secret steps they run.
 
 **Order of work.** The cluster-wide proxy is a documented configuration on 4.18. Enabled first, it lets
@@ -504,7 +514,7 @@ and rendered to the PNGs beside them with [diagram-kit](https://github.com/ephic
 .venv/bin/diagram-render oc-mirror-ansible/docs/diagrams/mirroring/source.html oc-mirror-ansible/docs/diagrams/mirroring \
   run-flow,network-routes,upgrade-path-runs
 .venv/bin/diagram-render enterprise-proxy-ansible/docs/diagrams/automation/source.html enterprise-proxy-ansible/docs/diagrams/automation \
-  run-flow
+  run-flow,update-flow
 ```
 
 A figure, its text twin and its page change together. The Word copy embeds the light PNGs.

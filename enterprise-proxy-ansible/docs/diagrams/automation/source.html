@@ -1,5 +1,5 @@
-<!-- Started from the diagram-kit template (MIT-0), https://github.com/ephico2real2/diagram-kit. The figure for the enterprise-proxy-ansible playbooks. -->
-<title>Proxy Automation Figure</title>
+<!-- Started from the diagram-kit template (MIT-0), https://github.com/ephico2real2/diagram-kit. The figures for the enterprise-proxy-ansible playbooks. -->
+<title>Proxy Automation Figures</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
@@ -61,7 +61,7 @@ a { color: var(--remote); }
   <header>
     <div class="eyebrow">openshift-upgrade · enterprise-proxy-ansible · 2026-10-10</div>
     <h1>Step 2: how the automation runs</h1>
-    <p class="lede">The playbooks that convert a disconnected cluster to the enterprise proxy and run its updates afterwards, in the order the runbook sets: what each run does, what stops it, and what the cluster looks like after it.</p>
+    <p class="lede">The playbooks that convert a disconnected cluster to the enterprise proxy and run its updates afterwards: the conversion end to end, then one update hop as it runs once the conversion is done.</p>
   </header>
 
   <section>
@@ -163,6 +163,103 @@ a { color: var(--remote); }
 </svg>
       </div>
       <figcaption>What the playbooks do today. Tested against a stand-in cluster (tests/test.sh), not yet on any of ours; the runbook (docs/enterprise-proxy/README.md) explains each phase.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>One update hop, after the conversion</h2>
+    <p class="muted">What a hop looks like under the proxy approach: no sync and nothing to mirror, the update playbook and the cluster's own update machinery.</p>
+    <figure>
+      <div class="fig-scroll">
+<svg viewBox="0 0 1000 816" role="img" aria-label="One update hop under the proxy approach. On the bastion, in a change window, update-playbook runs for one cluster: health check and no local Update Service in spec.upstream, else it stops with nothing started; the channel change when moving to 4.20, with RetrievedUpdates true, else stop and fix the allowlist or the CA; a recommended version from availableUpdates, else refused; then oc adm upgrade and the wait for a Completed history entry whose signature was verified, else stop before the next hop. The cluster's CVO then reads the graph from api.openshift.com, pulls the release by digest from quay.io and checks the signature with built-in keys; operators and pools roll, control plane then workers, CRI-O pulling through the proxy within the allowlist. All of it reaches Red Hat through the enterprise proxy with HTTP CONNECT on 443 to the documented hosts only: api.openshift.com for the graph, quay.io and its CDN for release images and signatures, registry.redhat.io for operator images. Back on the bastion: every operator and pool checked, the verify playbook writes the evidence file, and the next hop is the same run, 4.18 to 4.19 to 4.20 and later 4.22, with nothing to mirror first.">
+<defs><marker id="ap2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
+<g font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="currentColor">
+<rect x="20" y="14" width="450" height="30" rx="6" fill="var(--host-wash)" stroke="var(--host)"/>
+<text x="245" y="34" fill="var(--host)" font-family="IBM Plex Mono, monospace" font-size="13" font-weight="600" text-anchor="middle">BASTION  ·  update-playbook, in a change window</text>
+<rect x="490" y="14" width="230" height="30" rx="6" fill="var(--none-wash)" stroke="var(--none)"/>
+<text x="605" y="34" fill="var(--none)" font-family="IBM Plex Mono, monospace" font-size="13" font-weight="600" text-anchor="middle">CLUSTER  ·  Proxy CR</text>
+<rect x="740" y="14" width="240" height="30" rx="6" fill="var(--remote-wash)" stroke="var(--remote)"/>
+<text x="860" y="34" fill="var(--remote)" font-family="IBM Plex Mono, monospace" font-size="13" font-weight="600" text-anchor="middle">RED HAT  ·  via the proxy</text>
+<line x1="480" y1="14" x2="480" y2="700" stroke="var(--rule)" stroke-width="1.5" stroke-dasharray="6 5"/>
+<line x1="730" y1="14" x2="730" y2="700" stroke="var(--rule)" stroke-width="1.5" stroke-dasharray="6 5"/>
+<rect x="30" y="64" width="250" height="62" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="46" y="82.5" fill="currentColor" font-weight="600">① change window: start the run</text>
+<text x="46" y="99.5" fill="currentColor">update-playbook.yml, one cluster</text>
+<text x="46" y="116.5" fill="var(--muted)">health check; spec.upstream unset</text>
+<path d="M280,95 L301,95" fill="none" stroke="var(--gap)" stroke-width="1.4" marker-end="url(#ap2)"/>
+<rect x="305" y="70" width="165" height="50" rx="8" fill="var(--gap-wash)" stroke="var(--gap)" stroke-width="1.5"/>
+<text x="387.5" y="91" fill="var(--gap)" text-anchor="middle">not healthy →</text>
+<text x="387.5" y="108" fill="var(--gap)" text-anchor="middle">stop, nothing started</text>
+<path d="M155,126 L155,144" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ap2)"/>
+<rect x="30" y="148" width="250" height="62" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="46" y="166.5" fill="currentColor" font-weight="600">② channel, when moving to 4.20</text>
+<text x="46" y="183.5" fill="currentColor">oc adm upgrade channel eus-4.20</text>
+<text x="46" y="200.5" fill="var(--muted)">RetrievedUpdates must be True</text>
+<path d="M280,179 L301,179" fill="none" stroke="var(--gap)" stroke-width="1.4" marker-end="url(#ap2)"/>
+<rect x="305" y="154" width="165" height="50" rx="8" fill="var(--gap-wash)" stroke="var(--gap)" stroke-width="1.5"/>
+<text x="387.5" y="175" fill="var(--gap)" text-anchor="middle">False → allowlist or CA;</text>
+<text x="387.5" y="192" fill="var(--gap)" text-anchor="middle">stop and fix</text>
+<path d="M155,210 L155,228" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ap2)"/>
+<rect x="30" y="232" width="250" height="62" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="46" y="250.5" fill="currentColor" font-weight="600">③ pick a recommended version</text>
+<text x="46" y="267.5" fill="currentColor">--to=&lt;v&gt; from availableUpdates</text>
+<text x="46" y="284.5" fill="var(--muted)">or --to-latest</text>
+<path d="M280,263 L301,263" fill="none" stroke="var(--gap)" stroke-width="1.4" marker-end="url(#ap2)"/>
+<rect x="305" y="238" width="165" height="50" rx="8" fill="var(--gap-wash)" stroke="var(--gap)" stroke-width="1.5"/>
+<text x="387.5" y="259" fill="var(--gap)" text-anchor="middle">not in the list →</text>
+<text x="387.5" y="276" fill="var(--gap)" text-anchor="middle">refused</text>
+<path d="M155,294 L155,312" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ap2)"/>
+<rect x="30" y="316" width="250" height="62" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="46" y="334.5" fill="currentColor" font-weight="600">④ oc adm upgrade --to=&lt;v&gt;</text>
+<text x="46" y="351.5" fill="currentColor">wait: history[0] Completed</text>
+<text x="46" y="368.5" fill="var(--muted)">verified must be true (C4)</text>
+<path d="M280,347 L301,347" fill="none" stroke="var(--gap)" stroke-width="1.4" marker-end="url(#ap2)"/>
+<rect x="305" y="322" width="165" height="50" rx="8" fill="var(--gap-wash)" stroke="var(--gap)" stroke-width="1.5"/>
+<text x="387.5" y="343" fill="var(--gap)" text-anchor="middle">verified false →</text>
+<text x="387.5" y="360" fill="var(--gap)" text-anchor="middle">stop before the next hop</text>
+<path d="M155,378 L155,420 L496,420" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ap2)"/>
+<text x="165" y="412" fill="var(--muted)">the CVO takes over</text>
+<rect x="500" y="390" width="200" height="78" rx="8" fill="var(--none-wash)" stroke="var(--none)" stroke-width="1.5"/>
+<text x="516" y="408.5" fill="var(--none)" font-weight="600">⑤ CVO, through the proxy</text>
+<text x="516" y="425.5" fill="currentColor">graph from api.openshift.com</text>
+<text x="516" y="442.5" fill="currentColor">release by digest from quay.io</text>
+<text x="516" y="459.5" fill="var(--muted)">signature: built-in keys</text>
+<path d="M600,468 L600,492" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ap2)"/>
+<rect x="500" y="496" width="200" height="62" rx="8" fill="var(--none-wash)" stroke="var(--none)" stroke-width="1.5"/>
+<text x="516" y="514.5" fill="var(--none)" font-weight="600">⑥ operators and pools roll</text>
+<text x="516" y="531.5" fill="currentColor">control plane, then workers</text>
+<text x="516" y="548.5" fill="var(--muted)">CRI-O via the proxy; allowlist</text>
+<rect x="750" y="372" width="220" height="50" rx="8" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.5"/>
+<text x="766" y="390.5" fill="var(--remote)" font-weight="600">api.openshift.com</text>
+<text x="766" y="407.5" fill="var(--muted)">update graph, known risks</text>
+<rect x="750" y="436" width="220" height="50" rx="8" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.5"/>
+<text x="766" y="454.5" fill="var(--remote)" font-weight="600">quay.io and its CDN</text>
+<text x="766" y="471.5" fill="var(--muted)">release images, .sig tags</text>
+<rect x="750" y="500" width="220" height="50" rx="8" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.5"/>
+<text x="766" y="518.5" fill="var(--remote)" font-weight="600">registry.redhat.io</text>
+<text x="766" y="535.5" fill="var(--muted)">operator images</text>
+<path d="M700,397 L746,397" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ap2)"/>
+<path d="M700,440 L722,440 L722,461 L746,461" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ap2)"/>
+<path d="M700,525 L746,525" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ap2)"/>
+<text x="735" y="364" fill="var(--muted)" font-size="11.5" text-anchor="middle">CONNECT 443, allowlist only</text>
+<path d="M600,558 L600,600 L284,600" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ap2)"/>
+<text x="300" y="592" fill="var(--muted)">Completed, verified: true</text>
+<rect x="30" y="569" width="250" height="62" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="46" y="587.5" fill="currentColor" font-weight="600">⑦ after the hop</text>
+<text x="46" y="604.5" fill="currentColor">every operator, every pool</text>
+<text x="46" y="621.5" fill="var(--muted)">verify-playbook → evidence file</text>
+<path d="M155,631 L155,649" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ap2)"/>
+<rect x="30" y="653" width="250" height="62" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="46" y="671.5" fill="currentColor" font-weight="600">⑧ next hop: the same run</text>
+<text x="46" y="688.5" fill="currentColor">4.18 → 4.19 → 4.20 (EUS) → 4.22</text>
+<text x="46" y="705.5" fill="var(--muted)">no sync, nothing to mirror first</text>
+<text x="20" y="750" fill="var(--muted)">Nothing to prepare before a hop but the window: the cluster reads the graph, images and signatures from Red Hat as a connected cluster does.</text>
+<text x="20" y="772" fill="var(--muted)">Red boxes: what stops the run. The proxy allows only Red Hat's documented hosts; application pods never see it (tests 6 and 8).</text>
+<text x="20" y="798" fill="var(--host)" font-weight="600">Solid = update-playbook as written, tested against a stand-in cluster; the hops themselves are planned, after the conversion.</text>
+</g>
+</svg>
+      </div>
+      <figcaption>The update playbook as written, tested against a stand-in cluster; the hops to 4.20 and 4.22 are planned and run the same way once the conversion is done.</figcaption>
     </figure>
   </section>
 </div>
