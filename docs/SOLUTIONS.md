@@ -317,7 +317,9 @@ Detail: [`enterprise-proxy/README.md`](enterprise-proxy/README.md).
 **What it is.** The mirror approach, automated: the Step 1 playbooks run on a schedule into the new
 registries, so a person no longer runs the sync. It is the fallback only, if the change to the proxy
 approach is not approved. Red Hat Quay on-prem would only change the registry product of this same
-approach; it is not a third option. The rest of this section describes that Quay variant: a highly
+approach; it is not a third option. The automation is the same with either registry product: the
+mirror registry for Red Hat OpenShift (the trimmed-down Quay we run today, reinstalled on the new hosts)
+or enterprise Red Hat Quay. The rest of this section describes that Quay variant: a highly
 available Red Hat Quay replaces the production mirror registries, one per datacenter. The clusters keep no
 egress. The Step 1 playbooks fill Quay on a schedule from the mirroring bastion in each datacenter, the only machines that
 reaches Red Hat through the proxy. The clusters pull everything from Quay.

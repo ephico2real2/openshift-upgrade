@@ -4,8 +4,8 @@
 <div style="display:flex;gap:48px;align-items:start">
 <div style="flex:1;display:flex;flex-direction:column;gap:24px">
 <ul style="font-size:28px;line-height:1.45">
-<li>The automation is ours either way: the Step 1 Ansible playbooks on a timer into the new registries. Enterprise Quay would only replace the registries; not a third option</li>
-<li>Quay cannot sync OpenShift content from Red Hat by itself; our playbooks do the work, with or without Quay</li>
+<li>The automation is ours either way: the Step 1 Ansible playbooks on a timer into the new registries, whether they run the mirror registry for Red Hat OpenShift (the trimmed-down Quay) or enterprise Red Hat Quay</li>
+<li>Enterprise Quay only replaces the registry product; not a third option. Neither Quay can sync OpenShift content from Red Hat by itself: our playbooks do the work</li>
 <li>Clusters keep no egress; a local Update Service is required</li>
 </ul>
 <p style="font-size:28px;line-height:1.4;background:#FBF1E4;color:#7A4208;padding:20px 28px;border-radius:12px">Needs, only if Quay is picked: a subscription, a platform for it, and a build partner</p>
@@ -13,5 +13,5 @@
 <img src="/_blob/5473f7abd3f5c90a897f4ca93c43cdeb" alt="One scheduled Step 3 run: the bastion's timer fires, a lock skips the run if one is still going, the Step 1 playbooks download to disk and push into Quay, the Update Service restarts to load the new graph, an admin applies the cluster resources and the cluster lists the new versions. A failed run raises an alert and the next run resumes from the cache." style="width:860px;height:559px;object-fit:contain;background:#FFFFFF;border-radius:16px;border:1px solid #D7DCE3">
 </div>
 <p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#58636F">docs/quay-onprem/ · designed, not built · 20</p>
-<aside>Red Hat discourages using one single-host mirror registry for several clusters and asks for highly available mirror registries. If each production registry serves several clusters, a highly available registry is the fallback's registry product. The fallback applies only if the change to the proxy approach is not approved.</aside>
+<aside>The automation is the same with either registry product: the mirror registry for Red Hat OpenShift, the trimmed-down Quay we run today, or enterprise Red Hat Quay. Red Hat discourages using one single-host mirror registry for several clusters and asks for highly available mirror registries. If each production registry serves several clusters, a highly available registry is the fallback's registry product. The fallback applies only if the change to the proxy approach is not approved.</aside>
 </section>
