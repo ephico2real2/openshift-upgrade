@@ -1,0 +1,16 @@
+<section id="apppods" data-transition="fade" style="background:#18212C;color:#F5F6F8;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:44px">
+<p style="font-family:'IBM Plex Mono', 'Courier New', monospace;font-size:26px;letter-spacing:3px;text-transform:uppercase;color:#F0A53C">Application pods</p>
+<h2 style="font-size:64px;font-weight:700;line-height:1.1;color:#F5F6F8">They cannot use the cluster proxy to reach the internet</h2>
+<div style="display:flex;flex-direction:column;gap:8px;border-left:6px solid #3FCFC0;padding:8px 0 8px 32px">
+<p style="font-size:40px;line-height:1.3;font-weight:600;color:#F5F6F8">"The system-wide proxy affects system components only, not user workloads."</p>
+<p style="font-size:24px;color:#9AA5B3">Red Hat, enable-cluster-wide-proxy.adoc, 4.18 and 4.22</p>
+</div>
+<div style="display:flex;gap:28px">
+<div style="flex:1;background:#243040;border-radius:16px;padding:32px;display:flex;flex-direction:column;gap:10px"><h3 style="font-size:32px;font-weight:600;color:#3FCFC0">No proxy settings</h3><p style="font-size:26px;line-height:1.4;color:#BFC8D2">The platform never sets them on application pods (C2)</p></div>
+<div style="flex:1;background:#243040;border-radius:16px;padding:32px;display:flex;flex-direction:column;gap:10px"><h3 style="font-size:32px;font-weight:600;color:#3FCFC0">No route out</h3><p style="font-size:26px;line-height:1.4;color:#BFC8D2">The firewall lets only the proxy out (C1)</p></div>
+<div style="flex:1;background:#243040;border-radius:16px;padding:32px;display:flex;flex-direction:column;gap:10px"><h3 style="font-size:32px;font-weight:600;color:#3FCFC0">Allowed images only</h3><p style="font-size:26px;line-height:1.4;color:#BFC8D2">Admitted only from allowed registries (C8)</p></div>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;width:1400px;font-size:24px;color:#9AA5B3">Proof: a test pod gets no proxy settings and cannot go out directly · the one condition for security</p>
+<p style="position:absolute;right:128px;bottom:64px;font-family:'IBM Plex Mono', 'Courier New', monospace;font-size:24px;color:#9AA5B3;text-align:right">7 / 12</p>
+<aside>Three independent controls: the platform's proxy setting never reaches application pods, the firewall gives them no route, and the admission policy keeps their images to the allowed registries. A test pod on a live cluster proves the first two: it has no proxy settings and cannot reach the internet directly. This is the one condition of the change the platform owner takes to security. A team that sets a proxy in its own deployment does so by choice, under our existing policy; that is not a platform gap.</aside>
+</section>

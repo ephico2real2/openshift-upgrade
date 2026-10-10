@@ -1,0 +1,23 @@
+<section id="proxy" data-transition="fade" style="background:#F5F6F8;color:#18212C;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:44px">
+<h2 style="font-size:64px;font-weight:700;line-height:1.1">Our enterprise proxy and firewall</h2>
+<div style="display:flex;gap:32px">
+<div style="flex:2;background:#EEF0F3;border:2px solid #5F6A77;border-radius:16px;padding:40px;display:flex;flex-direction:column;gap:20px">
+<h3 style="font-size:40px;font-weight:700;color:#3D4752">Enterprise proxy, highly available</h3>
+<ul style="font-size:28px;line-height:1.5">
+<li>HTTP CONNECT on TCP 443 only</li>
+<li>Allowlist: the four Red Hat host groups; anything else gets 403 (C3)</li>
+<li>TLS inspected and re-signed with the enterprise CA (C7)</li>
+</ul>
+</div>
+<div style="flex:1;background:#FFFFFF;border:2px solid #18212C;border-radius:16px;padding:40px;display:flex;flex-direction:column;gap:20px">
+<h3 style="font-size:40px;font-weight:700">Firewall</h3>
+<p style="font-size:28px;line-height:1.45">Only the proxy may go out. Nodes and pods have no direct route (C1).</p>
+</div>
+</div>
+<div style="background:#E3F3F1;border-left:6px solid #0E6F68;border-radius:8px;padding:28px 36px;display:flex;flex-direction:column;gap:10px">
+<p style="font-size:28px;line-height:1.45">The enterprise CA is on every node and in <b>user-ca-bundle</b>, which the Proxy object names in <b>trustedCA</b>. Red Hat: the bundle is "injected into the trust store of platform components that make egress HTTPS calls".</p>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;width:1400px;font-size:24px;color:#58636F">Red Hat: proxy-certificates.adoc · configuring-firewall.adoc</p>
+<p style="position:absolute;right:128px;bottom:64px;font-family:'IBM Plex Mono', 'Courier New', monospace;font-size:24px;color:#58636F;text-align:right">6 / 12</p>
+<aside>The proxy is ours and allows only the Red Hat hosts. It inspects TLS and re-signs with the enterprise CA; the platform trusts that CA through trustedCA, as Red Hat documents. Red Hat also asks that a re-encrypting proxy does not re-encrypt sso.redhat.com.</aside>
+</section>

@@ -1,0 +1,11 @@
+<section id="model" data-transition="fade" style="background:#F5F6F8;color:#18212C;font-family:'IBM Plex Sans', Arial, sans-serif;padding:96px 128px 128px;display:flex;flex-direction:row;gap:56px;align-items:center">
+<img src="/_blob/d83b9f89660e8773592124c001f3057b" alt="Threat model of updating a cluster through our enterprise proxy. Trust boundaries: the internet with one box per Red Hat host (api.openshift.com, mirror.openshift.com, quay.io and its CDN, registry.redhat.io) and any other host, not reachable; our enterprise network with the enterprise proxy (HTTP CONNECT on TCP 443 only, an allowlist of the Red Hat hosts, anything else 403, TLS re-signed with the enterprise CA) and the firewall, which lets only the proxy out; the OpenShift cluster, where the platform (Cluster Version Operator, CRI-O with sigstore from 4.21, OLM, Kyverno, proxy/cluster, user-ca-bundle, image.config) starts every update and the application namespaces have no proxy settings and are stopped at the firewall; and the cluster admin, who only picks the target. A controls box lists C1 to C8 with their Red Hat documents." style="width:869px;height:856px;object-fit:contain;background:#FFFFFF;border-radius:16px;border:1px solid #D7DCE3">
+<div style="flex:1;display:flex;flex-direction:column;gap:32px">
+<h2 style="font-size:56px;font-weight:700;line-height:1.1">One picture: who calls what, and through what</h2>
+<p style="font-size:30px;line-height:1.45;color:#4A5563">Red dashed outlines are trust boundaries. Solid arrows are the platform's flows, HTTPS on TCP 443 through our proxy.</p>
+<p style="font-size:30px;line-height:1.45;color:#4A5563">Application pods sit in their own boundary: no proxy from the platform, stopped at the firewall.</p>
+<p style="font-size:26px;line-height:1.4;color:#A55A0B;font-weight:600">C1–C7 from Red Hat's documentation · C8 our admission policy</p>
+</div>
+<p style="position:absolute;right:128px;bottom:64px;font-family:'IBM Plex Mono', 'Courier New', monospace;font-size:24px;color:#58636F;text-align:right">4 / 12</p>
+<aside>Walk the picture top to bottom: the Red Hat hosts on the internet, our enterprise network with the proxy and the firewall, then the cluster, where the platform starts every update. The application namespaces on the right have no path out. The admin only picks the target version.</aside>
+</section>

@@ -1,0 +1,27 @@
+<section id="shows" data-transition="fade" style="background:#F5F6F8;color:#18212C;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:48px">
+<h2 style="font-size:64px;font-weight:700;line-height:1.1">What the threat model shows</h2>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:28px">
+<div style="background:#FFFFFF;border:1px solid #D7DCE3;border-radius:16px;padding:36px;display:flex;flex-direction:column;gap:12px">
+<p style="font-family:'IBM Plex Mono', 'Courier New', monospace;font-size:28px;color:#0E6F68">1</p>
+<h3 style="font-size:36px;font-weight:600">The platform starts every update</h3>
+<p style="font-size:26px;line-height:1.4;color:#4A5563">The Cluster Version Operator, CRI-O and OLM make the requests; an admin only picks the target</p>
+</div>
+<div style="background:#FFFFFF;border:1px solid #D7DCE3;border-radius:16px;padding:36px;display:flex;flex-direction:column;gap:12px">
+<p style="font-family:'IBM Plex Mono', 'Courier New', monospace;font-size:28px;color:#0E6F68">2</p>
+<h3 style="font-size:36px;font-weight:600">Named Red Hat hosts, TCP 443, our proxy</h3>
+<p style="font-size:26px;line-height:1.4;color:#4A5563">Four host groups, nothing else; the firewall lets only the proxy out</p>
+</div>
+<div style="background:#FFFFFF;border:1px solid #D7DCE3;border-radius:16px;padding:36px;display:flex;flex-direction:column;gap:12px">
+<p style="font-family:'IBM Plex Mono', 'Courier New', monospace;font-size:28px;color:#0E6F68">3</p>
+<h3 style="font-size:36px;font-weight:600">Application pods have no way out</h3>
+<p style="font-size:26px;line-height:1.4;color:#4A5563">The platform gives them no proxy settings, and the firewall stops them: the one condition for security</p>
+</div>
+<div style="background:#FFFFFF;border:1px solid #D7DCE3;border-radius:16px;padding:36px;display:flex;flex-direction:column;gap:12px">
+<p style="font-family:'IBM Plex Mono', 'Courier New', monospace;font-size:28px;color:#0E6F68">4</p>
+<h3 style="font-size:36px;font-weight:600">Only allowed registries</h3>
+<p style="font-size:26px;line-height:1.4;color:#4A5563">Red Hat's and ours: checked on every pull, and refused at admission</p>
+</div>
+</div>
+<p style="position:absolute;right:128px;bottom:64px;font-family:'IBM Plex Mono', 'Courier New', monospace;font-size:24px;color:#58636F;text-align:right">3 / 12</p>
+<aside>Four claims, each backed by a control in the following slides. Controls C1 to C7 come from Red Hat's OpenShift documentation; C8, the admission policy, is ours. Point 3 is the one condition of the change with security: applications cannot use the proxy by default. A team that sets a proxy in its own deployment does so by choice, under existing policy; that is not something the platform does.</aside>
+</section>
