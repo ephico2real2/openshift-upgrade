@@ -187,6 +187,16 @@ that touch no nodes go first:
 *The proposed retrofit, phase by phase, with what each phase does to the nodes. The numbered list
 above is the same order.*
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../enterprise-proxy-ansible/docs/diagrams/automation/run-flow.dark.png">
+  <source srcset="../enterprise-proxy-ansible/docs/diagrams/automation/run-flow.light.png">
+  <img alt="The Step 2 automation, end to end. On the mirroring bastion, Ansible runs one cluster at a time. The retrofit playbook runs phases 1 to 3 (backup, health check, pull secret, image allowlist; it stops before any change if the cluster is not healthy), then phase 4 in a window (the proxy CA appended once, the proxy object patched, waits for readiness, every pool and every operator; every node drains and reboots), then phases 6 and 7 (update checks from Red Hat, the stock catalog, each Subscription set to Manual and moved; a ResolutionFailed is named and left on the mirror). The verify playbook runs tests 1 to 10 in a plain namespace and writes the evidence file; a proxy variable in a workload pod fails it. The update playbook runs the first connected update and stops unless the release signature was verified. The remove-mirror playbook, in a window, takes out the mirror sets, catalogs, Update Service, login, CA key and allowlist entry, refusing while a Subscription still uses a mirrored source. Then verify again, and every later hop is the update playbook alone, with no mirror, no sync and no local Update Service. The right column shows the cluster after each run and the node effect." src="../enterprise-proxy-ansible/docs/diagrams/automation/run-flow.light.png">
+</picture>
+
+*The same conversion as the playbooks run it ([`enterprise-proxy-ansible/`](../enterprise-proxy-ansible/README.md)):
+one cluster end to end, what stops each run (red), and the cluster after it. Tested against a stand-in cluster,
+not yet on any of ours.*
+
 **What going direct gives us, beyond removing the sync:**
 
 | Advantage | Why |
@@ -480,8 +490,9 @@ In order:
 
 ## Diagram sources
 
-The figures are drawn in [`diagrams/three-steps/source.html`](diagrams/three-steps/source.html) and
-[`../oc-mirror-ansible/docs/diagrams/mirroring/source.html`](../oc-mirror-ansible/docs/diagrams/mirroring/source.html),
+The figures are drawn in [`diagrams/three-steps/source.html`](diagrams/three-steps/source.html),
+[`../oc-mirror-ansible/docs/diagrams/mirroring/source.html`](../oc-mirror-ansible/docs/diagrams/mirroring/source.html) and
+[`../enterprise-proxy-ansible/docs/diagrams/automation/source.html`](../enterprise-proxy-ansible/docs/diagrams/automation/source.html),
 and rendered to the PNGs beside them with [diagram-kit](https://github.com/ephico2real2/diagram-kit):
 
 ```sh
@@ -490,6 +501,8 @@ and rendered to the PNGs beside them with [diagram-kit](https://github.com/ephic
   three-steps,decision,retrofit,quay-sync
 .venv/bin/diagram-render oc-mirror-ansible/docs/diagrams/mirroring/source.html oc-mirror-ansible/docs/diagrams/mirroring \
   run-flow,network-routes,upgrade-path-runs
+.venv/bin/diagram-render enterprise-proxy-ansible/docs/diagrams/automation/source.html enterprise-proxy-ansible/docs/diagrams/automation \
+  run-flow
 ```
 
 A figure, its text twin and its page change together. The Word copy embeds the light PNGs.

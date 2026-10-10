@@ -1,0 +1,168 @@
+<!-- Started from the diagram-kit template (MIT-0), https://github.com/ephico2real2/diagram-kit. The figure for the enterprise-proxy-ansible playbooks. -->
+<title>Proxy Automation Figure</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root {
+  --ground: #f5f6f8; --surface: #ffffff; --ink: #18212c; --muted: #58636f; --rule: #d7dce3;
+  --host: #a55a0b; --host-wash: #fbf1e4; --remote: #0e6f68; --remote-wash: #e3f3f1;
+  --gap: #b3261e; --gap-wash: #fbe9e7; --none: #5f6a77; --none-wash: #eef0f3;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --ground: #0e131a; --surface: #151c25; --ink: #e5e9ef; --muted: #9aa5b3; --rule: #2a3440;
+    --host: #f0a53c; --host-wash: #2a2014; --remote: #3fcfc0; --remote-wash: #122a28;
+    --gap: #f2857c; --gap-wash: #2d1614; --none: #9aa5b3; --none-wash: #1b232d;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground: #0e131a; --surface: #151c25; --ink: #e5e9ef; --muted: #9aa5b3; --rule: #2a3440;
+  --host: #f0a53c; --host-wash: #2a2014; --remote: #3fcfc0; --remote-wash: #122a28;
+  --gap: #f2857c; --gap-wash: #2d1614; --none: #9aa5b3; --none-wash: #1b232d;
+}
+* { box-sizing: border-box; }
+body { background: var(--ground); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.55; margin: 0; }
+.page { max-width: 1060px; margin: 0 auto; padding-inline: 16px; padding-block: 40px 72px; display: grid; gap: 44px; }
+header { display: grid; gap: 10px; }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font-size: clamp(26px, 4vw, 36px); line-height: 1.15; margin: 0; font-weight: 700; text-wrap: balance; }
+h2 { font-size: 20px; margin: 0 0 6px; font-weight: 600; text-wrap: balance; }
+p { margin: 0; max-width: 72ch; }
+.lede { font-size: 17px; max-width: 70ch; }
+.muted { color: var(--muted); }
+code { font-family: var(--font-mono); font-size: .9em; }
+section { display: grid; gap: 14px; }
+figure { margin: 0; display: grid; gap: 10px; }
+.fig-scroll { overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 12px; }
+.fig-scroll svg { display: block; width: 100%; min-width: 760px; height: auto; color: var(--ink); }
+figcaption { font-size: 13.5px; color: var(--muted); max-width: 80ch; }
+.tbl { overflow-x: auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 10px 14px; border-bottom: 1px solid var(--rule); }
+th { font-size: 12px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); background: var(--ground); }
+tr:last-child td { border-bottom: 0; }
+.yes { color: var(--remote); font-weight: 600; } .no { color: var(--gap); font-weight: 600; }
+.cell-gap { background: var(--gap-wash); }
+.decisions { display: grid; gap: 12px; }
+.decision { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 16px 20px; display: grid; gap: 8px; }
+.decision .id { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+.decision .q { font-weight: 600; }
+.decision .rec { font-size: 14px; border-left: 3px solid var(--remote); padding-left: 10px; }
+.decision .rec.warn { border-left-color: var(--host); }
+a { color: var(--remote); }
+:focus-visible { outline: 2px solid var(--remote); outline-offset: 2px; }
+</style>
+<div class="page">
+  <header>
+    <div class="eyebrow">openshift-upgrade · enterprise-proxy-ansible · 2026-10-10</div>
+    <h1>Step 2: how the automation runs</h1>
+    <p class="lede">The playbooks that convert a disconnected cluster to the enterprise proxy and run its updates afterwards, in the order the runbook sets: what each run does, what stops it, and what the cluster looks like after it.</p>
+  </header>
+
+  <section>
+    <h2>One cluster, end to end</h2>
+    <p class="muted">From the first retrofit run on the bastion to the hops that need no mirror.</p>
+    <figure>
+      <div class="fig-scroll">
+<svg viewBox="0 0 1000 762" role="img" aria-label="The Step 2 automation, end to end. On the mirroring bastion, Ansible runs one cluster at a time. The retrofit playbook runs phases 1 to 3 (backup, health check, pull secret, image allowlist; it stops before any change if the cluster is not healthy), then phase 4 in a window (the proxy CA appended once, the proxy object patched, waits for readiness, every pool and every operator; every node drains and reboots), then phases 6 and 7 (update checks from Red Hat, the stock catalog, each Subscription set to Manual and moved; a ResolutionFailed is named and left on the mirror). The verify playbook runs tests 1 to 10 in a plain namespace and writes the evidence file; a proxy variable in a workload pod fails it. The update playbook runs the first connected update and stops unless the release signature was verified. The remove-mirror playbook, in a window, takes out the mirror sets, catalogs, Update Service, login, CA key and allowlist entry, refusing while a Subscription still uses a mirrored source. Then verify again, and every later hop is the update playbook alone, with no mirror, no sync and no local Update Service. The right column shows the cluster after each run and the node effect.">
+<defs><marker id="ap1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="context-stroke"/></marker></defs>
+<g font-family="IBM Plex Sans, sans-serif" font-size="12.5" fill="currentColor">
+<rect x="20" y="14" width="590" height="30" rx="6" fill="var(--host-wash)" stroke="var(--host)"/>
+<text x="315" y="34" fill="var(--host)" font-family="IBM Plex Mono, monospace" font-size="13" font-weight="600" text-anchor="middle">MIRRORING BASTION  ·  Ansible + oc, one cluster per run</text>
+<rect x="640" y="14" width="340" height="30" rx="6" fill="var(--remote-wash)" stroke="var(--remote)"/>
+<text x="810" y="34" fill="var(--remote)" font-family="IBM Plex Mono, monospace" font-size="13" font-weight="600" text-anchor="middle">CLUSTER  ·  after the run</text>
+<line x1="625" y1="14" x2="625" y2="660" stroke="var(--rule)" stroke-width="1.5" stroke-dasharray="6 5"/>
+<rect x="30" y="64" width="320" height="62" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="46" y="82.5" fill="currentColor" font-weight="600">① retrofit-playbook, phases 1 to 3</text>
+<text x="46" y="99.5" fill="currentColor">--tags pull-secret,image-policy</text>
+<text x="46" y="116.5" fill="var(--muted)">backup (0700), health check, inventory</text>
+<path d="M350,95 L376,95" fill="none" stroke="var(--gap)" stroke-width="1.4" marker-end="url(#ap1)"/>
+<rect x="380" y="70" width="230" height="50" rx="8" fill="var(--gap-wash)" stroke="var(--gap)" stroke-width="1.5"/>
+<text x="495" y="91" fill="var(--gap)" text-anchor="middle">not healthy, a paused pool →</text>
+<text x="495" y="108" fill="var(--gap)" text-anchor="middle">stop before any change</text>
+<rect x="640" y="70" width="340" height="50" rx="8" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.2"/>
+<text x="656" y="91" fill="currentColor">Red Hat login beside the mirror login;</text>
+<text x="656" y="108" fill="var(--muted)">allowedRegistries on every node · nodes: none</text>
+<path d="M190,126 L190,148" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ap1)"/>
+<rect x="30" y="152" width="320" height="62" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="46" y="170.5" fill="currentColor" font-weight="600">② retrofit-playbook, phase 4 (a window)</text>
+<text x="46" y="187.5" fill="currentColor">--tags proxy: CA appended once, proxy/cluster</text>
+<text x="46" y="204.5" fill="var(--muted)">waits: readiness, every pool, every operator</text>
+<path d="M350,183 L376,183" fill="none" stroke="var(--gap)" stroke-width="1.4" marker-end="url(#ap1)"/>
+<rect x="380" y="158" width="230" height="50" rx="8" fill="var(--gap-wash)" stroke="var(--gap)" stroke-width="1.5"/>
+<text x="495" y="179" fill="var(--gap)" text-anchor="middle">status never shows the proxy →</text>
+<text x="495" y="196" fill="var(--gap)" text-anchor="middle">stop; check noProxy and the CA</text>
+<rect x="640" y="158" width="340" height="50" rx="8" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.2"/>
+<text x="656" y="179" fill="currentColor">platform traffic through the proxy; apps untouched</text>
+<text x="656" y="196" fill="var(--gap)">nodes: drain + reboot, every node</text>
+<path d="M190,214 L190,236" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ap1)"/>
+<rect x="30" y="240" width="320" height="62" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="46" y="258.5" fill="currentColor" font-weight="600">③ retrofit-playbook, phases 6 and 7</text>
+<text x="46" y="275.5" fill="currentColor">--tags update-service,catalogs</text>
+<text x="46" y="292.5" fill="var(--muted)">Subscriptions set to Manual, then moved</text>
+<path d="M350,271 L376,271" fill="none" stroke="var(--gap)" stroke-width="1.4" marker-end="url(#ap1)"/>
+<rect x="380" y="246" width="230" height="50" rx="8" fill="var(--gap-wash)" stroke="var(--gap)" stroke-width="1.5"/>
+<text x="495" y="267" fill="var(--gap)" text-anchor="middle">ResolutionFailed → named;</text>
+<text x="495" y="284" fill="var(--gap)" text-anchor="middle">leave it on the mirror, raise it</text>
+<rect x="640" y="246" width="340" height="50" rx="8" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.2"/>
+<text x="656" y="267" fill="currentColor">graph from api.openshift.com, stock catalog</text>
+<text x="656" y="284" fill="var(--muted)">nodes: none; operators may update</text>
+<path d="M190,302 L190,324" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ap1)"/>
+<rect x="30" y="328" width="320" height="62" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="46" y="346.5" fill="currentColor" font-weight="600">④ verify-playbook, first pass</text>
+<text x="46" y="363.5" fill="currentColor">tests 1 to 10 in a plain namespace</text>
+<text x="46" y="380.5" fill="var(--muted)">evidence file for security, mode 0600</text>
+<path d="M350,359 L376,359" fill="none" stroke="var(--gap)" stroke-width="1.4" marker-end="url(#ap1)"/>
+<rect x="380" y="334" width="230" height="50" rx="8" fill="var(--gap-wash)" stroke="var(--gap)" stroke-width="1.5"/>
+<text x="495" y="355" fill="var(--gap)" text-anchor="middle">a proxy variable in a workload pod →</text>
+<text x="495" y="372" fill="var(--gap)" text-anchor="middle">FAIL: the condition is not met</text>
+<rect x="640" y="334" width="340" height="50" rx="8" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.2"/>
+<text x="656" y="355" fill="currentColor">evidence: apps cannot use the proxy</text>
+<text x="656" y="372" fill="var(--muted)">test namespace created, then removed</text>
+<path d="M190,390 L190,412" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ap1)"/>
+<rect x="30" y="416" width="320" height="62" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="46" y="434.5" fill="currentColor" font-weight="600">⑤ update-playbook, phase 8</text>
+<text x="46" y="451.5" fill="currentColor">channel, --to=&lt;version&gt;, wait for Completed</text>
+<text x="46" y="468.5" fill="var(--muted)">history[0].verified must be true (C4)</text>
+<path d="M350,447 L376,447" fill="none" stroke="var(--gap)" stroke-width="1.4" marker-end="url(#ap1)"/>
+<rect x="380" y="422" width="230" height="50" rx="8" fill="var(--gap-wash)" stroke="var(--gap)" stroke-width="1.5"/>
+<text x="495" y="443" fill="var(--gap)" text-anchor="middle">verified false, or spec.upstream</text>
+<text x="495" y="460" fill="var(--gap)" text-anchor="middle">still set → stop</text>
+<rect x="640" y="422" width="340" height="50" rx="8" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.2"/>
+<text x="656" y="443" fill="currentColor">first connected update, mirror still in place</text>
+<text x="656" y="460" fill="var(--muted)">nodes: a normal update</text>
+<path d="M190,478 L190,500" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ap1)"/>
+<rect x="30" y="504" width="320" height="62" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="46" y="522.5" fill="currentColor" font-weight="600">⑥ remove-mirror-playbook, phase 9 (a window)</text>
+<text x="46" y="539.5" fill="currentColor">IDMS, ITMS, ICSP, mirrored catalogs, OSUS out</text>
+<text x="46" y="556.5" fill="var(--muted)">mirror login, CA key, allowlist entry out</text>
+<path d="M350,535 L376,535" fill="none" stroke="var(--gap)" stroke-width="1.4" marker-end="url(#ap1)"/>
+<rect x="380" y="510" width="230" height="50" rx="8" fill="var(--gap-wash)" stroke="var(--gap)" stroke-width="1.5"/>
+<text x="495" y="531" fill="var(--gap)" text-anchor="middle">a Subscription still on a mirrored</text>
+<text x="495" y="548" fill="var(--gap)" text-anchor="middle">source → nothing deleted</text>
+<rect x="640" y="510" width="340" height="50" rx="8" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.2"/>
+<text x="656" y="531" fill="currentColor">registries.conf lists no mirror</text>
+<text x="656" y="548" fill="var(--gap)">nodes: drain; plan for a reboot</text>
+<path d="M190,566 L190,588" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#ap1)"/>
+<rect x="30" y="592" width="320" height="62" rx="8" fill="none" stroke="currentColor" stroke-width="1.2"/>
+<text x="46" y="610.5" fill="currentColor" font-weight="600">⑦ verify again, then every later hop</text>
+<text x="46" y="627.5" fill="currentColor">update-playbook alone: 4.20, then 4.22</text>
+<text x="46" y="644.5" fill="var(--muted)">no mirror, no sync, no local Update Service</text>
+<rect x="640" y="598" width="340" height="50" rx="8" fill="var(--remote-wash)" stroke="var(--remote)" stroke-width="1.2"/>
+<text x="656" y="619" fill="currentColor">pulls, graph and signatures from Red Hat</text>
+<text x="656" y="636" fill="var(--muted)">through the proxy; Ansible runs each hop</text>
+<text x="20" y="696" fill="var(--muted)">Each phase is a tag, so the runbook's order and its two windows are kept. Backups under retrofit-backups/&lt;cluster&gt;-&lt;date&gt;, mode 0700.</text>
+<text x="20" y="718" fill="var(--muted)">Red boxes: what stops a run, and what to do. Pull-secret work files are removed in always blocks; the tokens are never printed.</text>
+<text x="20" y="744" fill="var(--host)" font-weight="600">Solid = what the playbooks do today: tested against a stand-in cluster (tests/test.sh), not yet on any of ours.</text>
+</g>
+</svg>
+      </div>
+      <figcaption>What the playbooks do today. Tested against a stand-in cluster (tests/test.sh), not yet on any of ours; the runbook (docs/enterprise-proxy/README.md) explains each phase.</figcaption>
+    </figure>
+  </section>
+</div>
