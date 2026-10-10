@@ -22,6 +22,15 @@ updates" part of the proxy approach ([`docs/SOLUTIONS.md`](../docs/SOLUTIONS.md)
 *One cluster, end to end: the runs in the runbook's order, what stops each one, and the cluster after it.
 Source: [`docs/diagrams/automation/source.html`](docs/diagrams/automation/source.html), rendered with diagram-kit.*
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/automation/update-flow.dark.png">
+  <source srcset="docs/diagrams/automation/update-flow.light.png">
+  <img alt="One update hop under the proxy approach. On the bastion, in a change window, update-playbook runs for one cluster: health check and no local Update Service in spec.upstream, else it stops with nothing started; the channel change when moving to 4.20, with RetrievedUpdates true, else stop and fix the allowlist or the CA; a recommended version from availableUpdates, else refused; then oc adm upgrade and the wait for a Completed history entry whose signature was verified, else stop before the next hop. The cluster's CVO then reads the graph from api.openshift.com, pulls the release by digest from quay.io and checks the signature with built-in keys; operators and pools roll, control plane then workers, CRI-O pulling through the proxy within the allowlist. All of it reaches Red Hat through the enterprise proxy with HTTP CONNECT on 443 to the documented hosts only. Back on the bastion: every operator and pool checked, the verify playbook writes the evidence file, and the next hop is the same run, 4.18 to 4.19 to 4.20 and later 4.22, with nothing to mirror first." src="docs/diagrams/automation/update-flow.light.png">
+</picture>
+
+*One update hop once the conversion is done: the update playbook on the bastion, the cluster's own update
+machinery through the proxy, and the evidence file afterwards. No sync and nothing to mirror first.*
+
 ## The four playbooks
 
 | Playbook | Runbook phases | Node effect | What it does |

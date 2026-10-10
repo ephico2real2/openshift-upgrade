@@ -9,6 +9,6 @@
 <tr><td>Delay</td><td><span style="color:#B3261E">Until the next good sync</span></td><td><span style="color:#0E6F68">None</span></td></tr>
 </table>
 <p style="font-size:30px;line-height:1.4;background:#FBF1E4;color:#7A4208;padding:24px 32px;border-radius:12px">When Red Hat fixes a bug or a vulnerability, a synced cluster waits for a mirror run. A proxied cluster can take the fix in the next change window, after the lab. We keep the control; we lose the wait.</p>
-<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#58636F">[R5] update-process-workflow.adoc: "image SHA digests as unique and immutable release image identifiers" · 18</p>
+<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#58636F">[R5] update-process-workflow.adoc: "image SHA digests as unique and immutable release image identifiers" · 19</p>
 <aside>We already trust Red Hat's content: we copy it and run it today. Red Hat signs statements about each release image by its digest, and the cluster's update operator checks them with built-in public keys before it updates; from 4.21 CRI-O also checks Sigstore signatures. That is identical whether the image came through a mirror or the proxy. Syncing only adds a copy step and a delay.</aside>
 </section>
