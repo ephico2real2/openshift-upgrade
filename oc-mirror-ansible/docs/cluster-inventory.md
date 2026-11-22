@@ -1,12 +1,13 @@
 # Cluster inventory cheat sheet
 
-These commands read what a cluster uses today: its version, its mirror configuration, its catalogs and its operators.
+These commands read what a cluster uses today: its version, its mirror configuration, its catalogs, what the catalogs
+serve, and the installed operators.
 They change nothing. Run them before you mirror for a cluster, so that the registry gets everything the cluster needs.
 
 Run them on a host where `oc` is logged in to the cluster. The user must be able to read cluster objects, for example
 with the `cluster-reader` role. To make sure that you are logged in, run `oc whoami`.
 
-What to take to the lab: only the organization names and the operator list. The lab does not need host names, image
+What to take to the lab: only the organization names, the package lists of sections 3 and 4, and the operator list. The lab does not need host names, image
 digests or any secret.
 
 ## 1. Cluster version
@@ -66,7 +67,72 @@ oc get catalogsource -n openshift-marketplace -o custom-columns=NAME:.metadata.n
 
 The image tag shows the OpenShift version of each catalog, for example `redhat-operator-index:v4.18`.
 
-## 4. Operators
+## 4. What the catalogs serve
+
+A catalog serves operators that nobody installed yet. A cluster filled by oc-mirror v1 has a catalog that holds only
+what was mirrored. After a move to a new registry, the cluster must keep the same choice of operators. Thus the new
+mirror needs every package that the catalogs serve today, not only the installed ones.
+
+OLM shows each package of each catalog as a PackageManifest object. Count the packages of each catalog:
+
+```bash
+oc get packagemanifests -n openshift-marketplace -o custom-columns=CATALOG:.status.catalogSource --no-headers | sort | uniq -c
+```
+
+List each channel of each package, with the version at the head of the channel:
+
+```bash
+oc get packagemanifests -n openshift-marketplace -o go-template='{{range .items}}{{$c := .status.catalogSource}}{{$p := .metadata.name}}{{$d := .status.defaultChannel}}{{range .status.channels}}{{$c}} {{$p}} {{.name}} {{.currentCSVDesc.version}}{{if eq .name $d}} default{{end}}{{"\n"}}{{end}}{{end}}' | sort
+```
+
+Each line is `<catalog> <package> <channel> <head version>`. The word `default` marks the default channel of the
+package. The command uses a Go template, which `oc` has built in, so it needs no `jq`.
+
+The head version is the newest version in the channel. To see every version that the catalog serves in a channel, list
+the entries:
+
+```bash
+oc get packagemanifests -n openshift-marketplace -o go-template='{{range .items}}{{$p := .metadata.name}}{{range .status.channels}}{{$p}} {{.name}}:{{range .entries}} {{.version}}{{end}}{{"\n"}}{{end}}{{end}}' | sort
+```
+
+Each line is `<package> <channel>: <version> <version> ...`. The oldest version of a line is the `minVersion` that keeps
+the whole channel in the new mirror. If the output shows only the package and the channel, the OLM of this cluster does
+not fill `entries`. Then use the head version.
+
+### From a bastion, without the cluster
+
+`oc-mirror` can read a catalog image directly from its registry, with no cluster. The commands are in the
+[oc-mirror README](https://github.com/openshift/oc-mirror/blob/main/README.md), "List Subcommand". Take the catalog
+image from section 3, and set the paths on the bastion:
+
+```bash
+CATALOG=<registry host>:8443/<organization>/redhat/redhat-operator-index:v4.18
+AUTH_FILE=/run/user/0/containers/auth.json
+```
+
+`AUTH_FILE` must hold a login for the registry of `CATALOG`, and the host must trust its CA. Then list the packages,
+the channels of one package, and the versions of one channel:
+
+```bash
+oc-mirror --v2 list operators --authfile "$AUTH_FILE" --catalog="$CATALOG"
+oc-mirror --v2 list operators --authfile "$AUTH_FILE" --catalog="$CATALOG" --package=<package>
+oc-mirror --v2 list operators --authfile "$AUTH_FILE" --catalog="$CATALOG" --package=<package> --channel=<channel>
+```
+
+`oc-mirror` downloads the catalog image to its cache first. The cache is in `$HOME` unless you give `--cache-dir`.
+
+In the lab, the same commands read Red Hat's own catalogs. To list the catalogs of a release, and then the packages of
+the Red Hat catalog for 4.18, run:
+
+```bash
+oc-mirror --v2 list operators --authfile "$AUTH_FILE" --catalogs --version=4.18
+oc-mirror --v2 list operators --authfile "$AUTH_FILE" --catalog=registry.redhat.io/redhat/redhat-operator-index:v4.18
+```
+
+A package that the cluster's catalog serves must also be in Red Hat's catalog of the same version. Otherwise the new
+mirror cannot get it from Red Hat.
+
+## 5. Installed operators
 
 ```bash
 oc get subscriptions.operators.coreos.com -A -o custom-columns=NS:.metadata.namespace,NAME:.spec.name,CHANNEL:.spec.channel,SOURCE:.spec.source,CSV:.status.installedCSV
@@ -81,13 +147,16 @@ oc get subscriptions.operators.coreos.com -A -o jsonpath='{range .items[*]}{.met
 Each line is `<package> <channel> <version>`, for example `cluster-logging stable-6.2 6.2.3`. The version comes from the
 ClusterServiceVersion (CSV) of the operator, not from the CSV name.
 
+An installed operator must also be in the list of section 4. If it is not, the catalog that installed it no longer
+serves it, and the new mirror needs it from Red Hat's catalog.
+
 ## Use the results in the lab
 
 | Result | Where it goes |
 |---|---|
 | The version from section 1 | `ocp_version` of `playbook.yml` (the default is `4.18.17`) |
 | The organization from section 2 | `mirror_namespace` in `vars/env-<name>.yml` |
-| The lines from section 4 | `packages` in `vars/catalogs-<group>.yml`, one entry per package |
+| The lines from sections 4 and 5 | `packages` in `vars/catalogs-<group>.yml`, one entry per package. Section 4 gives every package that the catalogs serve. Section 5 gives the version that each installed operator needs at least |
 
 A line `cluster-logging stable-6.2 6.2.3` becomes this entry:
 
@@ -99,7 +168,11 @@ A line `cluster-logging stable-6.2 6.2.3` becomes this entry:
 ```
 
 `minVersion` set to the installed version keeps that version and every later version of the channel in the mirror. The
-cluster can then stay where it is, or update.
+cluster can then stay where it is, or update. For a package that is not installed, use the oldest version of its
+channel from section 4. A package with only its name and no channel mirrors the head version of every channel. The
+table "Choosing what each package entry mirrors" in [`catalog-mirroring-guide.md`](catalog-mirroring-guide.md) gives
+each form and what it mirrors.
 
-These commands were tested on a kind cluster with stand-in versions of the OpenShift objects, not on an OpenShift
-cluster.
+The `oc` commands were tested on a kind cluster with stand-in versions of the OpenShift and OLM objects, not on an
+OpenShift cluster. For the `oc-mirror --v2 list operators` commands, only the flags were checked, with `--help` of
+`oc-mirror` 2.0.0. They did not run against a catalog yet.
