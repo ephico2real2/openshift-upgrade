@@ -214,6 +214,9 @@ Version 2.0.13 keeps data in three places. `--quayRoot` alone does not move all 
 The Podman volumes are in `/var/lib/containers/storage/volumes/`. With all three in one folder, a backup or a move to
 another disk has one source.
 
+Every later `mirror-registry upgrade` must repeat the same three paths and `--quayHostname`. Without them, the upgrade
+uses the empty default volumes. See "Replace the TLS certificate later" in [`INSTALL.md`](INSTALL.md).
+
 ### Variables
 
 | Variable | Default | What it is |

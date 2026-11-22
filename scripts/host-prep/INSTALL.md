@@ -198,6 +198,59 @@ If the installer made the certificate, `podman login` refuses it because the CA 
 `/registry-data/quay-install/quay-rootCA/rootCA.pem` from the host to the trust store of the client. For a one-time
 test, you can add `--tls-verify=false` to `podman login` instead. Do not use that option for real work.
 
+## Replace the TLS certificate later
+
+You can replace the certificate after the install with `mirror-registry upgrade`. In version 2.0.13, `upgrade` has the
+same `--sslCert` and `--sslKey` flags as `install`, as `mirror-registry upgrade --help` shows.
+
+Give `upgrade` the same four paths as the install. Red Hat's documentation gives this rule: for an install with
+`--quayHostname` and `--quayRoot`, `upgrade` needs the same values. This install also sets `--quayStorage`
+and `--sqliteStorage`. Without them, `upgrade` uses its defaults, the empty Podman volumes `quay-storage` and
+`sqlite-storage`. The registry then starts with no images and no users.
+
+Warning: give all four paths to every `mirror-registry upgrade`, not only for a certificate. If a path is missing, the
+registry starts with empty storage.
+
+Run the command as root from the unpacked installer folder, with all four paths and the new certificate files:
+
+```bash
+cd /registry-data/mirror-registry
+./mirror-registry upgrade -v \
+  --quayHostname kcs-ewd-registry.getsolisvault.com:8443 \
+  --quayRoot /registry-data/quay-install \
+  --quayStorage /registry-data/quay-storage \
+  --sqliteStorage /registry-data/sqlite-storage \
+  --sslCert /path/to/fullchain.pem \
+  --sslKey /path/to/privkey.pem
+```
+
+Before you run it, make sure that the new certificate is valid for the registry name, and that the file holds the full
+chain:
+
+```bash
+openssl x509 -in /path/to/fullchain.pem -noout -checkhost kcs-ewd-registry.getsolisvault.com
+grep -c 'BEGIN CERTIFICATE' /path/to/fullchain.pem
+```
+
+The first command must print `does match`. The second must print 2 or more, the certificate and its issuers.
+
+After the upgrade, do step 8 again. These points also apply:
+
+- Clients that trust the CA of the installer must trust the new issuer instead. Most clients already trust a public
+  issuer such as Let's Encrypt.
+- The mirror registry does not rotate certificates (Red Hat RFE-4051). A Let's Encrypt certificate expires after 90
+  days or less, so each renewal must run this `upgrade` again. A `certbot` deploy hook can do that.
+- A Red Hat solution article reports that `quay-app` did not start after a certificate replacement, on Quay 3.6 and
+  3.7 with RHEL 8. After the upgrade, look at `systemctl list-units 'quay*'`.
+
+Sources:
+
+- Red Hat OpenShift 4.22 documentation, chapter 4,
+  [the mirror registry for Red Hat OpenShift](https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/disconnected_environments/installing-mirroring-creating-registry)
+- Red Hat solution 6980268, [replacement of the mirror registry certificate](https://access.redhat.com/node/6980268)
+- Red Hat solution 7017058, [quay-app does not start after a certificate replacement](https://access.redhat.com/node/7017058)
+- [RFE-4051](https://issues.redhat.com/browse/RFE-4051), no automatic certificate rotation
+
 ## Status of this procedure
 
 | Step | Tested on the test server |
@@ -208,6 +261,7 @@ test, you can add `--tls-verify=false` to `podman login` instead. Do not use tha
 | 5 | Not yet |
 | 6 | Yes. All checks passed with the real name |
 | 7 and 8 | Not yet. Record the results here after the first install |
+| Replace the TLS certificate | Not yet. Only the flags were read from `mirror-registry upgrade --help` of 2.0.13 |
 
 The path `quay-install/quay-rootCA/rootCA.pem` in step 8 is the place where mirror registry 1.x kept its CA. After the first
 install, make sure that 2.0.13 uses the same path. If it does not, correct this step.
