@@ -15,7 +15,7 @@ The examples use the test server of 2026-11-22: Rocky Linux 9.9 at Hetzner, with
 | 4 | Host | Installs Podman with `install-podman.sh` |
 | 5 | Host | Installs `tmux`, `ansible-core`, `jq`, `oc`, `kubectl` and `oc-mirror` with `install-cli-tools.sh` |
 | 6 | Host | Starts a `tmux` session |
-| 7 | Host | Prepares the TLS certificate and an unencrypted key |
+| 7 | Host | Splits the combined PEM file of the CA into a certificate chain and an unencrypted key |
 | 8 | Host | Does a dry run of `install-mirror-registry.sh` |
 | 9 | Host | Installs the mirror registry |
 | 10 | Host and workstation | Makes sure that the registry works |
@@ -32,8 +32,8 @@ The details of each script are in [`README.md`](README.md).
   `openshift-client-linux-amd64-rhel9.tar.gz`, `oc-mirror-rhel9-linux-amd64.tar.gz` and
   `mirror-registry-amd64.tar.gz`. Git ignores this folder.
 - You have a fully qualified domain name (FQDN) for the registry, in a DNS zone that you control.
-- You have a TLS certificate for that name from your certificate authority (CA), with its private key. Step 7 uses
-  them.
+- You have the combined PEM file of your certificate authority (CA) for that name, with the key password. Step 7
+  uses it.
 - Port 8443 of the host is open to the registry clients.
 
 ## 1. Create the DNS record
@@ -166,61 +166,75 @@ If the connection drops, log in again and run `tmux attach -t registry`.
 
 ## 7. Prepare the TLS certificate and key
 
-Get these two files from your CA for the registry name:
+The CA delivers one combined PEM file for the registry name, for example `kcs-ewd-registry.getsolisvault.com.pem`.
+It holds the private key and the certificates: the server certificate and the intermediate certificates of the CA.
+The key in it has a password.
 
-- The certificate, with the full chain: the server certificate first, then the intermediate certificates.
-- The private key of the certificate.
+The installer needs two separate files: the certificate chain for `--sslCert`, and an unencrypted key for `--sslKey`.
+This step makes both from the combined file.
 
 If you skip this step, the installer makes its own CA and certificate. Then every client must trust that CA, as step
 10 describes. In the lab test, the first install used the certificate of the installer, so step 7 was not used there.
 
-Copy the files to the host. On your workstation, run:
+### Copy the combined file to the host
+
+On your workstation, run:
 
 ```bash
 ssh "$SSH_TARGET" 'install -d -m 0700 /root/certs'
-scp <certificate file> "$SSH_TARGET":/root/certs/fullchain.pem
-scp <private key file> "$SSH_TARGET":/root/certs/privkey-encrypted.pem
+scp kcs-ewd-registry.getsolisvault.com.pem "$SSH_TARGET":/root/certs/
+ssh "$SSH_TARGET" 'chmod 600 /root/certs/kcs-ewd-registry.getsolisvault.com.pem'
 ```
 
 On the host, set the paths:
 
 ```bash
 CERT_DIR=/root/certs
+COMBINED_PEM=$CERT_DIR/kcs-ewd-registry.getsolisvault.com.pem
 SSL_CERT=$CERT_DIR/fullchain.pem
-ENCRYPTED_KEY=$CERT_DIR/privkey-encrypted.pem
 SSL_KEY=$CERT_DIR/privkey.pem
 ```
 
-`ENCRYPTED_KEY` is the key file from the CA. `SSL_KEY` is the unencrypted key that the installer gets.
+`COMBINED_PEM` is the file from the CA. `SSL_CERT` and `SSL_KEY` are the two files that the installer gets.
+
+Look at the blocks in the combined file:
+
+```bash
+grep -E '^-----BEGIN' "$COMBINED_PEM"
+```
+
+The output must show one key line and two or more `CERTIFICATE` lines. The key line is `-----BEGIN ENCRYPTED PRIVATE
+KEY-----`, or `-----BEGIN RSA PRIVATE KEY-----` for an older format. The order of the lines does not matter for the
+next commands.
+
+### Write the certificate chain
+
+```bash
+sed -n '/-----BEGIN CERTIFICATE-----/,/-----END CERTIFICATE-----/p' "$COMBINED_PEM" > "$SSL_CERT"
+grep -c 'BEGIN CERTIFICATE' "$SSL_CERT"
+grep -c 'PRIVATE KEY' "$SSL_CERT"
+```
+
+`sed` copies only the certificate blocks, in the order of the combined file. The first `grep` must print 2 or more.
+The second must print `0`, so that no key goes into the certificate file.
 
 ### Decrypt the private key
 
-A CA often delivers the key with a password. The installer has `--sslKey` but no flag for a key password, as
-`mirror-registry install --help` shows. At the start of its container, Quay reads the key, and nobody is there to type a password. So the key must be
-unencrypted.
+The installer has `--sslKey` but no flag for a key password, as `mirror-registry install --help` shows. At the start of
+its container, Quay reads the key, and nobody is there to type a password. So the key must be unencrypted.
 
-Look at the first two lines of the key:
-
-```bash
-head -2 "$ENCRYPTED_KEY"
-```
-
-If the output shows `-----BEGIN ENCRYPTED PRIVATE KEY-----`, or `Proc-Type: 4,ENCRYPTED` on the second line, the key
-has a password. If the first line is `-----BEGIN PRIVATE KEY-----` or `-----BEGIN RSA PRIVATE KEY-----` with no
-`Proc-Type` line, the key has no password. In that case, run `install -m 0600 "$ENCRYPTED_KEY" "$SSL_KEY"` and go
-to "Check the certificate and key".
-
-To decrypt the key, run this command. It asks for the key password:
+`openssl pkey` reads the key directly from the combined file, and it skips the certificates. Run this command. It asks
+for the key password:
 
 ```bash
-( umask 077; openssl pkey -in "$ENCRYPTED_KEY" -out "$SSL_KEY" )
+( umask 077; openssl pkey -in "$COMBINED_PEM" -out "$SSL_KEY" )
 head -1 "$SSL_KEY"
 stat -c '%a %n' "$SSL_KEY"
 ```
 
-`openssl` shows `Enter pass phrase for /root/certs/privkey-encrypted.pem:`. After the password, `head` must print
-`-----BEGIN PRIVATE KEY-----`, and `stat` must print `600`. `umask 077` makes sure that only root can read the new
-file. The command works for both encrypted forms.
+`openssl` shows `Enter pass phrase for /root/certs/kcs-ewd-registry.getsolisvault.com.pem:`. After the password, `head`
+must print `-----BEGIN PRIVATE KEY-----`, and `stat` must print `600`. `umask 077` makes sure that only root can read
+the new file. If the password is wrong, `openssl` shows `Could not find private key` and writes no file.
 
 Do not give the password with `-passin pass:<password>`. The password then goes into the shell history and the process
 list.
@@ -229,7 +243,6 @@ list.
 
 ```bash
 openssl x509 -in "$SSL_CERT" -noout -checkhost kcs-ewd-registry.getsolisvault.com
-grep -c 'BEGIN CERTIFICATE' "$SSL_CERT"
 openssl x509 -in "$SSL_CERT" -noout -enddate
 key_hash=$(openssl pkey -in "$SSL_KEY" -pubout | sha256sum)
 cert_hash=$(openssl x509 -in "$SSL_CERT" -noout -pubkey | sha256sum)
@@ -239,9 +252,12 @@ cert_hash=$(openssl x509 -in "$SSL_CERT" -noout -pubkey | sha256sum)
 | Command | Expected output |
 |---|---|
 | `-checkhost` | `Hostname kcs-ewd-registry.getsolisvault.com does match certificate` |
-| `grep -c` | 2 or more: the server certificate and its issuers |
 | `-enddate` | A `notAfter=` date in the future |
 | The hash comparison | `key matches certificate`. It compares the public key of the key file with the public key in the certificate |
+
+`openssl x509` reads only the first certificate of the file, so these checks also prove that the server certificate is
+first. If `-checkhost` shows `does NOT match`, the CA put another certificate first. In that case, edit `$SSL_CERT` and
+move the block of the server certificate to the top. Then do the checks again.
 
 Export the two paths for the dry run in step 8. The script reads them and checks the name of the certificate again:
 
@@ -249,8 +265,8 @@ Export the two paths for the dry run in step 8. The script reads them and checks
 export SSL_CERT SSL_KEY
 ```
 
-After the install, keep `$SSL_KEY` with mode `600`. When you have a copy of `$ENCRYPTED_KEY` in a safe place, delete
-it from the host. Its password is its only protection.
+After the install, keep `$SSL_KEY` with mode `600`. When you have a copy of `$COMBINED_PEM` in a safe place, delete it
+from the host. The password is the only protection of its key.
 
 ## 8. Do a dry run of the mirror registry install
 
@@ -509,8 +525,8 @@ cd /registry-data/mirror-registry
   --sslKey "$SSL_KEY"
 ```
 
-Before you run it, prepare the new files as in step 7. Copy them to `/root/certs`, and set `SSL_CERT` and `SSL_KEY`.
-If the key has a password, decrypt it. Then do all four checks. The key for `--sslKey` must be unencrypted.
+Before you run it, prepare the new combined file as in step 7. Copy it to `/root/certs`, and set the paths. Write
+the chain, decrypt the key, and do all the checks. The key for `--sslKey` must be unencrypted.
 
 After the upgrade, do step 10 again. These points also apply:
 
@@ -538,7 +554,7 @@ Sources:
 | 4 | Yes, with a second run and a test as a rootless user |
 | 5 | Yes, before `tmux`, `ansible-core` and `jq` were added to the script. That package step did not run yet on the host |
 | 6 | The operator ran the install in a terminal session. `tmux` use is not recorded |
-| 7 | The `openssl` commands, in a Rocky Linux 9 container with `openssl-3.5.9-1.el9_9` (the version on the host), a test CA and a key with a password. Both encrypted forms decrypted, mode `600`, key and certificate matched. No real CA certificate was used yet |
+| 7 | The commands, in a Rocky Linux 9 container with `openssl-3.5.9-1.el9_9` (the version on the host), with a test CA. Three combined files were tested: key first, key last, and the older `RSA PRIVATE KEY` form. Each gave a chain of 2 certificates with no key, a key with mode `600`, and a match. A chain with the CA certificate first gave `does NOT match`. No real CA file was used yet |
 | 8 | Yes. All checks passed with the real name, without `SSL_CERT` and `SSL_KEY` |
 | 9 | Yes, on 2026-11-22. `failed=0`, 4 minutes |
 | 10 | Yes for the units, the pod, `/health/instance` (HTTP 200), no named volumes, and the three mounts. `podman login` not recorded yet |
