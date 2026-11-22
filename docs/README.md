@@ -14,6 +14,7 @@
 | [`diagrams/prerequisites/`](diagrams/prerequisites/) | Source page and PNGs for the target layout of bastions and registries |
 | [`diagrams/three-steps/`](diagrams/three-steps/) | Source page and PNGs for the three steps, the decision flow, the Step 2 retrofit flow and the Step 3 scheduled sync |
 | [`catalog-policies/`](catalog-policies/) | Admission policies that limit operator catalogs, and the scripts that test them |
+| [`hetzner-server/merge-home-into-root.md`](hetzner-server/merge-home-into-root.md) | How to merge `/home` into `/` on a Hetzner server with RAID 1, on the running system |
 | `SOLUTIONS.docx`, `PREREQUISITES.docx`, `PROBLEM-STATEMENT.docx`, `DESIGN-DECISIONS.docx` | Word copies of the four Markdown documents, with the light figures embedded. Generated; edit the Markdown and rebuild |
 | [`tools/md2docx.js`](tools/md2docx.js) | Builds the Word copies: `npm install docx`, then `node tools/md2docx.js PROBLEM-STATEMENT.md PROBLEM-STATEMENT.docx` |
 
