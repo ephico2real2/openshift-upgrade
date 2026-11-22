@@ -21,7 +21,7 @@ The examples use the test server of 2026-11-22: Rocky Linux 9.9 at Hetzner, with
 | 10 | Host and workstation | Makes sure that the registry works |
 | 11 | Your workstation | Copies the repository and the pull secret to the host |
 | 12 | Host | Encrypts the pull secret with Ansible Vault |
-| 13 | Host | Uses the pull secret for an `oc-mirror` run |
+| 13 | On the host with a dummy pull secret: `podman login --authfile` added the registry entry and kept `quay.io` and `registry.redhat.io`, mode `600`, `email` fields dropped. `oc image info` read a public image, and gave `unauthorized` for `registry.redhat.io` with no login. The real pull secret and `oc-mirror` did not run yet |
 
 The details of each script are in [`README.md`](README.md).
 
@@ -386,13 +386,38 @@ podman login -u init --tls-verify=false kcs-ewd-registry.getsolisvault.com:8443
 ```
 
 `--tls-verify=false` turns off the certificate check, so the connection is not protected against a false server. Do
-not use it for real work. If the installer made the certificate, make each client trust its CA instead. Copy
-`/registry-data/quay-install/quay-rootCA/rootCA.pem` from the host to the trust store of the client. Then log in
-without `--tls-verify=false`:
+not use it for real work. Make Podman trust the CA of the registry instead, as the next section shows.
+
+### Trust the registry CA on the host
+
+If the installer made the certificate (you did not do step 7), Podman does not trust it. A login without
+`--tls-verify=false` then fails with this error:
+
+```text
+tls: failed to verify certificate: x509: certificate signed by unknown authority
+```
+
+To make Podman on the host trust the CA that the installer made, run these commands on the host:
 
 ```bash
-podman login -u init "$REGISTRY_HOST:8443"
+mkdir -p "/etc/containers/certs.d/kcs-ewd-registry.getsolisvault.com:8443"
+cp /registry-data/quay-install/quay-rootCA/rootCA.pem "/etc/containers/certs.d/kcs-ewd-registry.getsolisvault.com:8443/ca.crt"
+ls -l "/etc/containers/certs.d/kcs-ewd-registry.getsolisvault.com:8443/"
 ```
+
+`ls` must show `ca.crt`. The folder name must be the host name and the port, as in the login command, and the file
+must have the name `ca.crt`. Podman reads only that path for this registry. When `oc-mirror` pushes, it uses the same
+trust. Thus you do this only once on each host.
+
+Then log in without `--tls-verify=false`:
+
+```bash
+podman login -u init kcs-ewd-registry.getsolisvault.com:8443
+```
+
+The output must be `Login Succeeded!`. On another Linux client, copy `rootCA.pem` from the host into the same folder
+on that client. If your certificate in step 7 came from a CA that the system already trusts, this section is not
+necessary.
 
 ## 11. Copy the repository and the pull secret to the host
 
@@ -476,26 +501,81 @@ write a private auth file, and delete it after the run. The release guide,
 [`oc-mirror-ansible/docs/release-mirroring-guide.md`](../../oc-mirror-ansible/docs/release-mirroring-guide.md), has
 those runs.
 
-For a manual run, make a temporary auth file. `oc-mirror` needs two logins in it: Red Hat, to pull, and this
-registry, to push. Set the paths on the host:
+For a manual run, you make a temporary auth file. `oc-mirror` needs two logins in it: Red Hat, to pull, and this
+registry, to push. The pull secret is already an auth file. It is JSON in the form `{"auths": {...}}`, the same
+format that `podman login` writes. So you do not convert it. You copy it to the auth file and add the login of this
+registry to the copy.
+
+### Set the paths
+
+On the host, run:
 
 ```bash
 VAULT_FILE=/root/openshift-upgrade/oc-mirror-ansible/vars/redhat-pull-secret.json
+PULL_SECRET=/root/tools/pull-secret.txt
 AUTH_FILE=/run/user/0/containers/auth.json
 ```
 
-`/run/user/0` is in memory, so the file does not stay after a reboot. It exists while root has a login session.
+`VAULT_FILE` is the encrypted pull secret from step 12. `PULL_SECRET` is the plain file from step 11. Step 12
+deletes it. `/run/user/0` is in memory, so `AUTH_FILE` does not stay after a reboot. It exists while root has a login
+session.
 
-Write the auth file and add the registry login:
+### Write the auth file
+
+`AUTH_FILE` can already exist, for example from an earlier `podman login`. The copy replaces it. To see which logins
+it holds before you replace it, run `jq -r '.auths | keys[]' "$AUTH_FILE"`.
+
+After step 12, write the auth file from the Vault file:
 
 ```bash
 install -d -m 0700 "$(dirname "$AUTH_FILE")"
 ( umask 077; ansible-vault view "$VAULT_FILE" > "$AUTH_FILE" )
-podman login --authfile "$AUTH_FILE" kcs-ewd-registry.getsolisvault.com:8443
 ```
 
-`podman login` asks for the `init` user and its password from step 9. Give the file to `oc-mirror` with
-`--authfile`, and delete it after the run:
+Before step 12, the plain file is still at `/root/tools/pull-secret.txt`. Look at what it holds, then copy it:
+
+```bash
+jq -r '.auths | keys[]' "$PULL_SECRET"
+install -d -m 0700 "$(dirname "$AUTH_FILE")"
+( umask 077; cp "$PULL_SECRET" "$AUTH_FILE" )
+```
+
+The `jq` output must list `quay.io` and `registry.redhat.io`, among others. When you finish step 12, use the Vault
+form, and delete the plain file as step 12 describes.
+
+### Add the registry login
+
+```bash
+podman login --authfile "$AUTH_FILE" -u init kcs-ewd-registry.getsolisvault.com:8443
+```
+
+`podman login` asks for the password of the `init` user from step 9. The registry does not need to be in the file
+before the login. `podman login` adds its entry and keeps the `quay.io` and `registry.redhat.io` entries. The login
+needs the CA trust from step 10. If it fails with `certificate signed by unknown authority`, do "Trust the registry
+CA on the host" in step 10 first.
+
+`podman login` writes the whole file again and drops the `email` fields. The `auth` values stay, and they are the
+part that works. Thus, always log in on a copy, never on your only copy of the pull secret.
+
+### Check the auth file
+
+```bash
+jq -r '.auths | keys[]' "$AUTH_FILE"
+for r in registry.redhat.io quay.io kcs-ewd-registry.getsolisvault.com:8443; do printf '%s: ' "$r"; podman login --get-login --authfile "$AUTH_FILE" "$r"; done
+oc image info --registry-config "$AUTH_FILE" --filter-by-os linux/amd64 registry.redhat.io/ubi9/ubi-minimal:latest | head -2
+```
+
+| Command | Expected output |
+|---|---|
+| `jq` | `kcs-ewd-registry.getsolisvault.com:8443` beside `quay.io` and `registry.redhat.io` |
+| The `for` loop | The user name of each login. For this registry, `init` |
+| `oc image info` | A `Name:` line and a `Digest:` line. The command reads the image details and downloads no image |
+
+If the pull secret is not valid, `oc image info` shows `unauthorized: Please login to the Red Hat Registry`.
+
+### Run oc-mirror and delete the auth file
+
+Give the file to `oc-mirror` with `--authfile`, and delete it after the run:
 
 ```bash
 oc-mirror --v2 --authfile "$AUTH_FILE" ...
@@ -504,7 +584,7 @@ shred -u "$AUTH_FILE"
 
 The `...` stands for the real `oc-mirror` arguments, from the release guide. `oc-mirror` 2.0.0 also reads
 `${XDG_RUNTIME_DIR}/containers/auth.json` without `--authfile`, as its `--help` shows. For root, that is the same
-file. `--authfile` makes the choice visible in the command.
+file, and `podman pull` uses it too. `--authfile` makes the choice visible in the command.
 
 The clusters never get the Red Hat pull secret. They get a read-only robot account of this registry, as
 [`docs/PREREQUISITES.md`](../../docs/PREREQUISITES.md) describes.
@@ -567,7 +647,7 @@ Sources:
 | 7 | The commands, in a Rocky Linux 9 container with `openssl-3.5.9-1.el9_9` (the version on the host), with a test CA. Three combined files were tested: key first, key last, and the older `RSA PRIVATE KEY` form. Each gave a chain of 2 certificates with no key, a key with mode `600`, and a match. A chain with the CA certificate first gave `does NOT match`. No real CA file was used yet |
 | 8 | Yes. All checks passed with the real name, without `SSL_CERT` and `SSL_KEY` |
 | 9 | Yes, on 2026-11-22. `failed=0`, 4 minutes |
-| 10 | Yes for the units, the pod, `/health/instance` (HTTP 200), no named volumes, and the three mounts. `podman login` not recorded yet |
+| 10 | Yes for the units, the pod, `/health/instance` (HTTP 200), no named volumes, and the three mounts. A trusted `podman login` on the host passed with `rootCA.pem` as `ca.crt` (temporary `--cert-dir`), and failed with `certificate signed by unknown authority` without it. The operator saw the same error before the `certs.d` step |
 | 11 | The `rsync` of the whole repository, as a dry run from macOS with `-v`: 742 entries, 48 MB, no top-level `tools/`, no `pull-secret.txt`, `docs/tools/` kept. The `scp` of the pull secret did not run |
 | 12 | Yes, in a Rocky Linux 9 container with a dummy pull secret, `ansible-core-2.14.18-5.el9` and `jq-1.6-21.el9_9`. The Vault file had mode `600` and the header `$ANSIBLE_VAULT;1.1;AES256` |
 | 13 | The auth file from the Vault file, in the same container, with mode `600`. `podman login` and `oc-mirror` did not run |
