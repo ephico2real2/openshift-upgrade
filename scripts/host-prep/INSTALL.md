@@ -13,7 +13,7 @@ The examples use the test server of 2026-11-22: Rocky Linux 9.9 at Hetzner, with
 | 2 | Your workstation | Sets the host variables |
 | 3 | Your workstation | Copies the scripts and the Red Hat tarballs to the host |
 | 4 | Host | Installs Podman with `install-podman.sh` |
-| 5 | Host | Installs `tmux`, `ansible-core`, `jq`, `oc`, `kubectl` and `oc-mirror` with `install-cli-tools.sh` |
+| 5 | Host | Installs `tmux`, `ansible-core`, `jq`, `git`, `oc`, `kubectl` and `oc-mirror` with `install-cli-tools.sh` |
 | 6 | Host | Starts a `tmux` session |
 | 7 | Host | Splits the combined PEM file of the CA into a certificate chain and an unencrypted key |
 | 8 | Host | Does a dry run of `install-mirror-registry.sh` |
@@ -144,6 +144,7 @@ The last lines must be similar to these:
 [install-cli-tools] tmux:      tmux 3.2a
 [install-cli-tools] ansible:   ansible-vault [core 2.14.18]
 [install-cli-tools] jq:        jq-1.6
+[install-cli-tools] git:       git version 2.52.0
 [install-cli-tools] oc:        Client Version: 5.0.1
 [install-cli-tools] kubectl:   Client Version: v1.36.2
 [install-cli-tools] oc-mirror: 2.0.0-202610201601.p2.gc4d52fa.assembly.stream.el9-c4d52fa
@@ -419,8 +420,8 @@ ssh "$SSH_TARGET" 'chown -R root:root /root/openshift-upgrade /root/tools && chm
 ```
 
 The `/` at the start of `/tools/` matters. It matches only the `tools/` folder at the root of the repository. Without
-it, `rsync` also leaves out `docs/tools/`. The copy includes `.git`, so the history is on the host too. To use `git`
-there, run `dnf install -y git` on the host.
+it, `rsync` also leaves out `docs/tools/`. The copy includes `.git`, so the history is on the host too. Step 5 installed
+`git`, so `git status` and `git log` work in `/root/openshift-upgrade`.
 
 To see what the copy sends before you run it, add `-v --dry-run` to the `rsync` command. In the lab, the dry run
 listed 742 entries and 48 MB, with no top-level `tools/` entry and no `pull-secret.txt`.
@@ -561,7 +562,7 @@ Sources:
 | 1 | Yes. Cloudflare, "DNS only". The first record was "Proxied", and the dry run refused it |
 | 2 and 3 | Yes. The hashes matched after the copy. The `rsync` command is now the `openrsync` form, tested as a dry run |
 | 4 | Yes, with a second run and a test as a rootless user |
-| 5 | Yes, before `tmux`, `ansible-core` and `jq` were added to the script. That package step did not run yet on the host |
+| 5 | Yes on the host, before `tmux`, `ansible-core`, `jq` and `git` were added. The package step ran in a Rocky Linux 9 container: the four versions above, and `already installed` on a second run |
 | 6 | The operator ran the install in a terminal session. `tmux` use is not recorded |
 | 7 | The commands, in a Rocky Linux 9 container with `openssl-3.5.9-1.el9_9` (the version on the host), with a test CA. Three combined files were tested: key first, key last, and the older `RSA PRIVATE KEY` form. Each gave a chain of 2 certificates with no key, a key with mode `600`, and a match. A chain with the CA certificate first gave `does NOT match`. No real CA file was used yet |
 | 8 | Yes. All checks passed with the real name, without `SSL_CERT` and `SSL_KEY` |

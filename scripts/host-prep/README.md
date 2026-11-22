@@ -6,7 +6,7 @@ bastion. See [`docs/PREREQUISITES.md`](../../docs/PREREQUISITES.md) for what eac
 | Script | What it does |
 |---|---|
 | [`install-podman.sh`](install-podman.sh) | Installs Podman and sets the rootless network command, per Red Hat "Configure rootless Podman networking" |
-| [`install-cli-tools.sh`](install-cli-tools.sh) | Installs `tmux`, `ansible-core` and `jq` with `dnf`, and `oc`, `kubectl` and `oc-mirror` from the Red Hat tarballs in a tools folder |
+| [`install-cli-tools.sh`](install-cli-tools.sh) | Installs `tmux`, `ansible-core`, `jq` and `git` with `dnf`. Installs `oc`, `kubectl` and `oc-mirror` from the Red Hat tarballs |
 | [`install-mirror-registry.sh`](install-mirror-registry.sh) | Installs the mirror registry for Red Hat OpenShift, with all its data in one folder |
 
 Run them in the order of this table. [`INSTALL.md`](INSTALL.md) gives the full procedure. It has the commands and
@@ -107,8 +107,8 @@ matters on hosts without a default route.
 
 ## install-cli-tools.sh
 
-This script installs `tmux`, `ansible-core` and `jq` with `dnf`. `ansible-core` gives `ansible-vault` and runs the
-playbooks in `oc-mirror-ansible/`, and `jq` reads the pull secret. Then it installs `oc` and `kubectl` from the OpenShift client tarball, and
+This script installs `tmux`, `ansible-core`, `jq` and `git` with `dnf`. `ansible-core` gives `ansible-vault` and runs
+the playbooks in `oc-mirror-ansible/`, `jq` reads the pull secret, and `git` works with the copy of this repository. Then it installs `oc` and `kubectl` from the OpenShift client tarball, and
 `oc-mirror` from its own tarball, into `/usr/local/bin`. If the SSH connection drops, a long job in `tmux`
 continues. It does not install the mirror registry. That tarball is installed in a separate
 step.
@@ -158,7 +158,7 @@ content, `install -C` does not replace it.
 To install by hand, run these commands as root. They do the same steps as the script.
 
 ```bash
-dnf install -y tmux ansible-core jq
+dnf install -y tmux ansible-core jq git
 
 TOOLS_DIR=/root/tools
 BIN_DIR=/usr/local/bin
