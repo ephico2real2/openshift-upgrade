@@ -1,24 +1,27 @@
 # Install a mirror registry host
 
 This procedure prepares a RHEL 9 family host and installs the mirror registry for Red Hat OpenShift on it. Then it
-stores the Red Hat pull secret for `oc-mirror`. You run three scripts in order. Each step shows the commands and the output that you must see before you continue.
+stores the Red Hat pull secret for `oc-mirror`. You create a DNS record, prepare a TLS certificate, and run three
+scripts in order. Each step shows the commands and the output that you must see before you continue.
 
 The examples use the test server of 2026-11-22: Rocky Linux 9.9 at Hetzner, with the name
-`kcs-ewd-registry.getsolisvault.com`. For another host, change the two variables in step 1.
+`kcs-ewd-registry.getsolisvault.com`. For another host, change the two variables in step 2.
 
 | Step | Where | What it does |
 |---|---|---|
-| 1 | Your workstation | Sets the host variables |
-| 2 | Your workstation | Copies the scripts and the Red Hat tarballs to the host |
-| 3 | Host | Installs Podman with `install-podman.sh` |
-| 4 | Host | Installs `tmux`, `ansible-core`, `jq`, `oc`, `kubectl` and `oc-mirror` with `install-cli-tools.sh` |
-| 5 | Host | Starts a `tmux` session |
-| 6 | Host | Does a dry run of `install-mirror-registry.sh` |
-| 7 | Host | Installs the mirror registry |
-| 8 | Host and workstation | Makes sure that the registry works |
-| 9 | Your workstation | Copies the playbooks and the pull secret to the host |
-| 10 | Host | Encrypts the pull secret with Ansible Vault |
-| 11 | Host | Uses the pull secret for an `oc-mirror` run |
+| 1 | Your DNS provider | Creates the DNS record of the registry name |
+| 2 | Your workstation | Sets the host variables |
+| 3 | Your workstation | Copies the scripts and the Red Hat tarballs to the host |
+| 4 | Host | Installs Podman with `install-podman.sh` |
+| 5 | Host | Installs `tmux`, `ansible-core`, `jq`, `oc`, `kubectl` and `oc-mirror` with `install-cli-tools.sh` |
+| 6 | Host | Starts a `tmux` session |
+| 7 | Host | Prepares the TLS certificate and an unencrypted key |
+| 8 | Host | Does a dry run of `install-mirror-registry.sh` |
+| 9 | Host | Installs the mirror registry |
+| 10 | Host and workstation | Makes sure that the registry works |
+| 11 | Your workstation | Copies the playbooks and the pull secret to the host |
+| 12 | Host | Encrypts the pull secret with Ansible Vault |
+| 13 | Host | Uses the pull secret for an `oc-mirror` run |
 
 The details of each script are in [`README.md`](README.md).
 
@@ -28,20 +31,49 @@ The details of each script are in [`README.md`](README.md).
 - The `tools/` folder at the root of this repository holds the three Red Hat tarballs:
   `openshift-client-linux-amd64-rhel9.tar.gz`, `oc-mirror-rhel9-linux-amd64.tar.gz` and
   `mirror-registry-amd64.tar.gz`. Git ignores this folder.
-- The registry name has a DNS record that points to the host. In Cloudflare, the record must be "DNS only", not
-  "Proxied". A proxied record hides the host address, and the dry run in step 6 then fails.
+- You have a fully qualified domain name (FQDN) for the registry, in a DNS zone that you control.
+- You have a TLS certificate for that name from your certificate authority (CA), with its private key. Step 7 uses
+  them.
 - Port 8443 of the host is open to the registry clients.
 
-To make sure that the DNS record is correct, run this command on your workstation:
+## 1. Create the DNS record
+
+The installer and every client reach the registry by its name. The name must resolve to the real address of the host.
+The mirror registry does not accept an IP address as its host name.
+
+In the DNS provider of your zone, create these records for the registry name:
+
+| Type | Name | Value |
+|---|---|---|
+| A | The registry name | The IPv4 address of the host |
+| AAAA | The registry name | The IPv6 address of the host. If the host has no IPv6, do not create this record |
+
+If your provider can put a proxy or a CDN in front of a name, turn it off for this record. A proxy answers with its own
+addresses, so the name does not resolve to the host.
+
+In the lab test, the DNS provider was Cloudflare, with the zone `getsolisvault.com`:
+
+| Type | Name | Content | Proxy status |
+|---|---|---|---|
+| A | `kcs-ewd-registry` | `138.201.254.103` | DNS only (grey cloud) |
+| AAAA | `kcs-ewd-registry` | `2a01:4f8:173:256f::2` | DNS only (grey cloud) |
+
+The first lab record was "Proxied" (orange cloud). Cloudflare then answered with its own addresses, and the dry run in
+step 8 stopped with `resolves to 188.114.96.3 188.114.97.3 ... which is not an address of this host`.
+
+To make sure that the record is correct, ask the name servers of the zone first, then a public resolver:
 
 ```bash
-dig +short kcs-ewd-registry.getsolisvault.com
+dig +short NS getsolisvault.com
+dig +short kcs-ewd-registry.getsolisvault.com @<one name server from the first command>
+dig +short kcs-ewd-registry.getsolisvault.com @1.1.1.1
 ```
 
-The output must be the address of the host, `138.201.254.103` for the test server. A Cloudflare address, for
-example `104.21.93.198`, means that the record is still proxied.
+Each `dig` for the registry name must print the address of the host, `138.201.254.103` in the lab. The name servers
+of the zone show a change at once. Other resolvers can keep the old answer until the TTL (cache time) of the record
+ends. A Cloudflare address, for example `104.21.93.198`, means that the record is still proxied.
 
-## 1. Set the host variables
+## 2. Set the host variables
 
 On your workstation, go to the root of this repository and set two variables:
 
@@ -53,7 +85,7 @@ SSH_TARGET=root@$REGISTRY_HOST
 
 `REGISTRY_HOST` is the registry name. `SSH_TARGET` is the SSH login for the host.
 
-## 2. Copy the scripts and the tarballs to the host
+## 3. Copy the scripts and the tarballs to the host
 
 ```bash
 scp scripts/host-prep/install-podman.sh \
@@ -66,7 +98,7 @@ rsync -a --partial --progress \
 ssh "$SSH_TARGET" 'chown -R root:root /root/tools'
 ```
 
-The `rsync` command does not copy the pull secret. Step 9 copies it. `rsync -a` keeps the user ID of your
+The `rsync` command does not copy the pull secret. Step 11 copies it. `rsync -a` keeps the user ID of your
 workstation, so the `chown` command sets the owner to root.
 
 macOS has `openrsync`, not GNU rsync 3.x. It does not support `--chown` or `--info=progress2`, so these commands do
@@ -81,7 +113,7 @@ ssh "$SSH_TARGET" 'sha256sum /root/tools/*.tar.gz'
 
 The hashes on both sides must be the same.
 
-## 3. Install Podman
+## 4. Install Podman
 
 Log in to the host. Do the remaining steps on the host, as root:
 
@@ -100,7 +132,7 @@ The last lines must be similar to these:
 
 If you run the script again, it shows `unchanged:` for the setting file. That is correct.
 
-## 4. Install the tools
+## 5. Install the tools
 
 ```bash
 bash /root/install-cli-tools.sh
@@ -121,7 +153,7 @@ The last lines must be similar to these:
 
 If the line `note: /usr/local/bin is not in PATH` appears, log out and log in again.
 
-## 5. Start a tmux session
+## 6. Start a tmux session
 
 The mirror registry install takes several minutes. If your SSH connection drops, a job in `tmux` continues. Start
 the session:
@@ -132,7 +164,95 @@ tmux new -s registry
 
 If the connection drops, log in again and run `tmux attach -t registry`.
 
-## 6. Do a dry run of the mirror registry install
+## 7. Prepare the TLS certificate and key
+
+Get these two files from your CA for the registry name:
+
+- The certificate, with the full chain: the server certificate first, then the intermediate certificates.
+- The private key of the certificate.
+
+If you skip this step, the installer makes its own CA and certificate. Then every client must trust that CA, as step
+10 describes. In the lab test, the first install used the certificate of the installer, so step 7 was not used there.
+
+Copy the files to the host. On your workstation, run:
+
+```bash
+ssh "$SSH_TARGET" 'install -d -m 0700 /root/certs'
+scp <certificate file> "$SSH_TARGET":/root/certs/fullchain.pem
+scp <private key file> "$SSH_TARGET":/root/certs/privkey-encrypted.pem
+```
+
+On the host, set the paths:
+
+```bash
+CERT_DIR=/root/certs
+SSL_CERT=$CERT_DIR/fullchain.pem
+ENCRYPTED_KEY=$CERT_DIR/privkey-encrypted.pem
+SSL_KEY=$CERT_DIR/privkey.pem
+```
+
+`ENCRYPTED_KEY` is the key file from the CA. `SSL_KEY` is the unencrypted key that the installer gets.
+
+### Decrypt the private key
+
+A CA often delivers the key with a password. The installer has `--sslKey` but no flag for a key password, as
+`mirror-registry install --help` shows. At the start of its container, Quay reads the key, and nobody is there to type a password. So the key must be
+unencrypted.
+
+Look at the first two lines of the key:
+
+```bash
+head -2 "$ENCRYPTED_KEY"
+```
+
+If the output shows `-----BEGIN ENCRYPTED PRIVATE KEY-----`, or `Proc-Type: 4,ENCRYPTED` on the second line, the key
+has a password. If the first line is `-----BEGIN PRIVATE KEY-----` or `-----BEGIN RSA PRIVATE KEY-----` with no
+`Proc-Type` line, the key has no password. In that case, run `install -m 0600 "$ENCRYPTED_KEY" "$SSL_KEY"` and go
+to "Check the certificate and key".
+
+To decrypt the key, run this command. It asks for the key password:
+
+```bash
+( umask 077; openssl pkey -in "$ENCRYPTED_KEY" -out "$SSL_KEY" )
+head -1 "$SSL_KEY"
+stat -c '%a %n' "$SSL_KEY"
+```
+
+`openssl` shows `Enter pass phrase for /root/certs/privkey-encrypted.pem:`. After the password, `head` must print
+`-----BEGIN PRIVATE KEY-----`, and `stat` must print `600`. `umask 077` makes sure that only root can read the new
+file. The command works for both encrypted forms.
+
+Do not give the password with `-passin pass:<password>`. The password then goes into the shell history and the process
+list.
+
+### Check the certificate and key
+
+```bash
+openssl x509 -in "$SSL_CERT" -noout -checkhost kcs-ewd-registry.getsolisvault.com
+grep -c 'BEGIN CERTIFICATE' "$SSL_CERT"
+openssl x509 -in "$SSL_CERT" -noout -enddate
+key_hash=$(openssl pkey -in "$SSL_KEY" -pubout | sha256sum)
+cert_hash=$(openssl x509 -in "$SSL_CERT" -noout -pubkey | sha256sum)
+[ "$key_hash" = "$cert_hash" ] && echo "key matches certificate" || echo "ERROR: key does not match certificate"
+```
+
+| Command | Expected output |
+|---|---|
+| `-checkhost` | `Hostname kcs-ewd-registry.getsolisvault.com does match certificate` |
+| `grep -c` | 2 or more: the server certificate and its issuers |
+| `-enddate` | A `notAfter=` date in the future |
+| The hash comparison | `key matches certificate`. It compares the public key of the key file with the public key in the certificate |
+
+Export the two paths for the dry run in step 8. The script reads them and checks the name of the certificate again:
+
+```bash
+export SSL_CERT SSL_KEY
+```
+
+After the install, keep `$SSL_KEY` with mode `600`. When you have a copy of `$ENCRYPTED_KEY` in a safe place, delete
+it from the host. Its password is its only protection.
+
+## 8. Do a dry run of the mirror registry install
 
 In the `tmux` session, set the registry name and do the dry run:
 
@@ -150,13 +270,13 @@ The dry run changes nothing. The last lines must be similar to these:
 ```
 
 If the dry run shows `ERROR:`, fix the cause that the message names, and do the dry run again. Do not continue to
-step 7 before the dry run passes.
+step 9 before the dry run passes.
 
-To use your own TLS certificate, also set `SSL_CERT` and `SSL_KEY` to the certificate file and the key file. If you do
-not set them, the installer makes its own certificate, and each client must then trust its CA. To set the password of
+If you did step 7, `SSL_CERT` and `SSL_KEY` are set, and the printed command shows `--sslCert` and `--sslKey`. If you
+did not, the installer makes its own certificate, and each client must then trust its CA. To set the password of
 the `init` user, set `INIT_PASSWORD`. If you do not set it, the installer makes a random password.
 
-## 7. Install the mirror registry
+## 9. Install the mirror registry
 
 In the same `tmux` session, run the script without `--dry-run`:
 
@@ -199,7 +319,7 @@ Keep the password in a password manager. The log has mode `0600`, so only root c
 If the install fails, the script shows `ERROR: mirror-registry install failed; read /registry-data/install-<time>.log`.
 Read the last lines of that log before you try again.
 
-## 8. Make sure that the registry works
+## 10. Make sure that the registry works
 
 On the host, look at the registry services and the data folders:
 
@@ -229,7 +349,7 @@ podman inspect quay-app --format '{{range .Mounts}}{{.Source}} -> {{.Destination
 `podman volume ls` must show no volumes. The mounts must be `/registry-data/quay-storage`, `/registry-data/sqlite-storage`
 and `/registry-data/quay-install/quay-config`.
 
-Log in to the registry with the `init` user and the password from step 7. Red Hat's documentation gives this test
+Log in to the registry with the `init` user and the password from step 9. Red Hat's documentation gives this test
 command. It works before any client trusts the certificate:
 
 ```bash
@@ -257,7 +377,7 @@ without `--tls-verify=false`:
 podman login -u init "$REGISTRY_HOST:8443"
 ```
 
-## 9. Copy the playbooks and the pull secret to the host
+## 11. Copy the playbooks and the pull secret to the host
 
 The mirror registry does not need the Red Hat pull secret. `oc-mirror` needs it to pull images from Red Hat. The
 playbooks in `oc-mirror-ansible/` read it from an Ansible Vault file.
@@ -280,7 +400,7 @@ ssh "$SSH_TARGET" 'chown -R root:root /root/oc-mirror-ansible /root/tools && chm
 `rsync` also copies files that git ignores. Before the copy, make sure that `git status --short --ignored
 oc-mirror-ansible/` shows nothing.
 
-## 10. Encrypt the pull secret with Ansible Vault
+## 12. Encrypt the pull secret with Ansible Vault
 
 On the host, set the three paths:
 
@@ -290,7 +410,7 @@ PLAYBOOK_DIR=/root/oc-mirror-ansible
 VAULT_FILE=$PLAYBOOK_DIR/vars/redhat-pull-secret.json
 ```
 
-`PULL_SECRET` is the plain file from step 9. `VAULT_FILE` is the encrypted file. The playbooks read it from this path.
+`PULL_SECRET` is the plain file from step 11. `VAULT_FILE` is the encrypted file. The playbooks read it from this path.
 
 Make sure that the pull secret covers the Red Hat registries:
 
@@ -323,7 +443,7 @@ lists `vars/redhat-pull-secret.json`, so git does not commit the encrypted file 
 On your workstation, delete `$LOCAL_PULL_SECRET` after you keep a copy in your password manager. macOS has no `shred`
 command, and on an SSD an overwrite does not reliably remove the old data, so use `rm "$LOCAL_PULL_SECRET"`.
 
-## 11. Use the pull secret for an oc-mirror run
+## 13. Use the pull secret for an oc-mirror run
 
 The playbooks in `oc-mirror-ansible/` do this step themselves. They decrypt the Vault file, add the registry login,
 write a private auth file, and delete it after the run. The release guide,
@@ -348,7 +468,7 @@ install -d -m 0700 "$(dirname "$AUTH_FILE")"
 podman login --authfile "$AUTH_FILE" kcs-ewd-registry.getsolisvault.com:8443
 ```
 
-`podman login` asks for the `init` user and its password from step 7. Give the file to `oc-mirror` with
+`podman login` asks for the `init` user and its password from step 9. Give the file to `oc-mirror` with
 `--authfile`, and delete it after the run:
 
 ```bash
@@ -385,21 +505,14 @@ cd /registry-data/mirror-registry
   --quayRoot /registry-data/quay-install \
   --quayStorage /registry-data/quay-storage \
   --sqliteStorage /registry-data/sqlite-storage \
-  --sslCert /path/to/fullchain.pem \
-  --sslKey /path/to/privkey.pem
+  --sslCert "$SSL_CERT" \
+  --sslKey "$SSL_KEY"
 ```
 
-Before you run it, make sure that the new certificate is valid for the registry name, and that the file holds the full
-chain:
+Before you run it, prepare the new files as in step 7. Copy them to `/root/certs`, and set `SSL_CERT` and `SSL_KEY`.
+If the key has a password, decrypt it. Then do all four checks. The key for `--sslKey` must be unencrypted.
 
-```bash
-openssl x509 -in /path/to/fullchain.pem -noout -checkhost kcs-ewd-registry.getsolisvault.com
-grep -c 'BEGIN CERTIFICATE' /path/to/fullchain.pem
-```
-
-The first command must print `does match`. The second must print 2 or more, the certificate and its issuers.
-
-After the upgrade, do step 8 again. These points also apply:
+After the upgrade, do step 10 again. These points also apply:
 
 - Clients that trust the CA of the installer must trust the new issuer instead. Most clients already trust a public
   issuer such as Let's Encrypt.
@@ -420,16 +533,18 @@ Sources:
 
 | Step | Tested on the test server |
 |---|---|
-| 1 and 2 | Yes. The hashes matched after the copy. The `rsync` command is now the `openrsync` form, tested as a dry run |
-| 3 | Yes, with a second run and a test as a rootless user |
-| 4 | Yes, before `tmux`, `ansible-core` and `jq` were added to the script. That package step did not run yet on the host |
-| 5 | The operator ran the install in a terminal session. `tmux` use is not recorded |
-| 6 | Yes. All checks passed with the real name |
-| 7 | Yes, on 2026-11-22. `failed=0`, 4 minutes |
-| 8 | Yes for the units, the pod, `/health/instance` (HTTP 200), no named volumes, and the three mounts. `podman login` not recorded yet |
-| 9 | The `rsync` of the playbooks, as a dry run from macOS. The `scp` of the pull secret did not run |
-| 10 | Yes, in a Rocky Linux 9 container with a dummy pull secret, `ansible-core-2.14.18-5.el9` and `jq-1.6-21.el9_9`. The Vault file had mode `600` and the header `$ANSIBLE_VAULT;1.1;AES256` |
-| 11 | The auth file from the Vault file, in the same container, with mode `600`. `podman login` and `oc-mirror` did not run |
+| 1 | Yes. Cloudflare, "DNS only". The first record was "Proxied", and the dry run refused it |
+| 2 and 3 | Yes. The hashes matched after the copy. The `rsync` command is now the `openrsync` form, tested as a dry run |
+| 4 | Yes, with a second run and a test as a rootless user |
+| 5 | Yes, before `tmux`, `ansible-core` and `jq` were added to the script. That package step did not run yet on the host |
+| 6 | The operator ran the install in a terminal session. `tmux` use is not recorded |
+| 7 | The `openssl` commands, in a Rocky Linux 9 container with `openssl-3.5.9-1.el9_9` (the version on the host), a test CA and a key with a password. Both encrypted forms decrypted, mode `600`, key and certificate matched. No real CA certificate was used yet |
+| 8 | Yes. All checks passed with the real name, without `SSL_CERT` and `SSL_KEY` |
+| 9 | Yes, on 2026-11-22. `failed=0`, 4 minutes |
+| 10 | Yes for the units, the pod, `/health/instance` (HTTP 200), no named volumes, and the three mounts. `podman login` not recorded yet |
+| 11 | The `rsync` of the playbooks, as a dry run from macOS. The `scp` of the pull secret did not run |
+| 12 | Yes, in a Rocky Linux 9 container with a dummy pull secret, `ansible-core-2.14.18-5.el9` and `jq-1.6-21.el9_9`. The Vault file had mode `600` and the header `$ANSIBLE_VAULT;1.1;AES256` |
+| 13 | The auth file from the Vault file, in the same container, with mode `600`. `podman login` and `oc-mirror` did not run |
 | Replace the TLS certificate | Not yet. Only the flags were read from `mirror-registry upgrade --help` of 2.0.13 |
 
 On the test server, the install made `/registry-data/quay-install/quay-rootCA/rootCA.pem`, valid until 2029-09-11,
