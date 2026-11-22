@@ -1,0 +1,12 @@
+---
+# Shared by the four playbooks. Cluster values come from vars/cluster-<name>.yml (-e @...), which wins.
+oc: "{{ oc_bin | default('oc') }}{{ (' --kubeconfig ' + kubeconfig) if (kubeconfig | default('')) else '' }}"
+run_date: "{{ lookup('pipe', 'date +%F') }}"
+backup_dir: "{{ backup_root | default('~/retrofit-backups') | expanduser }}/{{ cluster_name }}-{{ run_date }}"
+work_dir: "{{ backup_dir }}/work"
+wait_delay_seconds: 30
+# how many polls make up the waits (never divide by zero when a test sets the delay to 0)
+poll_seconds: "{{ [wait_delay_seconds | int, 1] | max }}"
+mcp_wait_retries: "{{ ((mcp_wait_minutes | default(240)) * 60 / (poll_seconds | int)) | int }}"
+update_wait_retries: "{{ ((update_wait_minutes | default(360)) * 60 / (poll_seconds | int)) | int }}"
+co_wait_retries: 40

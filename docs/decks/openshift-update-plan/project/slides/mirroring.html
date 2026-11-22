@@ -1,0 +1,27 @@
+<section id="mirroring" data-transition="fade" style="background:#F5F6F8;color:#18212C;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:40px">
+<h2 style="font-size:64px;font-weight:700;line-height:1.1">Download once, push everywhere</h2>
+<div style="display:flex;gap:28px">
+<div style="flex:1;background:#FFFFFF;border:1px solid #D7DCE3;border-radius:16px;padding:40px;display:flex;flex-direction:column;gap:12px">
+<p style="font-family:'IBM Plex Mono', 'Courier New', monospace;font-size:24px;color:#0E6F68">1 · m2d</p>
+<h3 style="font-size:40px;font-weight:600">Download</h3>
+<p style="font-size:28px;line-height:1.4;color:#4A5563">Red Hat to an archive on the bastion; the cache keeps every image, so later runs fetch only changes</p>
+</div>
+<div style="flex:1;background:#FFFFFF;border:1px solid #D7DCE3;border-radius:16px;padding:40px;display:flex;flex-direction:column;gap:12px">
+<p style="font-family:'IBM Plex Mono', 'Courier New', monospace;font-size:24px;color:#0E6F68">2 · d2m, lab</p>
+<h3 style="font-size:40px;font-weight:600">Push to lab</h3>
+<p style="font-size:28px;line-height:1.4;color:#4A5563">The archive into the lab registry; a lab cluster takes the update first</p>
+</div>
+<div style="flex:1;background:#FFFFFF;border:1px solid #D7DCE3;border-radius:16px;padding:40px;display:flex;flex-direction:column;gap:12px">
+<p style="font-family:'IBM Plex Mono', 'Courier New', monospace;font-size:24px;color:#0E6F68">3 · d2m, production</p>
+<h3 style="font-size:40px;font-weight:600">Push to production</h3>
+<p style="font-size:28px;line-height:1.4;color:#4A5563">The same archive into the datacenter's production registry: exactly what the lab tested</p>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:16px">
+<p style="font-size:28px;line-height:1.4"><b>One namespace everywhere:</b> <span style="color:#0E6F68">ocp4v2</span>, a single parameter, so cluster files differ only by host</p>
+<p style="font-size:28px;line-height:1.4"><b>Old registries can take pushes</b> on ocp4v2 as a bridge; their oc-mirror v1 path is protected</p>
+<p style="font-size:28px;line-height:1.4"><b>DC2's bastion downloads for itself</b> with the same pinned versions</p>
+</div>
+<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#58636F">Red Hat: the cache "avoids remirroring unchanged images" · 25</p>
+<aside>m2d and d2m are oc-mirror v2's mirror-to-disk and disk-to-mirror workflows; both use the cache. Straight registry-to-registry runs use no cache and are kept for small top-ups only.</aside>
+</section>

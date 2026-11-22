@@ -1,0 +1,121 @@
+---
+# Phase 8 of docs/enterprise-proxy/README.md: the first connected update, run with the mirror still in
+# place. The oc-mirror IDMS objects have no NeverContactSource, so CRI-O tries the mirror first and
+# falls back to quay.io through the proxy for anything the mirror lacks. The same playbook runs the
+# later hops (4.20, 4.22) once the mirror is gone: Ansible automates the update under the proxy approach too.
+- name: Update the cluster through the enterprise proxy (phase 8)
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - vars/common.yml
+
+  tasks:
+    - name: Read ClusterVersion
+      ansible.builtin.command: "{{ oc }} get clusterversion version -o json"
+      register: cv_raw
+      changed_when: false
+
+    - name: Keep the starting point
+      ansible.builtin.set_fact:
+        cv: "{{ cv_raw.stdout | from_json }}"
+        start_version: "{{ (cv_raw.stdout | from_json).status.desired.version }}"
+
+    - name: Stop unless the cluster is healthy, idle, and reads its graph from Red Hat (phase 6)
+      ansible.builtin.assert:
+        that:
+          - (cv.status.conditions | selectattr('type', 'equalto', 'Available') | map(attribute='status') | first) == 'True'
+          - (cv.status.conditions | selectattr('type', 'equalto', 'Progressing') | map(attribute='status') | first) == 'False'
+          - (cv.status.conditions | selectattr('type', 'equalto', 'Degraded') | map(attribute='status') | first | default('False')) == 'False'
+          - cv.spec.upstream is not defined
+        fail_msg: >-
+          ClusterVersion is not ready: Available/Progressing/Degraded are not True/False/False, or spec.upstream
+          still points at a local Update Service ({{ cv.spec.upstream | default('') }}). Run retrofit-playbook.yml --tags update-service first.
+        quiet: true
+
+    - name: Check the ClusterOperators and pools before starting
+      ansible.builtin.include_tasks: tasks/check-operators.yml
+
+    - name: Wait for the pools
+      ansible.builtin.include_tasks: tasks/wait-for-pools.yml
+
+    - name: "Change the channel (only when update_channel is set and differs: eus-4.20 for the move to 4.20)"
+      ansible.builtin.command: "{{ oc }} adm upgrade channel {{ update_channel }}"
+      when:
+        - update_channel | default('') | length > 0
+        - cv.spec.channel | default('') != update_channel
+      changed_when: true
+
+    - name: Wait for RetrievedUpdates=True on that channel
+      ansible.builtin.command: "{{ oc }} get clusterversion version -o json"
+      register: cv_graph
+      until: >-
+        ((cv_graph.stdout | from_json).status.conditions | selectattr('type', 'equalto', 'RetrievedUpdates')
+         | map(attribute='status') | first | default('False')) == 'True'
+      retries: 20
+      delay: "{{ wait_delay_seconds }}"
+      changed_when: false
+
+    - name: Stop if the requested version is not in the recommended list
+      ansible.builtin.assert:
+        that: update_to in ((cv_graph.stdout | from_json).status.availableUpdates | map(attribute='version') | list)
+        fail_msg: "{{ update_to }} is not a recommended update from {{ start_version }}: {{ (cv_graph.stdout | from_json).status.availableUpdates | map(attribute='version') | list }}"
+        quiet: true
+      when:
+        - update_to | default('') | length > 0
+        - (cv_graph.stdout | from_json).status.availableUpdates is defined
+
+    - name: Show the recommended updates
+      ansible.builtin.command: "{{ oc }} adm upgrade"
+      register: upgrade_list
+      changed_when: false
+
+    - name: Print them
+      ansible.builtin.debug:
+        msg: "{{ upgrade_list.stdout_lines }}"
+
+    - name: "Start the update ({{ ('--to=' + update_to) if (update_to | default('') | length > 0) else '--to-latest' }})"
+      ansible.builtin.command: "{{ oc }} adm upgrade {{ ('--to=' + update_to) if (update_to | default('') | length > 0) else '--to-latest' }}"
+      changed_when: true
+
+    - name: Wait until the update completed (the CVO writes it to status.history)
+      ansible.builtin.command: "{{ oc }} get clusterversion version -o json"
+      register: cv_wait
+      until: >-
+        (cv_wait.stdout | from_json).status.history[0].state == 'Completed'
+        and (cv_wait.stdout | from_json).status.history[0].version != start_version
+      retries: "{{ update_wait_retries }}"
+      delay: "{{ wait_delay_seconds }}"
+      changed_when: false
+
+    - name: Check the CVO verified the release image signature (control C4 of the threat model)
+      ansible.builtin.assert:
+        that: (cv_wait.stdout | from_json).status.history[0].verified | bool
+        fail_msg: >-
+          status.history[0].verified is false for {{ (cv_wait.stdout | from_json).status.history[0].version }}:
+          the CVO could not verify the release signature from Red Hat. Stop and raise it before any further update.
+        quiet: true
+
+    - name: Check the ClusterOperators after the update
+      ansible.builtin.include_tasks: tasks/check-operators.yml
+
+    - name: Wait for every pool to finish
+      ansible.builtin.include_tasks: tasks/wait-for-pools.yml
+
+    - name: Pick a node
+      ansible.builtin.include_tasks: tasks/pick-node.yml
+
+    - name: Show registries.conf on a node (mirrors still listed until phase 9; quay.io is the fallback through the proxy)
+      ansible.builtin.command: "{{ oc }} debug node/{{ node }} -q -- chroot /host cat /etc/containers/registries.conf"
+      register: registries_conf
+      changed_when: false
+
+    - name: Print it
+      ansible.builtin.debug:
+        msg: "{{ registries_conf.stdout_lines }}"
+
+    - name: Done
+      ansible.builtin.debug:
+        msg: >-
+          {{ cluster_name }}: {{ start_version }} -> {{ (cv_wait.stdout | from_json).status.history[0].version }},
+          signature verified. Mirror still in place: run remove-mirror-playbook.yml in the next window.

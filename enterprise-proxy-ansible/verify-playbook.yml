@@ -1,0 +1,213 @@
+---
+# The Verify table of docs/enterprise-proxy/README.md ("only core components reach Red Hat"), tests 1 to 10,
+# as evidence for security. Run it after phase 6 and again after phase 9. Test 7 needs phase 5 (off by
+# default) and test 11 is the proxy log review with the network team; both stay manual.
+- name: Verify only core components reach Red Hat
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - vars/common.yml
+  vars:
+    verify_namespace: "proxy-verify"
+    evidence_file: "{{ backup_root | default('~/retrofit-backups') | expanduser }}/{{ cluster_name }}-verify-{{ lookup('pipe', 'date +%F-%H%M') }}.txt"
+    results: []
+
+  tasks:
+    - name: Create the evidence folder
+      ansible.builtin.file:
+        path: "{{ evidence_file | dirname }}"
+        state: directory
+        mode: "0700"
+
+    - name: Pick a node
+      ansible.builtin.include_tasks: tasks/pick-node.yml
+
+    # ---------------------------------------------------------------- 1 proxy applied
+    - name: "1: read the proxy status"
+      ansible.builtin.command: "{{ oc }} get proxy/cluster -o json"
+      register: t1
+      changed_when: false
+
+    - name: "1: judge"
+      ansible.builtin.set_fact:
+        results: "{{ results + [{'n': 1, 'test': 'Proxy applied', 'ok': ok | bool, 'detail': st | to_json}] }}"
+      vars:
+        st: "{{ (t1.stdout | from_json).status | default({}) }}"
+        ok: "{{ st.httpProxy | default('') == proxy_url and st.httpsProxy | default('') == proxy_url and (st.noProxy | default('')) | length > 0 }}"
+
+    # ---------------------------------------------------------------- 2 update checks
+    - name: "2: oc adm upgrade"
+      ansible.builtin.command: "{{ oc }} adm upgrade"
+      register: t2
+      changed_when: false
+      failed_when: false
+
+    - name: "2: read RetrievedUpdates"
+      ansible.builtin.command: "{{ oc }} get clusterversion version -o json"
+      register: t2cv
+      changed_when: false
+
+    - name: "2: judge"
+      ansible.builtin.set_fact:
+        results: "{{ results + [{'n': 2, 'test': 'Update checks work', 'ok': ok | bool, 'detail': t2.stdout_lines | join(' | ')}] }}"
+      vars:
+        ok: >-
+          {{ t2.rc == 0 and ((t2cv.stdout | from_json).status.conditions | selectattr('type', 'equalto', 'RetrievedUpdates')
+             | map(attribute='status') | first | default('False')) == 'True' }}
+
+    # ---------------------------------------------------------------- 3 CRI-O pulls from Red Hat
+    - name: "3: crictl pull on {{ node }}"
+      ansible.builtin.command: "{{ oc }} debug node/{{ node }} -q -- chroot /host crictl pull registry.redhat.io/ubi9/ubi-minimal:latest"
+      register: t3
+      changed_when: false
+      failed_when: false
+
+    - name: "3: judge"
+      ansible.builtin.set_fact:
+        results: "{{ results + [{'n': 3, 'test': 'CRI-O pulls from Red Hat', 'ok': t3.rc == 0, 'detail': (t3.stdout_lines + t3.stderr_lines) | join(' | ')}] }}"
+
+    # ---------------------------------------------------------------- 4 node has no direct route
+    - name: "4: curl quay.io from {{ node }} with no proxy"
+      ansible.builtin.command: "{{ oc }} debug node/{{ node }} -q -- chroot /host curl -s -m 10 --noproxy '*' https://quay.io"
+      register: t4
+      changed_when: false
+      failed_when: false
+
+    - name: "4: judge"
+      ansible.builtin.set_fact:
+        results: "{{ results + [{'n': 4, 'test': 'Node has no direct route', 'ok': t4.rc != 0, 'detail': 'curl rc ' + (t4.rc | string) + ' (28 = timed out)'}] }}"
+
+    # ---------------------------------------------------------------- 5 proxy allowlist holds
+    - name: "5: a host outside the allowlist through the proxy, from {{ node }}"
+      ansible.builtin.command: >-
+        {{ oc }} debug node/{{ node }} -q -- chroot /host sh -c
+        '. /etc/mco/proxy.env; curl -s -m 10 -o /dev/null -w "%{http_code}" -x $HTTPS_PROXY https://www.example.com'
+      register: t5
+      changed_when: false
+      failed_when: false
+
+    - name: "5: judge"
+      ansible.builtin.set_fact:
+        results: "{{ results + [{'n': 5, 'test': 'Proxy allowlist holds', 'ok': ok | bool, 'detail': 'http code ' + t5.stdout + ', curl rc ' + (t5.rc | string)}] }}"
+      vars:
+        ok: "{{ t5.stdout | trim == '403' or t5.rc != 0 }}"
+
+    # ---------------------------------------------------------------- 6, 8, 9 in a plain namespace
+    - name: "6, 8, 9: a namespace created the way users create them"
+      block:
+        - name: "6: create {{ verify_namespace }}"
+          ansible.builtin.command: "{{ oc }} create namespace {{ verify_namespace }}"
+          changed_when: true
+
+        - name: "6: run a workload pod"
+          ansible.builtin.command: >-
+            {{ oc }} run t --image=registry.redhat.io/ubi9/ubi-minimal -n {{ verify_namespace }} --restart=Never -- sleep 600
+          changed_when: true
+
+        - name: "6: wait until it runs"
+          ansible.builtin.command: "{{ oc }} get pod t -n {{ verify_namespace }} -o json"
+          register: t6pod
+          until: (t6pod.stdout | from_json).status.phase | default('') == 'Running'
+          retries: 30
+          delay: "{{ wait_delay_seconds }}"
+          changed_when: false
+
+        - name: "6: read its environment"
+          ansible.builtin.command: "{{ oc }} exec t -n {{ verify_namespace }} -- env"
+          register: t6
+          changed_when: false
+
+        - name: "6: judge"
+          ansible.builtin.set_fact:
+            results: "{{ results + [{'n': 6, 'test': 'A workload pod gets no proxy', 'ok': proxy_vars | length == 0, 'detail': 'proxy variables: ' + (proxy_vars | join(' ') if proxy_vars else 'none')}] }}"
+          vars:
+            proxy_vars: "{{ t6.stdout_lines | select('match', '(?i).*proxy.*') | list }}"
+
+        - name: "8: curl quay.io from the pod"
+          ansible.builtin.command: "{{ oc }} exec t -n {{ verify_namespace }} -- curl -s -m 10 https://quay.io"
+          register: t8
+          changed_when: false
+          failed_when: false
+
+        - name: "8: judge"
+          ansible.builtin.set_fact:
+            results: "{{ results + [{'n': 8, 'test': 'A workload pod cannot go direct', 'ok': t8.rc != 0, 'detail': 'curl rc ' + (t8.rc | string) + ' (28 = timed out)'}] }}"
+
+        - name: "9: run a pod from a registry outside allowedRegistries"
+          ansible.builtin.command: >-
+            {{ oc }} run t2 --image=quay.io/libpod/alpine:latest -n {{ verify_namespace }} --restart=Never -- true
+          changed_when: true
+
+        - name: "9: wait for the pull to be refused"
+          ansible.builtin.command: "{{ oc }} get pod t2 -n {{ verify_namespace }} -o json"
+          register: t9pod
+          until: >-
+            ((t9pod.stdout | from_json).status.containerStatuses | default([]) | map(attribute='state.waiting.reason') | select('defined') | list | length) > 0
+            or (t9pod.stdout | from_json).status.phase | default('') in ['Running', 'Succeeded']
+          retries: 30
+          delay: "{{ wait_delay_seconds }}"
+          changed_when: false
+          failed_when: false
+
+        - name: "9: judge"
+          ansible.builtin.set_fact:
+            results: "{{ results + [{'n': 9, 'test': 'Pulls outside the allowlist fail', 'ok': ok | bool, 'detail': waiting | to_json}] }}"
+          vars:
+            waiting: "{{ ((t9pod.stdout | from_json).status.containerStatuses | default([{}]))[0].state.waiting | default({}) }}"
+            ok: "{{ waiting.reason | default('') in ['ErrImagePull', 'ImagePullBackOff'] and 'not allowed' in (waiting.message | default('')) }}"
+      always:
+        - name: "6, 9: clean up the pods"
+          ansible.builtin.command: "{{ oc }} delete pod t t2 -n {{ verify_namespace }} --ignore-not-found"
+          changed_when: true
+
+        - name: "6: delete the namespace"
+          ansible.builtin.command: "{{ oc }} delete namespace {{ verify_namespace }} --ignore-not-found"
+          changed_when: true
+
+    # ---------------------------------------------------------------- 10 platform healthy
+    - name: "10: read the ClusterOperators"
+      ansible.builtin.command: "{{ oc }} get co -o json"
+      register: t10
+      changed_when: false
+
+    - name: "10: judge (Available=True and Degraded=False, per operator)"
+      ansible.builtin.set_fact:
+        unhealthy: "{{ unhealthy | default([]) + [item.metadata.name] }}"
+      loop: "{{ (t10.stdout | from_json)['items'] }}"
+      loop_control:
+        label: "{{ item.metadata.name }}"
+      when: >-
+        (item.status.conditions | default([]) | selectattr('type', 'equalto', 'Available') | map(attribute='status') | first | default('False')) != 'True'
+        or (item.status.conditions | default([]) | selectattr('type', 'equalto', 'Degraded') | map(attribute='status') | first | default('False')) != 'False'
+
+    - name: "10: record"
+      ansible.builtin.set_fact:
+        results: "{{ results + [{'n': 10, 'test': 'Platform still healthy', 'ok': bad | length == 0, 'detail': 'not Available or Degraded: ' + (bad | join(' ') if bad else 'none')}] }}"
+      vars:
+        bad: "{{ unhealthy | default([]) }}"
+
+    # ---------------------------------------------------------------- evidence
+    - name: Write the evidence file
+      ansible.builtin.copy:
+        dest: "{{ evidence_file }}"
+        mode: "0600"
+        content: |
+          Verify: only core components reach Red Hat (docs/enterprise-proxy/README.md)
+          cluster: {{ cluster_name }}   node checked: {{ node }}   date: {{ lookup('pipe', 'date -u +%FT%TZ') }}
+          test 7 (EgressFirewall) only with phase 5; test 11 (proxy logs) with the network team.
+
+          {% for r in results %}
+          {{ r.n }}  {{ 'PASS' if r.ok | bool else 'FAIL' }}  {{ r.test }}
+                  {{ r.detail }}
+          {% endfor %}
+
+    - name: Show the results
+      ansible.builtin.debug:
+        msg: "{{ results | map(attribute='n') | zip(results | map(attribute='ok') | map('bool') | map('ternary', 'PASS', 'FAIL'), results | map(attribute='test')) | map('join', '  ') | list }}"
+
+    - name: Fail if any test failed (the evidence file has the details)
+      ansible.builtin.assert:
+        that: (results | map(attribute='ok') | map('bool') | reject('equalto', true) | list | length) == 0
+        fail_msg: "Failed: {{ results | rejectattr('ok') | map(attribute='test') | list }}. See {{ evidence_file }}."
+        quiet: true

@@ -1,0 +1,209 @@
+#!/usr/bin/env python3
+"""A stand-in for `oc`, for offline tests of the playbooks (tests/test.sh).
+
+It keeps a cluster in a JSON file (OC_STATE), answers the `oc` commands the playbooks run from
+that state, applies patches, set-data, create and delete to it, and appends every command line to
+OC_LOG. It knows only the command forms the playbooks use; anything else fails loudly.
+"""
+import base64, json, os, sys, copy
+
+STATE = os.environ["OC_STATE"]
+LOG = os.environ.get("OC_LOG")
+
+def load(): return json.load(open(STATE))
+def save(s): json.dump(s, open(STATE, "w"), indent=1)
+def out(obj): print(json.dumps(obj, indent=1))
+def fail(msg, rc=1): print(msg, file=sys.stderr); sys.exit(rc)
+
+def merge(dst, src):
+    for k, v in src.items():
+        if isinstance(v, dict) and isinstance(dst.get(k), dict): merge(dst[k], v)
+        elif v is None: dst.pop(k, None)
+        else: dst[k] = copy.deepcopy(v)
+
+def json_patch(obj, ops):
+    for op in ops:
+        parts = [p.replace("~1", "/").replace("~0", "~") for p in op["path"].strip("/").split("/")]
+        cur = obj
+        for p in parts[:-1]: cur = cur[int(p)] if isinstance(cur, list) else cur.setdefault(p, {})
+        last = parts[-1]
+        if op["op"] == "remove":
+            if isinstance(cur, list): cur.pop(int(last))
+            elif last not in cur: fail(f'The "{op["path"]}" path is missing')
+            else: del cur[last]
+        elif op["op"] in ("add", "replace"): cur[last] = op["value"]
+        else: fail(f"unsupported json patch op {op['op']}")
+
+def conds_all(items, want):
+    return all(all(any(c["type"] == t and c["status"] == s for c in i["status"]["conditions"]) for t, s in want.items()) for i in items)
+
+def main(argv):
+    if LOG:
+        with open(LOG, "a") as f: f.write(" ".join(argv) + "\n")
+    args = [a for a in argv if a != "--kubeconfig"]
+    # drop the kubeconfig value if one was given
+    if "--kubeconfig" in argv:
+        i = argv.index("--kubeconfig"); args = argv[:i] + argv[i + 2:]
+    s = load()
+    cmd = args[0] if args else ""
+    def opt(name, default=None):
+        for i, a in enumerate(args):
+            if a == name and i + 1 < len(args): return args[i + 1]
+            if a.startswith(name + "="): return a.split("=", 1)[1]
+        return default
+    ns = opt("-n") or opt("--namespace")
+    ofmt = opt("-o")
+
+    if cmd == "get":
+        kind = args[1]; name = args[2] if len(args) > 2 and not args[2].startswith("-") else None
+        if "/" in kind: kind, name = kind.split("/", 1)
+        kind = kind.lower()
+        if kind in ("proxy", "proxies"): return out(s["proxy/cluster"])
+        if kind.startswith("image.config"): return out(s["image.config.openshift.io/cluster"])
+        if kind in ("clusterversion", "clusterversions"): return out(s["clusterversion/version"])
+        if kind in ("operatorhub", "operatorhubs"): return out(s["operatorhub/cluster"])
+        if kind in ("co", "clusteroperator", "clusteroperators"): return out({"items": s["clusteroperators"]})
+        if kind in ("mcp", "machineconfigpool", "machineconfigpools"): return out({"items": s["mcp"]})
+        if kind == "pdb": return out({"items": s["pdb"]})
+        if kind in ("nodes", "node"): return out({"items": s["nodes"]})
+        if kind == "pods" and "-A" in args: return out({"items": s["pods"]})
+        if kind == "pod":
+            p = s["testpods"].get(name)
+            if not p: fail(f'Error from server (NotFound): pods "{name}" not found')
+            return out(p)
+        if kind == "secret":
+            return out(s["secret/pull-secret"])
+        if kind in ("configmap", "configmaps", "cm"):
+            cms = s["configmaps/openshift-config"]
+            if name:
+                if name not in cms: fail(f'Error from server (NotFound): configmaps "{name}" not found')
+                return out(cms[name])
+            return out({"items": list(cms.values())})
+        if kind in ("imagedigestmirrorset,imagetagmirrorset,imagecontentsourcepolicy",):
+            return out({"items": [{"kind": k, "metadata": {"name": n}} for k, v in s["mirror-sets"].items() for n in v]})
+        if kind in s["mirror-sets"]:
+            return out({"items": [{"metadata": {"name": n}} for n in s["mirror-sets"][kind]]})
+        if kind in ("catalogsource", "catalogsources"): return out({"items": s["catalogsources"]})
+        if kind == "packagemanifests":
+            src = opt("-l", "").split("=")[-1]
+            return out({"items": [{"metadata": {"name": n}} for n in s["packagemanifests"].get(src, [])]})
+        if kind.startswith("subscription"):
+            if name:
+                for sub in s["subscriptions"]:
+                    if sub["metadata"]["name"] == name and sub["metadata"]["namespace"] == ns: return out(sub)
+                fail(f'Error from server (NotFound): subscriptions "{name}" not found')
+            return out({"items": s["subscriptions"]})
+        if kind in ("updateservice", "updateservices"): return out({"items": [{"metadata": {"name": n}} for n in s["updateservices"]]})
+        fail(f"stand-in oc: unknown get {args[1:]}")
+
+    if cmd == "patch":
+        target = args[1]; ptype = opt("--type", "strategic")
+        patch = opt("-p") or opt("--patch")
+        if opt("--patch-file"): patch = open(opt("--patch-file")).read()
+        if patch.lstrip().startswith("{") or patch.lstrip().startswith("["): body = json.loads(patch)
+        else:
+            import yaml; body = yaml.safe_load(patch)
+        key = {"proxy/cluster": "proxy/cluster", "image.config.openshift.io/cluster": "image.config.openshift.io/cluster",
+               "clusterversion": "clusterversion/version", "operatorhub": "operatorhub/cluster"}
+        obj = None
+        if target in key: obj = s[key[target]]
+        elif target in ("clusterversion", "operatorhub") or args[2:3] in (["version"], ["cluster"]): obj = s[key[target]]
+        elif target.startswith("subscription"):
+            name = args[2]
+            obj = next(x for x in s["subscriptions"] if x["metadata"]["name"] == name and x["metadata"]["namespace"] == ns)
+        elif target in ("configmap", "cm"):
+            obj = s["configmaps/openshift-config"][args[2]]
+        else: fail(f"stand-in oc: unknown patch target {target}")
+        if ptype == "json": json_patch(obj, body)
+        else: merge(obj, body)
+        if target == "proxy/cluster":
+            obj["status"] = {"httpProxy": obj["spec"].get("httpProxy"), "httpsProxy": obj["spec"].get("httpsProxy"), "noProxy": obj["spec"].get("noProxy", "") + ",10.128.0.0/14,172.30.0.0/16,localhost,.cluster.local,.svc"}
+        if target == "operatorhub" or key.get(target) == "operatorhub/cluster":
+            spec = obj["spec"]; names = [x["name"] for x in spec.get("sources", []) if not x.get("disabled")]
+            obj["status"]["sources"] = [{"name": n, "status": "Success"} for n in names]
+        if target.startswith("subscription") and "source" in body.get("spec", {}):
+            obj["status"]["state"] = "AtLatestKnown" if obj["metadata"]["name"] in s["packagemanifests"].get(body["spec"]["source"], []) else "ResolutionFailed"
+        save(s); print(f"{target} patched"); return
+
+    if cmd == "set" and args[1] == "data":
+        target = args[2]; files = dict(a[len("--from-file="):].split("=", 1) for a in args if a.startswith("--from-file="))
+        if target == "secret/pull-secret":
+            data = open(files[".dockerconfigjson"], "rb").read()
+            json.loads(data)
+            s["secret/pull-secret"]["data"][".dockerconfigjson"] = base64.b64encode(data).decode()
+        elif target.startswith("configmap/"):
+            name = target.split("/", 1)[1]; cm = s["configmaps/openshift-config"].setdefault(name, {"metadata": {"name": name}, "data": {}})
+            for k, f in files.items(): cm["data"][k] = open(f).read()
+        else: fail(f"stand-in oc: unknown set data {target}")
+        save(s); print(f"{target} data updated"); return
+
+    if cmd == "create":
+        if args[1] == "configmap":
+            name = args[2]; files = dict(a[len("--from-file="):].split("=", 1) for a in args if a.startswith("--from-file="))
+            s["configmaps/openshift-config"][name] = {"metadata": {"name": name}, "data": {k: open(f).read() for k, f in files.items()}}
+        elif args[1] in ("namespace", "ns"): s.setdefault("namespaces", []).append(args[2])
+        else: fail(f"stand-in oc: unknown create {args[1:]}")
+        save(s); print(f"{args[1]}/{args[2]} created"); return
+
+    if cmd == "delete":
+        kind = args[1]
+        if kind in s["mirror-sets"]:
+            names = [a for a in args[2:] if not a.startswith("-")]
+            s["mirror-sets"][kind] = [n for n in s["mirror-sets"][kind] if n not in names]
+        elif kind in ("catalogsource", "catalogsources"):
+            names = [a for a in args[2:] if not a.startswith("-") and a != ns]
+            s["catalogsources"] = [c for c in s["catalogsources"] if c["metadata"]["name"] not in names]
+        elif kind in ("updateservice", "updateservices"): s["updateservices"] = []
+        elif kind == "pod":
+            for n in args[2:]:
+                if not n.startswith("-") and n != ns: s["testpods"].pop(n, None)
+        elif kind in ("namespace", "ns"): pass
+        else: fail(f"stand-in oc: unknown delete {args[1:]}")
+        save(s); print(f"{kind} deleted"); return
+
+    if cmd == "apply": print("applied"); return
+
+    if cmd == "adm" and args[1] == "upgrade":
+        cv = s["clusterversion/version"]
+        if len(args) == 2:
+            print(f"Cluster version is {cv['status']['desired']['version']}\n\nUpstream: {cv['spec'].get('upstream', 'https://api.openshift.com/api/upgrades_info/v1/graph')}\nChannel: {cv['spec']['channel']}\n\nRecommended updates:\n\n  VERSION     IMAGE\n  4.19.47     quay.io/openshift-release-dev/ocp-release@sha256:1111\n"); return
+        if args[2] == "channel": cv["spec"]["channel"] = args[3]; save(s); print(f"Channel set to {args[3]}"); return
+        target = opt("--to") or ("4.20.39" if "--to-latest" in args else None)
+        if not target: fail("stand-in oc: unknown adm upgrade form")
+        cv["status"]["desired"]["version"] = target
+        cv["status"]["history"].insert(0, {"version": target, "state": "Completed", "verified": True})
+        save(s); print(f"Requested update to {target}"); return
+
+    if cmd == "run":
+        name = args[1]; image = opt("--image")
+        pod = {"metadata": {"name": name, "namespace": ns}, "status": {"phase": "Running", "containerStatuses": [{"state": {"running": {}}}]}}
+        if image and image.startswith("quay.io/libpod/"):
+            pod["status"] = {"phase": "Pending", "containerStatuses": [{"state": {"waiting": {"reason": "ErrImagePull", "message": f'rpc error: code = Unknown desc = Source image rejected: Running image {image} is not allowed'}}}]}
+        s["testpods"][name] = pod; save(s); print(f"pod/{name} created"); return
+
+    if cmd == "exec":
+        rest = args[args.index("--") + 1:]
+        if rest[0] == "env": print("PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin\nHOSTNAME=t\nHOME=/"); return
+        if rest[0] == "curl": sys.exit(28)
+        fail(f"stand-in oc: unknown exec {rest}")
+
+    if cmd == "debug":
+        rest = " ".join(args[args.index("--") + 1:])
+        if ".auths | keys[]" in rest:
+            auths = json.loads(base64.b64decode(s["secret/pull-secret"]["data"][".dockerconfigjson"]))["auths"]
+            print("\n".join(sorted(auths))); return
+        if "crictl pull" in rest: print("Image is up to date for registry.redhat.io/ubi9/ubi-minimal@sha256:2222"); return
+        if "--noproxy" in rest: sys.exit(28)
+        if "www.example.com" in rest: print("403", end=""); return
+        if "cat /etc/mco/proxy.env" in rest:
+            p = s["proxy/cluster"]["spec"]
+            print(f"HTTP_PROXY={p.get('httpProxy','')}\nHTTPS_PROXY={p.get('httpsProxy','')}\nNO_PROXY={p.get('noProxy','')}"); return
+        if "registries.conf" in rest:
+            mirrors = any(s["mirror-sets"].values())
+            print('unqualified-search-registries = ["registry.access.redhat.com", "docker.io"]\n' + ('[[registry]]\n  location = "quay.io/openshift-release-dev/ocp-release"\n  [[registry.mirror]]\n    location = "registry-dc1.example.com:8443/ocp4v2/openshift-release-dev/ocp-release"\n' if mirrors else "")); return
+        fail(f"stand-in oc: unknown debug command {rest}")
+
+    fail(f"stand-in oc: unknown command {args}")
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

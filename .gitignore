@@ -4,6 +4,12 @@ node_modules/
 tools/
 # the pinned diagram-kit install (docs/PROBLEM-STATEMENT.md, Diagram sources)
 .venv/
+# ansible-lint and galaxy caches
+.ansible/
+# per-cluster values for the proxy retrofit playbooks (vars/cluster.yml.example stays)
+enterprise-proxy-ansible/vars/cluster*.yml
+!enterprise-proxy-ansible/vars/cluster.yml.example
+retrofit-backups/
 
 # Session handover notes of Claude Code, local only.
 claude-resumes/

@@ -8,6 +8,22 @@ Before the first run, build the hosts in [`docs/PREREQUISITES.md`](../docs/PRERE
 mirroring bastion per datacenter (RHEL 9), where these playbooks run, and the lab and two
 production mirror registries they push to.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../docs/diagrams/prerequisites/topology.dark.png">
+  <source srcset="../docs/diagrams/prerequisites/topology.light.png">
+  <img alt="Target layout. In datacenter 1 a mirroring bastion reaches Red Hat only through the enterprise proxy and pushes over TCP 8443 to two mirror registries: the lab registry and the datacenter 1 production registry. In datacenter 2 its own bastion does the same for the datacenter 2 production registry. Lab clusters pull from the lab registry and each datacenter's production clusters pull from their own registry. Three old 1.x mirror registries, one per role, keep serving until their clusters have switched, then they are retired; meanwhile each datacenter's bastion may also push the same content into them on a new path, never into the oc-mirror v1 path. All new hosts run RHEL 9." src="../docs/diagrams/prerequisites/topology.light.png">
+</picture>
+
+*Where the playbooks run (the bastions) and where they push (the registries); proposed, not built yet.*
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/mirroring/run-flow.dark.png">
+  <source srcset="docs/diagrams/mirroring/run-flow.light.png">
+  <img alt="One Step 1 release run. On the mirroring bastion: start the playbook in tmux with the Vault password; it checks the Red Hat pull secret, writes a private auth file and renders the ImageSet. A dry-run lists what would be copied; anything in missing.txt is fixed first. The real run downloads into an archive on the bastion and then pushes that archive into the lab registry, later the production registry; it retries each image five times, then the whole run up to three more times two minutes apart, and the cache lets a rerun resume. The auth file is removed even when the run fails. Then verify the tags, the .sig tags and the cluster-resources folder. In the cluster's change window an admin trusts the registry CA, applies the renamed IDMS and ITMS, the signatures and CatalogSources, sets up the Update Service, and oc adm upgrade lists the target." src="docs/diagrams/mirroring/run-flow.light.png">
+</picture>
+
+*One run end to end: download once, push to lab, then production. Red boxes are what stops a run and what fixes it.*
+
 | Guide | Covers |
 | --- | --- |
 | [docs/release-mirroring-guide.md](docs/release-mirroring-guide.md) | Host setup, proxy, Ansible Vault, release mirroring (4.18.17, EUS), OpenShift Update Service, upgrade path 4.18 → 4.20 → 4.22 |

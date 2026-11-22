@@ -1,0 +1,10 @@
+---
+# The node the node-level checks run on (oc debug). The first one listed, unless check_node is set.
+- name: List the nodes
+  ansible.builtin.command: "{{ oc }} get nodes -o json"
+  register: nodes_raw
+  changed_when: false
+
+- name: Pick one
+  ansible.builtin.set_fact:
+    node: "{{ check_node | default((nodes_raw.stdout | from_json)['items'][0].metadata.name) }}"

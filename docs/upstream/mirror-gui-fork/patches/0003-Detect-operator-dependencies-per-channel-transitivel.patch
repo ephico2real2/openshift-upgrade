@@ -1,0 +1,1151 @@
+From 4f0fb498dfff60b6501a9bba45ebb18334cc5c47 Mon Sep 17 00:00:00 2001
+From: ephico2real2 <123043136+ephico2real2@users.noreply.github.com>
+Date: Fri, 9 Oct 2026 18:13:25 +0000
+Subject: [PATCH 3/5] Detect operator dependencies per channel, transitively,
+ including required APIs
+
+Dependency detection read only olm.package.required, only from the
+newest bundle of the default channel, one level deep, and gave added
+dependencies a guessed "stable-<x.y>" channel when none was known.
+
+catalog_metadata.py now also writes dependency-graph.json: for every
+package and channel, the requirements of the channel head. Required
+APIs (olm.gvk.required) are resolved against the olm.gvk APIs bundles in
+the catalog provide: exactly one provider becomes a dependency
+(reason "api"); several or none are listed as unresolvedApis with their
+candidates. operators.json and dependencies.json keep their shape, and
+the Dockerfile copies the new file.
+
+GET /api/operators/:operator/dependencies takes an optional channel,
+walks the graph transitively (each dependency through its own default
+channel) and returns requiredBy, the real defaultChannel and
+unresolvedApis. Catalog data without the graph falls back to
+dependencies.json (resolution "legacy").
+
+The UI asks again when a package's channel changes, uses the real
+default channel (or no channel filter instead of a guessed name), and
+shows unresolved APIs as a warning. A package with no channel filter
+leaves "channels" out of the YAML.
+
+Tests: a synthetic FBC catalog (tests/fixtures/fbc-dependency-graph)
+covers channel heads, API resolution, ambiguous/unprovided/self-provided
+APIs and transitive dependencies; the generated graph must match the
+server fixture. The five new API tests fail on the previous server.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_019qihKhjEgccdwcruX2zHff
+---
+ Dockerfile                                    |   2 +-
+ README.md                                     |   2 +-
+ docs/dev/catalog-pipeline.md                  |  21 +-
+ scripts/catalog_metadata.py                   | 131 ++++++++++-
+ server/index.ts                               | 212 +++++++++++++++---
+ src/components/MirrorConfig.tsx               | 149 +++++++-----
+ .../v4.21/dependency-graph.json               | 124 ++++++++++
+ .../configs/alpha/catalog.json                |   6 +
+ .../configs/beta/catalog.json                 |   3 +
+ .../configs/delta/catalog.json                |   3 +
+ .../configs/eps1/catalog.json                 |   3 +
+ .../configs/eps2/catalog.json                 |   3 +
+ .../configs/gamma/catalog.json                |   3 +
+ .../configs/old-only/catalog.json             |   3 +
+ .../configs/zeta/catalog.json                 |   3 +
+ tests/integration/operators.test.ts           |  59 +++++
+ tests/scripts/catalogMetadataGraph.test.ts    |  92 ++++++++
+ 17 files changed, 723 insertions(+), 96 deletions(-)
+ create mode 100644 tests/fixtures/catalog-data/redhat-operator-index/v4.21/dependency-graph.json
+ create mode 100644 tests/fixtures/fbc-dependency-graph/configs/alpha/catalog.json
+ create mode 100644 tests/fixtures/fbc-dependency-graph/configs/beta/catalog.json
+ create mode 100644 tests/fixtures/fbc-dependency-graph/configs/delta/catalog.json
+ create mode 100644 tests/fixtures/fbc-dependency-graph/configs/eps1/catalog.json
+ create mode 100644 tests/fixtures/fbc-dependency-graph/configs/eps2/catalog.json
+ create mode 100644 tests/fixtures/fbc-dependency-graph/configs/gamma/catalog.json
+ create mode 100644 tests/fixtures/fbc-dependency-graph/configs/old-only/catalog.json
+ create mode 100644 tests/fixtures/fbc-dependency-graph/configs/zeta/catalog.json
+ create mode 100644 tests/scripts/catalogMetadataGraph.test.ts
+
+diff --git a/Dockerfile b/Dockerfile
+index 5eea60a..a1f145d 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -28,7 +28,7 @@ RUN mkdir -p /app/catalog-data-minimal && \
+     fi && \
+     (cp "$CATALOG_SRC/catalog-index.json" /app/catalog-data-minimal/ 2>/dev/null || \
+      echo '{"ocp_versions":[],"catalog_types":[],"catalogs":[]}' > /app/catalog-data-minimal/catalog-index.json) && \
+-    find "$CATALOG_SRC" -type f \( -name "operators.json" -o -name "dependencies.json" -o -name "catalog-info.json" \) ! -path "*/configs/*" 2>/dev/null | while read file; do \
++    find "$CATALOG_SRC" -type f \( -name "operators.json" -o -name "dependencies.json" -o -name "dependency-graph.json" -o -name "catalog-info.json" \) ! -path "*/configs/*" 2>/dev/null | while read file; do \
+       rel_path=$(echo "$file" | sed "s|$CATALOG_SRC/||"); \
+       mkdir -p "/app/catalog-data-minimal/$(dirname "$rel_path")"; \
+       cp "$file" "/app/catalog-data-minimal/$rel_path"; \
+diff --git a/README.md b/README.md
+index 21e9c59..aa0faeb 100644
+--- a/README.md
++++ b/README.md
+@@ -85,7 +85,7 @@ Environment overview (oc-mirror version, environment status, pull secret status)
+ 
+ Visual configuration builder with tabs for Platform Channels, Operators, Additional Images, YAML Preview, and file upload.
+ 
+-- **Adding operators** - Select from pre-fetched catalogs (OCP 4.16–4.22) with Red Hat, Certified, and Community operator indexes. Automatic dependency detection with one-click add.
++- **Adding operators** - Select from pre-fetched catalogs (OCP 4.16–4.22) with Red Hat, Certified, and Community operator indexes. Automatic dependency detection for the selected channel, including dependencies of dependencies and required APIs resolved to the operator that provides them; required APIs that cannot be resolved are shown as a warning.
+ - **YAML preview and editing** - Preview the generated `ImageSetConfiguration` YAML, copy to clipboard, or edit directly. Set an optional archive size limit (in GiB).
+ - **Upload existing YAML** - Import an existing `ImageSetConfiguration` YAML file, review and edit it, then save or load it into the form editor.
+ 
+diff --git a/docs/dev/catalog-pipeline.md b/docs/dev/catalog-pipeline.md
+index f88e529..f9ebbd3 100644
+--- a/docs/dev/catalog-pipeline.md
++++ b/docs/dev/catalog-pipeline.md
+@@ -6,7 +6,7 @@ Mirror-GUI uses pre-fetched operator catalog metadata rather than querying regis
+ 
+ 1. `sync-catalogs.sh` extracts File-Based Catalog (FBC) data from Red Hat operator index images for each supported OCP version (4.16–4.22) and catalog type (Red Hat, Certified, Community).
+ 
+-2. The script parses FBC YAML to produce structured JSON files per catalog: `operators.json` (operator names, channels, versions, default channels), `dependencies.json` (inter-operator dependency mappings), and `catalog-info.json` (catalog metadata with digest and sync timestamp).
++2. The script parses FBC YAML to produce structured JSON files per catalog: `operators.json` (operator names, channels, versions, default channels), `dependencies.json` (package dependencies of each default channel head, kept for older data), `dependency-graph.json` (see below), and `catalog-info.json` (catalog metadata with digest and sync timestamp).
+ 
+ 3. A top-level `catalog-index.json` registers all processed catalogs with their URLs, types, versions, and digests.
+ 
+@@ -20,3 +20,22 @@ When a catalog sync completes, the server computes a diff between the previous a
+ - Operators with new versions available
+ 
+ The diff is exposed via the sync status API and displayed in the UI, so users can see what changed without comparing raw JSON.
++
++## Dependency graph
++
++`dependency-graph.json` records, for every package and **every channel**, the requirements of that
++channel's head bundle (its newest version):
++
++- `olm.package.required` entries become dependencies with `reason: "package"` and their `versionRange`.
++- `olm.gvk.required` entries (a required API) are resolved against the `olm.gvk` APIs that bundles in
++  the same catalog provide. An API provided by exactly one other package becomes a dependency with
++  `reason: "api"` and the `api` it satisfies. An API the package provides itself is skipped.
++- An API provided by several packages, or by none in the catalog (for example one the platform
++  itself serves), is listed under `unresolvedApis` with its `candidates`, never guessed.
++
++`GET /api/operators/:operator/dependencies?catalogUrl=...&channel=...` walks this graph from the
++requested channel (the default channel when none or an unknown one is given), follows each
++dependency through its own default channel, and returns every package with `requiredBy`, the real
++`defaultChannel`, and the `unresolvedApis` with the package that needs them. The UI adds the
++packages and shows the unresolved APIs as a warning. Catalog data synced before this file existed
++falls back to `dependencies.json` (`resolution: "legacy"`).
+diff --git a/scripts/catalog_metadata.py b/scripts/catalog_metadata.py
+index abfb817..21719bf 100644
+--- a/scripts/catalog_metadata.py
++++ b/scripts/catalog_metadata.py
+@@ -39,6 +39,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
+     generate_parser.add_argument("--ocp-version", required=True, help="Catalog version, e.g. v4.20.")
+     generate_parser.add_argument("--operators-file", required=True, help="Output path for operators.json.")
+     generate_parser.add_argument("--dependencies-file", required=True, help="Output path for dependencies.json.")
++    generate_parser.add_argument(
++        "--dependency-graph-file",
++        help="Output path for dependency-graph.json (per-channel dependencies, required APIs resolved). Default: next to --dependencies-file.",
++    )
+ 
+     audit_parser = subparsers.add_parser("audit", help="Audit generated metadata against extracted configs.")
+     audit_parser.add_argument(
+@@ -256,6 +260,47 @@ def normalize_dependencies(dependencies: list[dict[str, Any]]) -> list[dict[str,
+     ]
+ 
+ 
++def format_gvk(value: dict[str, Any]) -> str | None:
++    group = normalize_string(value.get("group"))
++    version = normalize_string(value.get("version"))
++    kind = normalize_string(value.get("kind"))
++    if not version or not kind:
++        return None
++    return f"{group}/{version}/{kind}" if group else f"{version}/{kind}"
++
++
++def bundle_properties(bundle_doc: dict[str, Any]) -> list[dict[str, Any]]:
++    properties = bundle_doc.get("properties")
++    return [prop for prop in properties if is_dict(prop)] if isinstance(properties, list) else []
++
++
++def bundle_requirements(bundle_doc: dict[str, Any]) -> dict[str, Any]:
++    """Package and API requirements of one bundle (olm.package.required, olm.gvk.required)."""
++    packages: list[dict[str, Any]] = []
++    apis: list[str] = []
++    for prop in bundle_properties(bundle_doc):
++        value = prop.get("value")
++        if not is_dict(value):
++            continue
++        if prop.get("type") == "olm.package.required":
++            packages.append({"packageName": value.get("packageName"), "versionRange": value.get("versionRange")})
++        elif prop.get("type") == "olm.gvk.required":
++            gvk = format_gvk(value)
++            if gvk:
++                apis.append(gvk)
++    return {"packages": normalize_dependencies(packages), "apis": sorted(set(apis))}
++
++
++def bundle_provided_apis(bundle_doc: dict[str, Any]) -> set[str]:
++    provided: set[str] = set()
++    for prop in bundle_properties(bundle_doc):
++        if prop.get("type") == "olm.gvk" and is_dict(prop.get("value")):
++            gvk = format_gvk(prop["value"])
++            if gvk:
++                provided.add(gvk)
++    return provided
++
++
+ def extract_bundle_version(bundle_doc: dict[str, Any]) -> str | None:
+     for prop in bundle_doc.get("properties", []) if isinstance(bundle_doc.get("properties"), list) else []:
+         if not is_dict(prop):
+@@ -402,6 +447,27 @@ def build_operator_metadata(operator_dir: Path, catalog_type: str, ocp_version:
+             bundle_candidates.sort(key=cmp_to_key(lambda left, right: compare_versions(left[0], right[0])))
+             selected_bundle_doc = bundle_candidates[-1][1]
+ 
++    # Requirements of each channel's head bundle (newest version in the channel),
++    # so a dependency lookup can follow the channel the user picked.
++    channel_requirements: dict[str, dict[str, Any]] = {}
++    for channel_name, docs in channel_docs_by_name.items():
++        head: tuple[str, dict[str, Any]] | None = None
++        for document in docs:
++            for entry in document.get("entries", []) if isinstance(document.get("entries"), list) else []:
++                if not is_dict(entry):
++                    continue
++                bundle_info = bundle_by_name.get(normalize_string(entry.get("name")))
++                if not bundle_info or not bundle_info.get("version"):
++                    continue
++                if head is None or compare_versions(bundle_info["version"], head[0]) > 0:
++                    head = (bundle_info["version"], bundle_info["doc"])
++        if head is not None:
++            channel_requirements[channel_name] = {"headVersion": head[0], **bundle_requirements(head[1])}
++
++    provided_apis: set[str] = set()
++    for info in bundle_by_name.values():
++        provided_apis |= bundle_provided_apis(info["doc"])
++
+     dependencies: list[dict[str, Any]] = []
+     if selected_bundle_doc:
+         dependencies = normalize_dependencies([
+@@ -427,30 +493,87 @@ def build_operator_metadata(operator_dir: Path, catalog_type: str, ocp_version:
+         "catalog": catalog_type,
+         "ocpVersion": ocp_version,
+         "catalogUrl": f"registry.redhat.io/redhat/{catalog_type}:{ocp_version}",
++        # Private: consumed by generate_snapshot_metadata_with_graph, never written to operators.json.
++        "_graph": {"channelRequirements": channel_requirements, "providedApis": sorted(provided_apis)},
+     }
+ 
+     return metadata, dependencies, warnings
+ 
+ 
+-def generate_snapshot_metadata(catalog_dir: Path, catalog_type: str, ocp_version: str) -> tuple[list[dict[str, Any]], dict[str, list[dict[str, Any]]], list[str]]:
++def build_dependency_graph(graph_inputs: dict[str, dict[str, Any]]) -> dict[str, Any]:
++    """Per-channel dependencies of every package, with required APIs resolved to the packages providing them.
++
++    graph_inputs maps package name -> {"defaultChannel", "channelRequirements", "providedApis"}.
++    A required API provided by exactly one other package becomes a dependency on that package.
++    One provided by several packages, or by none in this catalog (for example an API the platform
++    itself serves), is listed under unresolvedApis with its candidates instead of being guessed.
++    """
++    providers: dict[str, set[str]] = {}
++    for package_name, info in graph_inputs.items():
++        for api in info.get("providedApis", []):
++            providers.setdefault(api, set()).add(package_name)
++
++    graph: dict[str, Any] = {}
++    for package_name in sorted(graph_inputs):
++        info = graph_inputs[package_name]
++        own_apis = set(info.get("providedApis", []))
++        channels: dict[str, Any] = {}
++        for channel_name, requirements in sorted(info.get("channelRequirements", {}).items()):
++            dependencies: list[dict[str, Any]] = [
++                {"packageName": dep["packageName"], "versionRange": dep["versionRange"], "reason": "package"}
++                for dep in requirements.get("packages", [])
++            ]
++            named = {dep["packageName"] for dep in dependencies}
++            unresolved: list[dict[str, Any]] = []
++            for api in requirements.get("apis", []):
++                if api in own_apis:
++                    continue
++                candidates = sorted(providers.get(api, set()) - {package_name})
++                if any(candidate in named for candidate in candidates):
++                    continue
++                if len(candidates) == 1:
++                    dependencies.append({"packageName": candidates[0], "versionRange": None, "reason": "api", "api": api})
++                    named.add(candidates[0])
++                else:
++                    unresolved.append({"api": api, "candidates": candidates})
++            channels[channel_name] = {
++                "headVersion": requirements.get("headVersion"),
++                "dependencies": dependencies,
++                "unresolvedApis": unresolved,
++            }
++        graph[package_name] = {"defaultChannel": info.get("defaultChannel"), "channels": channels}
++    return graph
++
++
++def generate_snapshot_metadata_with_graph(
++    catalog_dir: Path, catalog_type: str, ocp_version: str
++) -> tuple[list[dict[str, Any]], dict[str, list[dict[str, Any]]], dict[str, Any], list[str]]:
+     configs_dir = catalog_dir / "configs"
+     operators: list[dict[str, Any]] = []
+     dependencies: dict[str, list[dict[str, Any]]] = {}
++    graph_inputs: dict[str, dict[str, Any]] = {}
+     warnings: list[str] = []
+ 
+     if not configs_dir.is_dir():
+-        return operators, dependencies, [f"Missing configs directory: {configs_dir}"]
++        return operators, dependencies, {}, [f"Missing configs directory: {configs_dir}"]
+ 
+     for operator_dir in sorted(path for path in configs_dir.iterdir() if path.is_dir()):
+         metadata, operator_dependencies, operator_warnings = build_operator_metadata(operator_dir, catalog_type, ocp_version)
+         warnings.extend(operator_warnings)
+         if metadata is None:
+             continue
++        graph_info = metadata.pop("_graph", {})
++        graph_inputs[metadata["name"]] = {"defaultChannel": metadata.get("defaultChannel"), **graph_info}
+         operators.append(metadata)
+         if operator_dependencies:
+             dependencies[metadata["name"]] = operator_dependencies
+ 
+     operators.sort(key=lambda item: item["name"])
++    return operators, dependencies, build_dependency_graph(graph_inputs), warnings
++
++
++def generate_snapshot_metadata(catalog_dir: Path, catalog_type: str, ocp_version: str) -> tuple[list[dict[str, Any]], dict[str, list[dict[str, Any]]], list[str]]:
++    operators, dependencies, _graph, warnings = generate_snapshot_metadata_with_graph(catalog_dir, catalog_type, ocp_version)
+     return operators, dependencies, warnings
+ 
+ 
+@@ -780,10 +903,12 @@ def run_generate(args: argparse.Namespace) -> int:
+     catalog_dir = Path(args.catalog_dir)
+     operators_file = Path(args.operators_file)
+     dependencies_file = Path(args.dependencies_file)
+-    operators, dependencies, warnings = generate_snapshot_metadata(catalog_dir, args.catalog_type, args.ocp_version)
++    graph_file = Path(args.dependency_graph_file) if args.dependency_graph_file else dependencies_file.with_name("dependency-graph.json")
++    operators, dependencies, graph, warnings = generate_snapshot_metadata_with_graph(catalog_dir, args.catalog_type, args.ocp_version)
+ 
+     write_json(operators_file, operators)
+     write_json(dependencies_file, dependencies)
++    write_json(graph_file, graph)
+ 
+     if warnings:
+         for warning in warnings:
+diff --git a/server/index.ts b/server/index.ts
+index 8f53e44..fb18711 100644
+--- a/server/index.ts
++++ b/server/index.ts
+@@ -657,6 +657,124 @@ async function getActualChannelsFromCatalog(catalogType: string, catalogVersion:
+ 
+ let dependenciesDataCache: Record<string, Record<string, OperatorDependency[]>> | null = null;
+ 
++interface DependencyGraphEdge {
++  packageName: string;
++  versionRange?: string | null;
++  reason: 'package' | 'api';
++  api?: string;
++}
++
++interface DependencyGraphChannel {
++  headVersion?: string | null;
++  dependencies: DependencyGraphEdge[];
++  unresolvedApis: { api: string; candidates: string[] }[];
++}
++
++interface DependencyGraphPackage {
++  defaultChannel?: string | null;
++  channels: Record<string, DependencyGraphChannel>;
++}
++
++type DependencyGraph = Record<string, DependencyGraphPackage>;
++
++let dependencyGraphCache: Record<string, DependencyGraph> | null = null;
++
++/** Per-catalog dependency-graph.json files (written by scripts/catalog_metadata.py generate). */
++async function loadDependencyGraphs(): Promise<Record<string, DependencyGraph>> {
++  if (dependencyGraphCache) {
++    return dependencyGraphCache;
++  }
++  const merged: Record<string, DependencyGraph> = {};
++  try {
++    const catalogDir = await resolveCatalogDataDir();
++    const catalogIndex = JSON.parse(await fsp.readFile(path.join(catalogDir, 'catalog-index.json'), 'utf8'));
++    for (const catalog of catalogIndex.catalogs) {
++      const graphPath = path.join(catalogDir, `${catalog.catalog_type}/${catalog.ocp_version}/dependency-graph.json`);
++      try {
++        merged[`${catalog.catalog_type}:${catalog.ocp_version}`] = JSON.parse(await fsp.readFile(graphPath, 'utf8'));
++      } catch {
++        // Catalogs synced before dependency-graph.json existed fall back to dependencies.json
++      }
++    }
++  } catch {
++    // No catalog index: callers fall back to dependencies.json
++  }
++  dependencyGraphCache = merged;
++  return merged;
++}
++
++interface ResolvedDependency extends OperatorDependency {
++  reason: 'package' | 'api';
++  api?: string;
++  requiredBy: string;
++  channel?: string | null;
++}
++
++interface DependencyResolution {
++  channel: string | null;
++  dependencies: ResolvedDependency[];
++  unresolvedApis: { api: string; candidates: string[]; requiredBy: string }[];
++}
++
++/**
++ * Transitive dependencies of an operator for the chosen channel (default channel when none or
++ * unknown): package dependencies plus required APIs that exactly one package in the catalog
++ * provides. Each dependency is followed through its own default channel. Returns null when the
++ * catalog has no dependency graph or the operator is not in it.
++ */
++function resolveFromGraph(graph: DependencyGraph, operatorName: string, requestedChannel?: string): DependencyResolution | null {
++  const root = graph[operatorName];
++  if (!root) {
++    return null;
++  }
++  const rootChannel =
++    requestedChannel && root.channels[requestedChannel] ? requestedChannel : root.defaultChannel || null;
++
++  const dependencies: ResolvedDependency[] = [];
++  const unresolvedApis: DependencyResolution['unresolvedApis'] = [];
++  const seen = new Set<string>([operatorName]);
++  const queue: { name: string; channel: string | null }[] = [{ name: operatorName, channel: rootChannel }];
++
++  while (queue.length > 0) {
++    const current = queue.shift()!;
++    const node = graph[current.name];
++    const channelData = node && current.channel ? node.channels[current.channel] : undefined;
++    if (!channelData) {
++      continue;
++    }
++    for (const edge of channelData.dependencies) {
++      if (seen.has(edge.packageName)) {
++        continue;
++      }
++      seen.add(edge.packageName);
++      const depChannel = graph[edge.packageName]?.defaultChannel || null;
++      dependencies.push({
++        packageName: edge.packageName,
++        versionRange: edge.versionRange ?? null,
++        reason: edge.reason,
++        ...(edge.api ? { api: edge.api } : {}),
++        requiredBy: current.name,
++        defaultChannel: depChannel || undefined,
++        channel: depChannel,
++      });
++      queue.push({ name: edge.packageName, channel: depChannel });
++    }
++    for (const unresolved of channelData.unresolvedApis) {
++      unresolvedApis.push({ ...unresolved, requiredBy: current.name });
++    }
++  }
++
++  // An ambiguous API is settled if one of its candidates is already being added.
++  const added = new Set(dependencies.map((dep) => dep.packageName));
++  return {
++    channel: rootChannel,
++    dependencies,
++    unresolvedApis: unresolvedApis.filter(
++      (entry) => !entry.candidates.some((candidate) => added.has(candidate) || candidate === operatorName),
++    ),
++  };
++}
++
+ async function loadDependenciesData(): Promise<Record<string, Record<string, OperatorDependency[]>> | null> {
+   if (dependenciesDataCache) {
+     return dependenciesDataCache;
+@@ -1527,50 +1645,78 @@ app.get('/api/operators/:operator/dependencies', async (req: Request, res: Respo
+   try {
+     const { operator } = req.params;
+     const { catalogUrl } = req.query;
++    const requestedChannel = typeof req.query.channel === 'string' && req.query.channel ? req.query.channel : undefined;
+ 
+-    let dependencies: OperatorDependency[] = [];
+-    let catalogType: string | null = null;
+-    let catalogVersion: string | null = null;
+-
++    const candidates: { catalogType: string; catalogVersion: string }[] = [];
+     if (catalogUrl) {
+-      catalogType = getCatalogNameFromUrl(catalogUrl as string);
+-      catalogVersion = (catalogUrl as string).includes(':') ? (catalogUrl as string).split(':')[1] : 'v4.21';
+-
+-      dependencies = await getOperatorDependencies(catalogType, catalogVersion, operator);
++      candidates.push({
++        catalogType: getCatalogNameFromUrl(catalogUrl as string),
++        catalogVersion: (catalogUrl as string).includes(':') ? (catalogUrl as string).split(':')[1] : 'v4.21',
++      });
+     } else {
+       const catalogData = await loadPreFetchedCatalogData();
+-      if (catalogData && catalogData.index && catalogData.index.catalogs) {
+-        for (const catalog of catalogData.index.catalogs) {
+-          const deps = await getOperatorDependencies(
+-            catalog.catalog_type,
+-            catalog.ocp_version,
+-            operator,
+-          );
+-
+-          if (deps.length > 0) {
+-            dependencies = deps;
+-            catalogType = catalog.catalog_type;
+-            catalogVersion = catalog.ocp_version;
+-            break;
++      for (const catalog of catalogData?.index?.catalogs ?? []) {
++        candidates.push({ catalogType: catalog.catalog_type, catalogVersion: catalog.ocp_version });
++      }
++    }
++
++    const graphs = await loadDependencyGraphs();
++    const catalogData = await loadPreFetchedCatalogData();
++
++    for (const { catalogType, catalogVersion } of candidates) {
++      const graph = graphs[`${catalogType}:${catalogVersion}`];
++      const resolution = graph ? resolveFromGraph(graph, operator, requestedChannel) : null;
++      if (resolution) {
++        const operators = catalogData?.operators[`${catalogType}:${catalogVersion}`] ?? [];
++        for (const dep of resolution.dependencies) {
++          const info = operators.find((op) => op.name === dep.packageName);
++          if (info) {
++            dep.displayName = info.name;
++            dep.catalog = info.catalog;
++            dep.catalogUrl = info.catalogUrl;
++            dep.defaultChannel = dep.defaultChannel || info.defaultChannel;
+           }
+         }
++        if (resolution.dependencies.length === 0 && resolution.unresolvedApis.length === 0 && !catalogUrl) {
++          continue;
++        }
++        return res.json({
++          operator,
++          catalogType,
++          catalogVersion,
++          channel: resolution.channel,
++          resolution: 'graph',
++          dependencies: resolution.dependencies,
++          unresolvedApis: resolution.unresolvedApis,
++          count: resolution.dependencies.length,
++          ...(resolution.dependencies.length === 0 ? { message: 'No dependencies found for this operator' } : {}),
++        });
+       }
+-    }
+ 
+-    if (dependencies.length === 0) {
+-      return res.json({
+-        operator,
+-        dependencies: [],
+-        message: 'No dependencies found for this operator',
+-      });
++      // Catalog data without dependency-graph.json: package dependencies of the default channel head only.
++      const dependencies = await getOperatorDependencies(catalogType, catalogVersion, operator);
++      if (dependencies.length > 0) {
++        return res.json({
++          operator,
++          catalogType,
++          catalogVersion,
++          channel: null,
++          resolution: 'legacy',
++          dependencies,
++          unresolvedApis: [],
++          count: dependencies.length,
++        });
++      }
++      if (catalogUrl) {
++        break;
++      }
+     }
+ 
+     res.json({
+       operator,
+-      catalogType,
+-      catalogVersion,
+-      dependencies,
+-      count: dependencies.length,
++      dependencies: [],
++      unresolvedApis: [],
++      message: 'No dependencies found for this operator',
+     });
+   } catch (error: unknown) {
+     console.error(`Error getting dependencies for ${req.params.operator}:`, error);
+@@ -2363,6 +2509,7 @@ app.post('/api/catalogs/sync', async (_req: Request, res: Response) => {
+     if (code === 0) {
+       preFetchedCatalogData = null;
+       dependenciesDataCache = null;
++      dependencyGraphCache = null;
+       operatorCache.catalogs = [];
+       operatorCache.operators = {};
+       operatorCache.channels = {};
+@@ -2440,6 +2587,7 @@ app.delete('/api/catalogs/sync/data', async (_req: Request, res: Response) => {
+ 
+     preFetchedCatalogData = null;
+     dependenciesDataCache = null;
++    dependencyGraphCache = null;
+     operatorCache.catalogs = [];
+     operatorCache.operators = {};
+     operatorCache.channels = {};
+diff --git a/src/components/MirrorConfig.tsx b/src/components/MirrorConfig.tsx
+index 107bac2..3cf817b 100644
+--- a/src/components/MirrorConfig.tsx
++++ b/src/components/MirrorConfig.tsx
+@@ -145,7 +145,7 @@ interface CleanConfig {
+       packages: {
+         name: string;
+         defaultChannel?: string;
+-        channels: CleanOperatorChannel[];
++        channels?: CleanOperatorChannel[];
+       }[];
+     }[];
+     additionalImages?: { name: string }[];
+@@ -428,7 +428,7 @@ const generateDefaultConfigName = (): string => {
+ };
+ 
+ const MirrorConfig: React.FC = () => {
+-  const { addSuccessAlert, addDangerAlert, addInfoAlert } = useAlerts();
++  const { addSuccessAlert, addDangerAlert, addInfoAlert, addWarningAlert } = useAlerts();
+ 
+   const [config, setConfig] = useState<ImageSetConfig>({
+     kind: 'ImageSetConfiguration',
+@@ -865,62 +865,90 @@ const MirrorConfig: React.FC = () => {
+     if (field === 'name' && value) {
+       const operator = config.mirror.operators[operatorIndex];
+       await fetchOperatorChannels(value, operator.catalog);
++      await addDependencyPackages(operatorIndex, value);
++    }
++  };
+ 
+-      try {
+-        const catalogVersion = operator.catalog.split(':').pop() || 'v4.19';
+-        const depRes = await axios.get(`/api/operators/${value}/dependencies`, {
+-          params: { catalogUrl: operator.catalog },
+-        });
++  /**
++   * Adds the dependencies of `packageName` (for `channel`, or its default channel) as packages of
++   * the same catalog. The server follows dependencies of dependencies and resolves required APIs
++   * to the package that provides them; APIs it cannot resolve are reported, not guessed.
++   */
++  const addDependencyPackages = async (operatorIndex: number, packageName: string, channel?: string) => {
++    const operator = config.mirror.operators[operatorIndex];
++    if (!operator) {
++      return;
++    }
++    try {
++      const depRes = await axios.get(`/api/operators/${packageName}/dependencies`, {
++        params: { catalogUrl: operator.catalog, ...(channel ? { channel } : {}) },
++      });
+ 
+-        if (depRes.data?.dependencies?.length > 0) {
+-          const deps = depRes.data.dependencies as {
+-            packageName: string;
+-            defaultChannel?: string;
+-          }[];
+-          const vMatch = catalogVersion.match(/v?(\d+\.\d+)/);
+-          const defaultCh = vMatch ? `stable-${vMatch[1]}` : 'stable';
+-
+-          setConfig(prev => {
+-            const existing = new Set(
+-              prev.mirror.operators[operatorIndex].packages.map(p => p.name).filter(Boolean),
+-            );
++      const unresolved = (depRes.data?.unresolvedApis ?? []) as {
++        api: string;
++        candidates: string[];
++        requiredBy: string;
++      }[];
++      if (unresolved.length > 0) {
++        const details = unresolved
++          .map((u) =>
++            u.candidates.length > 0
++              ? `${u.api} (needed by ${u.requiredBy}; provided by ${u.candidates.join(' or ')})`
++              : `${u.api} (needed by ${u.requiredBy}; no package in this catalog provides it)`,
++          )
++          .join('; ');
++        addWarningAlert(`${packageName}: check these required APIs by hand: ${details}`);
++      }
+ 
+-            const newDeps: OperatorPackage[] = deps
+-              .filter(d => !existing.has(d.packageName))
+-              .map(d => ({
+-                name: d.packageName,
+-                channels: [{ name: d.defaultChannel || defaultCh, minVersion: '' }],
+-                autoAddedBy: value,
+-                isDependency: true,
+-              }));
+-
+-            if (newDeps.length > 0) {
+-              setTimeout(async () => {
+-                for (const dep of newDeps) {
+-                  await fetchOperatorChannels(dep.name, operator.catalog);
+-                }
+-              }, 0);
+-
+-              addSuccessAlert(`Auto-added ${newDeps.length} dependency package(s) for ${value}`);
+-
+-              return {
+-                ...prev,
+-                mirror: {
+-                  ...prev.mirror,
+-                  operators: prev.mirror.operators.map((op, i) =>
+-                    i === operatorIndex
+-                      ? { ...op, packages: [...op.packages, ...newDeps] }
+-                      : op,
+-                  ),
+-                },
+-              };
+-            }
+-            return prev;
+-          });
+-        }
+-      } catch {
+-        // Ignore dependency lookups that fail during intermediate form edits.
++      const deps = (depRes.data?.dependencies ?? []) as {
++        packageName: string;
++        defaultChannel?: string;
++        requiredBy?: string;
++      }[];
++      if (deps.length === 0) {
++        return;
+       }
++
++      setConfig((prev) => {
++        const existing = new Set(
++          prev.mirror.operators[operatorIndex].packages.map((p) => p.name).filter(Boolean),
++        );
++
++        const newDeps: OperatorPackage[] = deps
++          .filter((d) => !existing.has(d.packageName))
++          .map((d) => ({
++            name: d.packageName,
++            // The package's real default channel; with none known, list the package without a
++            // channel filter so oc-mirror takes the head of every channel instead of a guessed name.
++            channels: d.defaultChannel ? [{ name: d.defaultChannel, minVersion: '' }] : [],
++            autoAddedBy: d.requiredBy && d.requiredBy !== packageName ? d.requiredBy : packageName,
++            isDependency: true,
++          }));
++
++        if (newDeps.length === 0) {
++          return prev;
++        }
++
++        setTimeout(async () => {
++          for (const dep of newDeps) {
++            await fetchOperatorChannels(dep.name, operator.catalog);
++          }
++        }, 0);
++
++        addSuccessAlert(`Auto-added ${newDeps.length} dependency package(s) for ${packageName}`);
++
++        return {
++          ...prev,
++          mirror: {
++            ...prev.mirror,
++            operators: prev.mirror.operators.map((op, i) =>
++              i === operatorIndex ? { ...op, packages: [...op.packages, ...newDeps] } : op,
++            ),
++          },
++        };
++      });
++    } catch {
++      // Ignore dependency lookups that fail during intermediate form edits.
+     }
+   };
+ 
+@@ -988,6 +1016,8 @@ const MirrorConfig: React.FC = () => {
+         const versions = await fetchChannelVersions(packageName, value, operator.catalog);
+         const key = `${packageName}:${value}:${operator.catalog}`;
+         setAvailableVersions(prev => ({ ...prev, [key]: versions }));
++        // A different channel can have different dependencies.
++        await addDependencyPackages(operatorIndex, packageName, value);
+       }
+     }
+   };
+@@ -1141,14 +1171,17 @@ const MirrorConfig: React.FC = () => {
+           const needsDefaultOverride = originalDefault
+             && !selectedChannelNames.includes(originalDefault);
+ 
+-          const cleanPkg: { name: string; defaultChannel?: string; channels: CleanOperatorChannel[] } = {
++          const cleanPkg: { name: string; defaultChannel?: string; channels?: CleanOperatorChannel[] } = {
+             name: pkg.name,
+-            channels: pkg.channels.map(ch => {
++          };
++          // No channel filter means oc-mirror takes the head of every channel; leave the key out.
++          if (pkg.channels.length > 0) {
++            cleanPkg.channels = pkg.channels.map(ch => {
+               const c: CleanOperatorChannel = { name: ch.name };
+               if (ch.minVersion?.trim()) c.minVersion = ch.minVersion;
+               return c;
+-            }),
+-          };
++            });
++          }
+ 
+           if (needsDefaultOverride && selectedChannelNames.length > 0) {
+             cleanPkg.defaultChannel = selectedChannelNames[0];
+diff --git a/tests/fixtures/catalog-data/redhat-operator-index/v4.21/dependency-graph.json b/tests/fixtures/catalog-data/redhat-operator-index/v4.21/dependency-graph.json
+new file mode 100644
+index 0000000..88f1006
+--- /dev/null
++++ b/tests/fixtures/catalog-data/redhat-operator-index/v4.21/dependency-graph.json
+@@ -0,0 +1,124 @@
++{
++  "alpha": {
++    "defaultChannel": "stable",
++    "channels": {
++      "fast": {
++        "headVersion": "3.0.0",
++        "dependencies": [
++          {
++            "packageName": "delta",
++            "versionRange": ">=0.0.0",
++            "reason": "package"
++          }
++        ],
++        "unresolvedApis": []
++      },
++      "stable": {
++        "headVersion": "2.0.0",
++        "dependencies": [
++          {
++            "packageName": "beta",
++            "versionRange": ">=1.0.0",
++            "reason": "package"
++          },
++          {
++            "packageName": "gamma",
++            "versionRange": null,
++            "reason": "api",
++            "api": "gamma.example.com/v1/Gamma"
++          }
++        ],
++        "unresolvedApis": [
++          {
++            "api": "monitoring.coreos.com/v1/ServiceMonitor",
++            "candidates": []
++          }
++        ]
++      }
++    }
++  },
++  "beta": {
++    "defaultChannel": "stable-1",
++    "channels": {
++      "stable-1": {
++        "headVersion": "1.2.0",
++        "dependencies": [],
++        "unresolvedApis": [
++          {
++            "api": "epsilon.example.com/v1/Eps",
++            "candidates": [
++              "eps1",
++              "eps2"
++            ]
++          }
++        ]
++      }
++    }
++  },
++  "delta": {
++    "defaultChannel": "stable",
++    "channels": {
++      "stable": {
++        "headVersion": "1.0.0",
++        "dependencies": [],
++        "unresolvedApis": []
++      }
++    }
++  },
++  "eps1": {
++    "defaultChannel": "stable",
++    "channels": {
++      "stable": {
++        "headVersion": "1.0.0",
++        "dependencies": [],
++        "unresolvedApis": []
++      }
++    }
++  },
++  "eps2": {
++    "defaultChannel": "stable",
++    "channels": {
++      "stable": {
++        "headVersion": "1.0.0",
++        "dependencies": [],
++        "unresolvedApis": []
++      }
++    }
++  },
++  "gamma": {
++    "defaultChannel": "tech-preview",
++    "channels": {
++      "tech-preview": {
++        "headVersion": "0.5.0",
++        "dependencies": [
++          {
++            "packageName": "zeta",
++            "versionRange": ">=0.0.0",
++            "reason": "package"
++          }
++        ],
++        "unresolvedApis": []
++      }
++    }
++  },
++  "old-only": {
++    "defaultChannel": "stable",
++    "channels": {
++      "stable": {
++        "headVersion": "1.0.0",
++        "dependencies": [],
++        "unresolvedApis": []
++      }
++    }
++  },
++  "zeta": {
++    "defaultChannel": "stable",
++    "channels": {
++      "stable": {
++        "headVersion": "1.0.0",
++        "dependencies": [],
++        "unresolvedApis": []
++      }
++    }
++  }
++}
+diff --git a/tests/fixtures/fbc-dependency-graph/configs/alpha/catalog.json b/tests/fixtures/fbc-dependency-graph/configs/alpha/catalog.json
+new file mode 100644
+index 0000000..b5c1ad7
+--- /dev/null
++++ b/tests/fixtures/fbc-dependency-graph/configs/alpha/catalog.json
+@@ -0,0 +1,6 @@
++{"schema": "olm.package", "name": "alpha", "defaultChannel": "stable"}
++{"schema": "olm.channel", "package": "alpha", "name": "stable", "entries": [{"name": "alpha.v1.0.0"}, {"name": "alpha.v2.0.0"}]}
++{"schema": "olm.channel", "package": "alpha", "name": "fast", "entries": [{"name": "alpha.v3.0.0"}]}
++{"schema": "olm.bundle", "package": "alpha", "name": "alpha.v1.0.0", "image": "registry.example.com/alpha.v1.0.0", "properties": [{"type": "olm.package", "value": {"packageName": "alpha", "version": "1.0.0"}}, {"type": "olm.package.required", "value": {"packageName": "old-only", "versionRange": ">=0.0.0"}}]}
++{"schema": "olm.bundle", "package": "alpha", "name": "alpha.v2.0.0", "image": "registry.example.com/alpha.v2.0.0", "properties": [{"type": "olm.package", "value": {"packageName": "alpha", "version": "2.0.0"}}, {"type": "olm.package.required", "value": {"packageName": "beta", "versionRange": ">=1.0.0"}}, {"type": "olm.gvk.required", "value": {"group": "gamma.example.com", "version": "v1", "kind": "Gamma"}}, {"type": "olm.gvk.required", "value": {"group": "monitoring.coreos.com", "version": "v1", "kind": "ServiceMonitor"}}, {"type": "olm.gvk.required", "value": {"group": "alpha.example.com", "version": "v1", "kind": "Alpha"}}, {"type": "olm.gvk", "value": {"group": "alpha.example.com", "version": "v1", "kind": "Alpha"}}]}
++{"schema": "olm.bundle", "package": "alpha", "name": "alpha.v3.0.0", "image": "registry.example.com/alpha.v3.0.0", "properties": [{"type": "olm.package", "value": {"packageName": "alpha", "version": "3.0.0"}}, {"type": "olm.package.required", "value": {"packageName": "delta", "versionRange": ">=0.0.0"}}]}
+diff --git a/tests/fixtures/fbc-dependency-graph/configs/beta/catalog.json b/tests/fixtures/fbc-dependency-graph/configs/beta/catalog.json
+new file mode 100644
+index 0000000..dff3823
+--- /dev/null
++++ b/tests/fixtures/fbc-dependency-graph/configs/beta/catalog.json
+@@ -0,0 +1,3 @@
++{"schema": "olm.package", "name": "beta", "defaultChannel": "stable-1"}
++{"schema": "olm.channel", "package": "beta", "name": "stable-1", "entries": [{"name": "beta.v1.2.0"}]}
++{"schema": "olm.bundle", "package": "beta", "name": "beta.v1.2.0", "image": "registry.example.com/beta.v1.2.0", "properties": [{"type": "olm.package", "value": {"packageName": "beta", "version": "1.2.0"}}, {"type": "olm.gvk.required", "value": {"group": "epsilon.example.com", "version": "v1", "kind": "Eps"}}]}
+diff --git a/tests/fixtures/fbc-dependency-graph/configs/delta/catalog.json b/tests/fixtures/fbc-dependency-graph/configs/delta/catalog.json
+new file mode 100644
+index 0000000..ad1a40b
+--- /dev/null
++++ b/tests/fixtures/fbc-dependency-graph/configs/delta/catalog.json
+@@ -0,0 +1,3 @@
++{"schema": "olm.package", "name": "delta", "defaultChannel": "stable"}
++{"schema": "olm.channel", "package": "delta", "name": "stable", "entries": [{"name": "delta.v1.0.0"}]}
++{"schema": "olm.bundle", "package": "delta", "name": "delta.v1.0.0", "image": "registry.example.com/delta.v1.0.0", "properties": [{"type": "olm.package", "value": {"packageName": "delta", "version": "1.0.0"}}]}
+diff --git a/tests/fixtures/fbc-dependency-graph/configs/eps1/catalog.json b/tests/fixtures/fbc-dependency-graph/configs/eps1/catalog.json
+new file mode 100644
+index 0000000..341c047
+--- /dev/null
++++ b/tests/fixtures/fbc-dependency-graph/configs/eps1/catalog.json
+@@ -0,0 +1,3 @@
++{"schema": "olm.package", "name": "eps1", "defaultChannel": "stable"}
++{"schema": "olm.channel", "package": "eps1", "name": "stable", "entries": [{"name": "eps1.v1.0.0"}]}
++{"schema": "olm.bundle", "package": "eps1", "name": "eps1.v1.0.0", "image": "registry.example.com/eps1.v1.0.0", "properties": [{"type": "olm.package", "value": {"packageName": "eps1", "version": "1.0.0"}}, {"type": "olm.gvk", "value": {"group": "epsilon.example.com", "version": "v1", "kind": "Eps"}}]}
+diff --git a/tests/fixtures/fbc-dependency-graph/configs/eps2/catalog.json b/tests/fixtures/fbc-dependency-graph/configs/eps2/catalog.json
+new file mode 100644
+index 0000000..2d5a9fb
+--- /dev/null
++++ b/tests/fixtures/fbc-dependency-graph/configs/eps2/catalog.json
+@@ -0,0 +1,3 @@
++{"schema": "olm.package", "name": "eps2", "defaultChannel": "stable"}
++{"schema": "olm.channel", "package": "eps2", "name": "stable", "entries": [{"name": "eps2.v1.0.0"}]}
++{"schema": "olm.bundle", "package": "eps2", "name": "eps2.v1.0.0", "image": "registry.example.com/eps2.v1.0.0", "properties": [{"type": "olm.package", "value": {"packageName": "eps2", "version": "1.0.0"}}, {"type": "olm.gvk", "value": {"group": "epsilon.example.com", "version": "v1", "kind": "Eps"}}]}
+diff --git a/tests/fixtures/fbc-dependency-graph/configs/gamma/catalog.json b/tests/fixtures/fbc-dependency-graph/configs/gamma/catalog.json
+new file mode 100644
+index 0000000..38b0c4d
+--- /dev/null
++++ b/tests/fixtures/fbc-dependency-graph/configs/gamma/catalog.json
+@@ -0,0 +1,3 @@
++{"schema": "olm.package", "name": "gamma", "defaultChannel": "tech-preview"}
++{"schema": "olm.channel", "package": "gamma", "name": "tech-preview", "entries": [{"name": "gamma.v0.5.0"}]}
++{"schema": "olm.bundle", "package": "gamma", "name": "gamma.v0.5.0", "image": "registry.example.com/gamma.v0.5.0", "properties": [{"type": "olm.package", "value": {"packageName": "gamma", "version": "0.5.0"}}, {"type": "olm.gvk", "value": {"group": "gamma.example.com", "version": "v1", "kind": "Gamma"}}, {"type": "olm.package.required", "value": {"packageName": "zeta", "versionRange": ">=0.0.0"}}]}
+diff --git a/tests/fixtures/fbc-dependency-graph/configs/old-only/catalog.json b/tests/fixtures/fbc-dependency-graph/configs/old-only/catalog.json
+new file mode 100644
+index 0000000..a0b268c
+--- /dev/null
++++ b/tests/fixtures/fbc-dependency-graph/configs/old-only/catalog.json
+@@ -0,0 +1,3 @@
++{"schema": "olm.package", "name": "old-only", "defaultChannel": "stable"}
++{"schema": "olm.channel", "package": "old-only", "name": "stable", "entries": [{"name": "old-only.v1.0.0"}]}
++{"schema": "olm.bundle", "package": "old-only", "name": "old-only.v1.0.0", "image": "registry.example.com/old-only.v1.0.0", "properties": [{"type": "olm.package", "value": {"packageName": "old-only", "version": "1.0.0"}}]}
+diff --git a/tests/fixtures/fbc-dependency-graph/configs/zeta/catalog.json b/tests/fixtures/fbc-dependency-graph/configs/zeta/catalog.json
+new file mode 100644
+index 0000000..69aa5f1
+--- /dev/null
++++ b/tests/fixtures/fbc-dependency-graph/configs/zeta/catalog.json
+@@ -0,0 +1,3 @@
++{"schema": "olm.package", "name": "zeta", "defaultChannel": "stable"}
++{"schema": "olm.channel", "package": "zeta", "name": "stable", "entries": [{"name": "zeta.v1.0.0"}]}
++{"schema": "olm.bundle", "package": "zeta", "name": "zeta.v1.0.0", "image": "registry.example.com/zeta.v1.0.0", "properties": [{"type": "olm.package", "value": {"packageName": "zeta", "version": "1.0.0"}}]}
+diff --git a/tests/integration/operators.test.ts b/tests/integration/operators.test.ts
+index 9eed5c0..1907d4e 100644
+--- a/tests/integration/operators.test.ts
++++ b/tests/integration/operators.test.ts
+@@ -141,6 +141,65 @@ describe('Operators API', () => {
+       expect(depNames).toContain('mcg-operator');
+     });
+ 
++    // The v4.21 Red Hat fixture also carries dependency-graph.json, generated by
++    // scripts/catalog_metadata.py from tests/fixtures/fbc-dependency-graph.
++    const catalogUrl = 'registry.redhat.io/redhat/redhat-operator-index:v4.21';
++    type Dep = { packageName: string; reason: string; api?: string; requiredBy: string; defaultChannel?: string };
++    type Unresolved = { api: string; candidates: string[]; requiredBy: string };
++
++    it('follows dependencies of dependencies and resolves required APIs (default channel)', async () => {
++      const res = await request.get('/api/operators/alpha/dependencies').query({ catalogUrl });
++      expect(res.status).toBe(200);
++      expect(res.body.resolution).toBe('graph');
++      expect(res.body.channel).toBe('stable');
++      const deps = res.body.dependencies as Dep[];
++      expect(deps.map((d) => d.packageName).sort()).toEqual(['beta', 'gamma', 'zeta']);
++      expect(deps.find((d) => d.packageName === 'beta')).toMatchObject({ reason: 'package', requiredBy: 'alpha', defaultChannel: 'stable-1' });
++      expect(deps.find((d) => d.packageName === 'gamma')).toMatchObject({
++        reason: 'api',
++        api: 'gamma.example.com/v1/Gamma',
++        requiredBy: 'alpha',
++        defaultChannel: 'tech-preview',
++      });
++      // zeta is a dependency of gamma, not of alpha
++      expect(deps.find((d) => d.packageName === 'zeta')).toMatchObject({ requiredBy: 'gamma' });
++      // the older bundle's dependency is not the channel head's
++      expect(deps.some((d) => d.packageName === 'old-only')).toBe(false);
++    });
++
++    it('reports required APIs it cannot resolve instead of guessing', async () => {
++      const res = await request.get('/api/operators/alpha/dependencies').query({ catalogUrl });
++      const unresolved = res.body.unresolvedApis as Unresolved[];
++      expect(unresolved).toEqual(
++        expect.arrayContaining([
++          { api: 'monitoring.coreos.com/v1/ServiceMonitor', candidates: [], requiredBy: 'alpha' },
++          { api: 'epsilon.example.com/v1/Eps', candidates: ['eps1', 'eps2'], requiredBy: 'beta' },
++        ]),
++      );
++      expect(unresolved).toHaveLength(2);
++      // an API the operator provides itself is not a requirement
++      expect(unresolved.some((u) => u.api === 'alpha.example.com/v1/Alpha')).toBe(false);
++    });
++
++    it('uses the requested channel', async () => {
++      const res = await request.get('/api/operators/alpha/dependencies').query({ catalogUrl, channel: 'fast' });
++      expect(res.body.channel).toBe('fast');
++      expect((res.body.dependencies as Dep[]).map((d) => d.packageName)).toEqual(['delta']);
++      expect(res.body.unresolvedApis).toEqual([]);
++    });
++
++    it('falls back to the default channel for an unknown channel', async () => {
++      const res = await request.get('/api/operators/alpha/dependencies').query({ catalogUrl, channel: 'nope' });
++      expect(res.body.channel).toBe('stable');
++      expect((res.body.dependencies as Dep[]).map((d) => d.packageName).sort()).toEqual(['beta', 'gamma', 'zeta']);
++    });
++
++    it('uses dependencies.json for operators missing from the graph', async () => {
++      const res = await request.get('/api/operators/odf-operator/dependencies').query({ catalogUrl });
++      expect(res.body.resolution).toBe('legacy');
++      expect((res.body.dependencies as Dep[]).map((d) => d.packageName)).toContain('ocs-operator');
++    });
++
+     it('returns empty dependencies for unknown operator', async () => {
+       const res = await request.get('/api/operators/nonexistent-operator-xyz/dependencies');
+       expect(res.status).toBe(200);
+diff --git a/tests/scripts/catalogMetadataGraph.test.ts b/tests/scripts/catalogMetadataGraph.test.ts
+new file mode 100644
+index 0000000..440c067
+--- /dev/null
++++ b/tests/scripts/catalogMetadataGraph.test.ts
+@@ -0,0 +1,92 @@
++/// <reference types="node" />
++
++import { describe, expect, it } from 'vitest';
++import { execFile } from 'child_process';
++import { mkdtemp, readFile } from 'fs/promises';
++import os from 'os';
++import path from 'path';
++import process from 'process';
++import { promisify } from 'util';
++
++const execFileAsync = promisify(execFile);
++const scriptPath = path.join(process.cwd(), 'scripts', 'catalog_metadata.py');
++const fbcDir = path.join(process.cwd(), 'tests', 'fixtures', 'fbc-dependency-graph');
++const committedGraph = path.join(
++  process.cwd(),
++  'tests',
++  'fixtures',
++  'catalog-data',
++  'redhat-operator-index',
++  'v4.21',
++  'dependency-graph.json',
++);
++
++async function generate() {
++  const outDir = await mkdtemp(path.join(os.tmpdir(), 'catalog-metadata-graph-'));
++  await execFileAsync('python3', [
++    scriptPath,
++    'generate',
++    '--catalog-dir',
++    fbcDir,
++    '--catalog-type',
++    'redhat-operator-index',
++    '--ocp-version',
++    'v4.21',
++    '--operators-file',
++    path.join(outDir, 'operators.json'),
++    '--dependencies-file',
++    path.join(outDir, 'dependencies.json'),
++  ]);
++  const read = async (name: string) => JSON.parse(await readFile(path.join(outDir, name), 'utf8'));
++  return {
++    operators: await read('operators.json'),
++    dependencies: await read('dependencies.json'),
++    graph: await read('dependency-graph.json'),
++  };
++}
++
++describe('catalog_metadata.py dependency graph', () => {
++  it('records per-channel dependencies of each channel head', async () => {
++    const { graph } = await generate();
++    expect(graph.alpha.defaultChannel).toBe('stable');
++    expect(graph.alpha.channels.stable.headVersion).toBe('2.0.0');
++    expect(graph.alpha.channels.fast.dependencies).toEqual([
++      { packageName: 'delta', versionRange: '>=0.0.0', reason: 'package' },
++    ]);
++  });
++
++  it('resolves a required API provided by exactly one package', async () => {
++    const { graph } = await generate();
++    expect(graph.alpha.channels.stable.dependencies).toContainEqual({
++      packageName: 'gamma',
++      versionRange: null,
++      reason: 'api',
++      api: 'gamma.example.com/v1/Gamma',
++    });
++  });
++
++  it('lists ambiguous, unprovided and self-provided APIs correctly', async () => {
++    const { graph } = await generate();
++    expect(graph.beta.channels['stable-1'].unresolvedApis).toEqual([
++      { api: 'epsilon.example.com/v1/Eps', candidates: ['eps1', 'eps2'] },
++    ]);
++    expect(graph.alpha.channels.stable.unresolvedApis).toEqual([
++      { api: 'monitoring.coreos.com/v1/ServiceMonitor', candidates: [] },
++    ]);
++  });
++
++  it('keeps operators.json and dependencies.json unchanged in shape', async () => {
++    const { operators, dependencies } = await generate();
++    expect(operators.every((op: Record<string, unknown>) => !('_graph' in op))).toBe(true);
++    // dependencies.json still holds only olm.package.required of the default channel head
++    expect(dependencies).toEqual({
++      alpha: [{ packageName: 'beta', versionRange: '>=1.0.0' }],
++      gamma: [{ packageName: 'zeta', versionRange: '>=0.0.0' }],
++    });
++  });
++
++  it('matches the committed server test fixture', async () => {
++    const { graph } = await generate();
++    expect(graph).toEqual(JSON.parse(await readFile(committedGraph, 'utf8')));
++  });
++});
+-- 
+2.43.0
+

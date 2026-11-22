@@ -1,12 +1,12 @@
-# Keeping our disconnected OpenShift clusters current: three solutions
+# Keeping our OpenShift clusters current: the proxy approach, with the mirror as the fallback
 
 | | |
 |---|---|
 | Date | 2026-10-07 |
 | For | Platform team, security, management |
-| Status | Step 1 is built. Steps 2 and 3 are proposals: no decision is ratified, and both need security approval |
+| Status | Step 1 is built. The platform owner decides, and the decision is the proxy approach; the change goes to security on the threat model with one condition: applications cannot use the proxy by default. Not yet approved |
 | Prerequisites | Two mirroring bastions and three registries on RHEL 9: [`PREREQUISITES.md`](PREREQUISITES.md) |
-| Technical detail | Step 1: [`oc-mirror-ansible/`](../oc-mirror-ansible/README.md). Step 2: [`enterprise-proxy/`](enterprise-proxy/README.md). Step 3: [`quay-onprem/`](quay-onprem/README.md). The problem: [`PROBLEM-STATEMENT.md`](PROBLEM-STATEMENT.md). The decisions: [`DESIGN-DECISIONS.md`](DESIGN-DECISIONS.md) |
+| Technical detail | Step 1: [`oc-mirror-ansible/`](../oc-mirror-ansible/README.md). Step 2: [`enterprise-proxy/`](enterprise-proxy/README.md). Step 3, the fallback (its Quay variant): [`quay-onprem/`](quay-onprem/README.md). The problem: [`PROBLEM-STATEMENT.md`](PROBLEM-STATEMENT.md). The decisions: [`DESIGN-DECISIONS.md`](DESIGN-DECISIONS.md) |
 
 ## Summary
 
@@ -14,35 +14,45 @@ Our clusters run OpenShift 4.18.17 on the EUS channel and are well behind. Every
 someone copying images and catalogs into our registry, and that copy has failed several times. The
 plan is to move to 4.20 and then 4.22, which needs four release payloads plus catalogs for each minor.
 
-This document presents three steps. They are not mutually exclusive: Step 1 is done and keeps us
-moving now, and either Step 2 or Step 3 is the long-term design.
+This document presents three steps. Step 1 is done and keeps us moving now. The proxy approach
+(Step 2) is the platform owner's decision for the long term; the mirror approach automated on a
+schedule (Step 3's schedule, whatever the registry product) is the fallback only.
 
 | # | What it is | Who copies the content | Cluster egress | Status |
 |---|---|---|---|---|
 | **1** | Our current process, modernised with Ansible and oc-mirror v2 | We do, from the mirroring bastion in each datacenter, each time we update | None | **Done**: playbooks and guides in Git |
-| **2** | Clusters reach Red Hat through the enterprise proxy | Nobody: the cluster pulls what it needs | Red Hat hosts only, through the proxy | Runbook written; needs security approval |
-| **3** | A full Red Hat Quay registry on-prem, filled on a schedule | A scheduled job, not a person | None | Design written; needs a Quay subscription and a build team |
+| **2** | Clusters reach Red Hat through the enterprise proxy | Nobody: the cluster pulls what it needs | Red Hat hosts only, through the proxy | Playbooks, runbook and threat model written; the change is with security |
+| **3** | The mirror approach, automated: the Step 1 playbooks on a schedule into the new registries; Red Hat Quay on-prem would only change the registry product | A scheduled job, not a person | None | Fallback only; the Quay variant is designed, not built |
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/three-steps/three-steps.dark.png">
   <source srcset="diagrams/three-steps/three-steps.light.png">
-  <img alt="Three steps keep the clusters current. Step 1, built: a person runs the Ansible oc-mirror v2 playbooks on the mirroring bastion of each datacenter before each update, into the lab and production mirror registries, and the cluster stays disconnected with a local Update Service. Step 2, proposed and preferred: every node reaches Red Hat's hosts through the enterprise proxy, with no mirror, no sync and no local Update Service. Step 3, proposed alternative: a scheduled job on each bastion runs the same playbooks into an on-prem Red Hat Quay, and the cluster keeps no egress with a local Update Service. All three open the same Red Hat hosts and none needs two-headed DNS." src="diagrams/three-steps/three-steps.light.png">
+  <img alt="Three steps keep the clusters current. Step 1, built: a person runs the Ansible oc-mirror v2 playbooks on the mirroring bastion of each datacenter before each update, into the lab and production mirror registries, and the cluster stays disconnected with a local Update Service. Step 2, the platform owner's decision: every node reaches Red Hat's hosts through the enterprise proxy, with no mirror, no sync and no local Update Service, and Ansible runs the retrofit and the updates. Step 3, the fallback only: the same playbooks run on a schedule into the new registries and the cluster keeps no egress with a local Update Service; Red Hat Quay on-prem would only change the registry product. All three open the same Red Hat hosts and none needs two-headed DNS." src="diagrams/three-steps/three-steps.light.png">
 </picture>
 
-*Step 1 is built; Steps 2 and 3 are proposals. All three open the same Red Hat hosts; they differ
-in which machines use them. No step needs two-headed DNS.*
+*Step 1 is built. Step 2 is the platform owner's decision; Step 3 is the fallback only. All three open
+the same Red Hat hosts; they differ in which machines use them. No step needs two-headed DNS.*
 
 ```text
-            STEP 1 (built)                 STEP 2 (proposed, preferred)          STEP 3 (proposed, alternative)
+            STEP 1 (built)                 STEP 2 (the decision)                 STEP 3 (fallback only)
 INSIDE      cluster: no egress, local OSUS cluster: Proxy CR, workloads blocked   cluster: no egress, local OSUS
-            mirror registries: lab,DC1,DC2 enterprise proxy, Red Hat hosts only  Red Hat Quay, HA, per datacenter
+            mirror registries: lab,DC1,DC2 enterprise proxy, Red Hat hosts only  mirror registries or Quay, HA
             bastion per datacenter, by hand no mirror host, registry or OSUS     bastion per datacenter, timer
 EGRESS      one host, through the proxy    every node, through the proxy         one host, through the proxy
 RED HAT     quay.io, registry.redhat.io, api.openshift.com, mirror.openshift.com
 ```
 
-**The team's position (2026-10-05):** Step 2 preferred, Step 3 as the alternative. The choice turns on
-one security answer: may cluster nodes reach Red Hat's hosts through the proxy?
+**The platform owner decides (position of 2026-10-05, refined 2026-10-09):** the proxy approach, with the
+mirror approach, automated, as the fallback only. The change goes to security on the threat model
+([`enterprise-proxy/THREAT-MODEL.md`](enterprise-proxy/THREAT-MODEL.md)) with one condition: consumers
+and applications cannot use the proxy by default. With that met, we are good. The SMEs and the Product
+Owner shape the direction of this platform offering; this is the SME's recommendation, from experience
+and modern best practice. Ansible automates the upgrade in both cases: under the proxy option too, the
+playbooks drive the retrofit and the updates themselves. The difference is the manual mirror, which
+the proxy approach eliminates. We are not after two-headed DNS; we are after a sustainable way to update
+as we grow. The disconnected setup was carried over from OpenShift 3.x, where the proxy setup was a mess;
+on OpenShift 4.x the proxy is Red Hat's supported way for enterprise customers to take fixes as they ship, and
+it keeps us ready for the growth that follows (OpenShift 5.x, for example).
 
 ## Where we are
 
@@ -73,8 +83,8 @@ instead, all on RHEL 9 (RHEL 10 is not yet supported for the mirror registry or 
   registry, on a new path (e.g. `ocp4v2`), never into the path oc-mirror v1 filled.
 
 Red Hat discourages using one mirror registry for several clusters and asks for mirror registries
-to be highly available. If a production registry serves several clusters, Step 3 (full Quay) is
-the long-term answer. Hosts, sizing, flows and the cluster cutover: [`PREREQUISITES.md`](PREREQUISITES.md).
+to be highly available. If a production registry serves several clusters under the fallback, a highly
+available registry (full Quay) is its registry product. Hosts, sizing, flows and the cluster cutover: [`PREREQUISITES.md`](PREREQUISITES.md).
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/prerequisites/topology.dark.png">
@@ -139,8 +149,9 @@ MIRRORING BASTION                                       CLUSTER, change window
 has run the sync and applied its output to the cluster. When a sync fails, the update slips. The
 catalog list has to be maintained by hand per version.
 
-**Use it for:** getting off 4.18 now, whichever long-term step is chosen. It is also the engine of
-Step 3, and the fallback if Step 2 is not approved.
+**Use it for:** the mirror as today, until each cluster is retrofitted. Under the proxy approach the
+same playbooks run the retrofit and the hops; under the fallback they run the mirror on a schedule
+(Step 3).
 
 Detail: [`oc-mirror-ansible/README.md`](../oc-mirror-ansible/README.md), with the release and catalog guides.
 
@@ -151,11 +162,13 @@ traffic to our enterprise proxy, which allows only the Red Hat hosts in Red Hat'
 documentation. The cluster then gets images, the update graph, signatures and operator catalogs the
 way a connected cluster does. There is no mirror, no sync and no local Update Service.
 
-**How an existing cluster gets there.** The runbook converts a running disconnected cluster in ten
-phases, ordered so that changes that touch no nodes go first:
+**How an existing cluster gets there.** Ansible converts a running disconnected cluster in ten phases
+([`enterprise-proxy-ansible/`](../enterprise-proxy-ansible/README.md); the runbook in
+[`enterprise-proxy/`](enterprise-proxy/README.md) documents and teaches each phase), ordered so that changes
+that touch no nodes go first:
 
 1. Approve the host list, set up the firewall and an HA proxy, and get Red Hat credentials.
-2. Back up every object the runbook changes; inventory the internal services the platform uses.
+2. Back up every object the playbooks change; inventory the internal services the platform uses.
 3. Add Red Hat's pull secret to the cluster's global pull secret. No node effect.
 4. Limit which registries and repositories any pod may pull from. CRI-O reload only.
 5. Turn on the cluster-wide proxy. **Every node drains and reboots once**: a maintenance window.
@@ -168,18 +181,113 @@ phases, ordered so that changes that touch no nodes go first:
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/three-steps/retrofit.dark.png">
   <source srcset="diagrams/three-steps/retrofit.light.png">
-  <img alt="The Step 2 runbook converts a disconnected cluster in ten phases. Phases 0 to 3 touch no nodes beyond a CRI-O reload: approval, backup, the Red Hat pull secret and the image allowlist. Phase 4 turns on the cluster-wide proxy and drains and reboots every node. Phases 5 to 7 lock workloads out of the proxy, point update checks at Red Hat and move the operator catalogs, with no node effect. Phase 8 runs one update with the mirror still in place, and only then phase 9 removes the mirror, which drains the nodes again." src="diagrams/three-steps/retrofit.light.png">
+  <img alt="Step 2 converts a disconnected cluster in ten phases, run by the Ansible playbooks. Phases 0 to 3 touch no nodes beyond a CRI-O reload: approval, backup, the Red Hat pull secret and the image allowlist. Phase 4 turns on the cluster-wide proxy and drains and reboots every node. Phases 5 to 7 lock workloads out of the proxy, point update checks at Red Hat and move the operator catalogs, with no node effect. Phase 8 runs one update with the mirror still in place, and only then phase 9 removes the mirror, which drains the nodes again." src="diagrams/three-steps/retrofit.light.png">
 </picture>
 
 *The proposed retrofit, phase by phase, with what each phase does to the nodes. The numbered list
 above is the same order.*
 
-**Only platform components reach Red Hat.** Three controls, each tested by the runbook:
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../enterprise-proxy-ansible/docs/diagrams/automation/run-flow.dark.png">
+  <source srcset="../enterprise-proxy-ansible/docs/diagrams/automation/run-flow.light.png">
+  <img alt="The Step 2 automation, end to end. On the mirroring bastion, Ansible runs one cluster at a time. The retrofit playbook runs phases 1 to 3 (backup, health check, pull secret, image allowlist; it stops before any change if the cluster is not healthy), then phase 4 in a window (the proxy CA appended once, the proxy object patched, waits for readiness, every pool and every operator; every node drains and reboots), then phases 6 and 7 (update checks from Red Hat, the stock catalog, each Subscription set to Manual and moved; a ResolutionFailed is named and left on the mirror). The verify playbook runs tests 1 to 10 in a plain namespace and writes the evidence file; a proxy variable in a workload pod fails it. The update playbook runs the first connected update and stops unless the release signature was verified. The remove-mirror playbook, in a window, takes out the mirror sets, catalogs, Update Service, login, CA key and allowlist entry, refusing while a Subscription still uses a mirrored source. Then verify again, and every later hop is the update playbook alone, with no mirror, no sync and no local Update Service. The right column shows the cluster after each run and the node effect." src="../enterprise-proxy-ansible/docs/diagrams/automation/run-flow.light.png">
+</picture>
 
-- **Proxy settings:** they go to platform components and operators only; application pods get none.
-- **A network rule in every application namespace:** pods there cannot reach the proxy, even if
-  they set a proxy themselves.
-- **An image allowlist:** opening `quay.io` does not let anyone pull arbitrary public images.
+*The same conversion as the playbooks run it ([`enterprise-proxy-ansible/`](../enterprise-proxy-ansible/README.md)):
+one cluster end to end, what stops each run (red), and the cluster after it. Tested against a stand-in cluster,
+not yet on any of ours.*
+
+**What going direct gives us, beyond removing the sync:**
+
+| Advantage | Why |
+|---|---|
+| Updates arrive when Red Hat ships them | Z-streams for the newest minor ship weekly. A cluster can take a security fix the day it is published, not after a mirror run has succeeded |
+| Live upgrade guidance | The cluster reads its update recommendations from `api.openshift.com`, including Red Hat's known-issue risks on conditional upgrade paths, as soon as they are published. A local Update Service only knows what the last sync brought |
+| No signature mirroring | From 4.21 release images must be signed. A connected cluster reads the signatures from Red Hat; a disconnected one needs them mirrored, plus the `ack-4.20-sigstore-in-4.21` acknowledgment before 4.21 |
+| Current catalogs, still under our control | Approved operators come current from Red Hat, with no mirroring and no hand-listed dependencies (oc-mirror v2 does not infer them). What developers see is still only what we put in the catalog: a filtered catalog (model A) or an allowlist on the stock one (model B), enforced by the admission policies in [`catalog-policies/`](catalog-policies/) (DESIGN-DECISIONS, D2) |
+| Less to run and size | No mirror registries to keep highly available, no 2 TB caches, no oc-mirror version to track, none of its known failure modes (Red Hat KBs 7130341, 7139982, 7128745) |
+| Fewer node drains later | No IDMS/ITMS/ICSP to create or delete at each cutover; deleting them drains the nodes |
+| Red Hat's standard configuration | The connected cluster-wide proxy is the documented, most common setup, so support cases start from known ground |
+| Optional, if security agrees | Insights recommendations and telemetry give Red Hat Support proactive alerts and cluster data. Off unless enabled; updates do not need them |
+
+The costs, documented in the runbook: an HA proxy, security's approval of the change, one reboot of every
+node when the proxy goes on, and one drain when the mirror objects are removed.
+
+**A common misconception: "our clusters cannot use a proxy."** They can, and Red Hat documents it
+as a standard configuration, both when a cluster is installed and on a running one: "Production
+environments can deny direct access to the internet and instead have an HTTP or HTTPS proxy
+available. You can configure a new OpenShift Container Platform cluster to use a proxy by
+configuring the proxy settings in the `install-config.yaml` file"
+[R4] (for existing clusters, [R6]). The proxy serves the platform only (below), allows only
+Red Hat's documented hosts, and needs no two-headed DNS.
+
+**Syncing and the proxy bring the same content from the same trusted partner.** We already trust
+Red Hat's content: today we copy it into our registries and run it. Going through the proxy changes
+only how it travels, not what arrives or how it is checked.
+
+| | Syncing (Step 1, Step 3) | Proxy (Step 2) |
+|---|---|---|
+| Where it comes from | Red Hat's registries, through the enterprise proxy, to a bastion | Red Hat's registries, through the enterprise proxy, to the nodes |
+| What arrives | The release images, by their SHA digests | The same images, by the same digests |
+| How it is checked | The cluster validates Red Hat's signed statements with built-in public keys; from 4.21, Sigstore signatures as well | The same checks, against Red Hat directly |
+| Hosts opened at the firewall | `quay.io`, `registry.redhat.io`, `api.openshift.com`, `mirror.openshift.com` | The same hosts |
+| Delay before a cluster can use it | Until the next successful sync | None |
+
+Red Hat: "Red Hat publishes cryptographically-signed statements about published release images at
+predefined locations by using image SHA digests as unique and immutable release image identifiers.
+The CVO utilizes a list of built-in public keys to validate the presence and signatures of the
+statement matching the checked release image" [R5]. The
+signature check is the same in both designs; syncing adds a copy and a wait.
+
+**Syncing leaves us at a disadvantage when Red Hat fixes a bug or a vulnerability.** The fix is
+published the same day either way. A synced cluster can take it only after someone has mirrored it
+and the run has succeeded; a proxied cluster can take it in the next change window, after the lab.
+We still decide when each cluster updates; the proxy removes the wait, not the control.
+
+**What the proxy unlocks:**
+
+| Area | With syncing | With the proxy |
+|---|---|---|
+| Keeping up with updates | Each z-stream (weekly for the newest minor) waits for a mirror run; 4.18 fixes keep shipping (156 CVEs in 4.18 advisories so far in 2026) | Every z-stream and its upgrade guidance are available when Red Hat publishes them |
+| Building new clusters | A mirror with the target release first, then a disconnected install pointing at it | `install-config.yaml` names the proxy; the installer pulls the current release from Red Hat |
+| New platform features and operators | Each new operator, and every dependency, mirrored by hand before anyone can try it | Available as soon as Red Hat ships it; we still choose what the catalog shows |
+
+**Does the cluster-wide proxy open every namespace to the internet? No.** Red Hat, in the 4.18 and
+4.22 docs alike: "The system-wide proxy affects system components only, not user workloads" [R1].
+Application pods get no proxy settings, and the firewall still lets nothing out directly. Even
+platform components reach only what the proxy allows, and our allowlist is Red Hat's documented
+hosts and nothing else [R7].
+
+The threat model of an update through the proxy, with a diagram, is in
+[`enterprise-proxy/THREAT-MODEL.md`](enterprise-proxy/THREAT-MODEL.md).
+
+**Our guarantee: the platform's proxy setting does not reach non-platform applications.** Nothing in
+the platform writes proxy variables into an application pod [R1]. Application teams are already
+allowed to set a proxy in their own deployments; a team that does so makes a deliberate choice under
+our existing policy, and the platform never makes it for them. That is not a gap the Proxy object
+introduces, so the runbook does not try to block it (its phase 5 is optional, see the runbook).
+
+Only two places a platform component touches other namespaces, and both are controlled:
+
+| Where | Why | Control (runbook phase) |
+|---|---|---|
+| Operators installed from OperatorHub get the proxy | Red Hat: OLM operators "inherit the cluster-wide proxy settings on their deployments" [R2], in whatever namespace they run; for the pods they manage, "Operators must handle setting environment variables for proxy settings" [R2] | **We control the catalog**, so only operators we approved can be installed at all, and they reach only allowlisted hosts. A Subscription can unset the proxy for an operator that does not need it: the variables "can also be unset using an empty value" [R2] (phase 7) |
+| Any pod's image can come from `quay.io` | CRI-O pulls images for every pod through the node's proxy setting; it carries images only, never application traffic | `allowedRegistries` lists repositories, not whole registries: "Registries not in your allowlist are blocked" [R3] (phase 3). Kyverno's standard allowed-registries policy, with the list in a ConfigMap in the cluster, narrows application namespaces further at admission ([`image-policies/`](image-policies/)); it adds to `allowedRegistries`, it does not replace it |
+
+The Verify playbook (the runbook's Verify table) proves it on a live cluster: a test pod in an application
+namespace gets no proxy variables, cannot go out directly, and cannot pull an image from outside the
+allowlist.
+
+**References for this section** (`openshift/openshift-docs`, branch `enterprise-4.18`, read
+2026-10-08):
+
+- [R1] Cluster-wide proxy scope: [`networking/configuring_network_settings/enable-cluster-wide-proxy.adoc`](https://github.com/openshift/openshift-docs/blob/enterprise-4.18/networking/configuring_network_settings/enable-cluster-wide-proxy.adoc), "The system-wide proxy affects system components only, not user workloads." Same sentence in 4.22.
+- [R2] OLM operators and the proxy: [`modules/olm-overriding-proxy-settings.adoc`](https://github.com/openshift/openshift-docs/blob/enterprise-4.18/modules/olm-overriding-proxy-settings.adoc), "inherit the cluster-wide proxy settings on their deployments"; "Operators must handle setting environment variables for proxy settings in the pods for any managed Operands"; "can also be unset using an empty value".
+- [R3] Image allowlist: [`modules/images-configuration-allowed.adoc`](https://github.com/openshift/openshift-docs/blob/enterprise-4.18/modules/images-configuration-allowed.adoc), "Registries not in your allowlist are blocked."
+- [R4] Proxy at install time: [`modules/installation-configure-proxy.adoc`](https://github.com/openshift/openshift-docs/blob/enterprise-4.18/modules/installation-configure-proxy.adoc), "Production environments can deny direct access to the internet and instead have an HTTP or HTTPS proxy available."
+- [R5] Release signatures: [`modules/update-process-workflow.adoc`](https://github.com/openshift/openshift-docs/blob/enterprise-4.18/modules/update-process-workflow.adoc), "Red Hat publishes cryptographically-signed statements about published release images … by using image SHA digests as unique and immutable release image identifiers."
+- [R6] Proxy object fields: [`modules/nw-proxy-configure-object.adoc`](https://github.com/openshift/openshift-docs/blob/enterprise-4.18/modules/nw-proxy-configure-object.adoc).
+- [R7] Hosts the cluster needs: [`installing/install_config/configuring-firewall.adoc`](https://github.com/openshift/openshift-docs/blob/enterprise-4.18/installing/install_config/configuring-firewall.adoc).
 
 **No two-headed DNS.** The proxy resolves Red Hat's names; nodes resolve only internal names.
 Internal DNS stays as it is.
@@ -195,17 +303,24 @@ go out. Nothing new inside the clusters.
 | Red Hat changes hostnames | Track the firewall documentation; alert on proxy denies |
 | An internal service missed from `noProxy` breaks a platform feature | Inventory before the proxy goes on; test in lower environments first |
 | Telemetry sends cluster data to Red Hat | Leave it off unless security decides otherwise; updates don't need it |
-| A TLS-intercepting proxy | Exempt Red Hat hosts until Red Hat Support confirms the position |
+| The proxy inspects TLS (decided: it re-signs with the enterprise CA) | The enterprise CA, already on every node, also goes into `trustedCA`; `sso.redhat.com` is not re-encrypted; signatures prove the content whatever the TLS path |
 
-**Needs:** security approval of node egress to the listed hosts; answers on telemetry and TLS
-interception; a Red Hat Support case for the open questions in the runbook.
+**Needs:** security's approval of the change, taken to it on the threat model with the condition that
+applications cannot use the proxy by default; an answer on telemetry; a Red Hat
+Support case for the open questions in the runbook. TLS inspection is decided: the proxy re-signs with
+the enterprise CA, which every node trusts.
 
 Detail: [`enterprise-proxy/README.md`](enterprise-proxy/README.md).
 
-## Step 3: a full Red Hat Quay registry on-prem
+## Step 3: the mirror on a schedule, the fallback only
 
-**What it is.** A highly available Red Hat Quay replaces the production mirror registries, one per
-datacenter. The clusters keep no
+**What it is.** The mirror approach, automated: the Step 1 playbooks run on a schedule into the new
+registries, so a person no longer runs the sync. It is the fallback only, if the change to the proxy
+approach is not approved. Red Hat Quay on-prem would only change the registry product of this same
+approach; it is not a third option. The automation is the same with either registry product: the
+mirror registry for Red Hat OpenShift (the trimmed-down Quay we run today, reinstalled on the new hosts)
+or enterprise Red Hat Quay. The rest of this section describes that Quay variant: a highly
+available Red Hat Quay replaces the production mirror registries, one per datacenter. The clusters keep no
 egress. The Step 1 playbooks fill Quay on a schedule from the mirroring bastion in each datacenter, the only machines that
 reaches Red Hat through the proxy. The clusters pull everything from Quay.
 
@@ -250,7 +365,7 @@ Detail: [`quay-onprem/README.md`](quay-onprem/README.md).
 
 ## The three steps side by side
 
-| | Step 1: Ansible, current model | Step 2: enterprise proxy | Step 3: Quay on-prem |
+| | Step 1: Ansible, current model | Step 2: the proxy approach | Step 3: mirror on a schedule (Quay variant) |
 |---|---|---|---|
 | Cluster egress | None | Red Hat hosts, through the proxy | None |
 | Who copies content | A person runs the playbooks before each update | Nobody | A scheduled job |
@@ -260,7 +375,7 @@ Detail: [`quay-onprem/README.md`](quay-onprem/README.md).
 | Registries | Three new mirror registries (lab, DC1, DC2) | Lab registry; production registries until each cluster is retrofitted | HA Quay per datacenter; the lab keeps its mirror registry |
 | Two-headed DNS | No | No | No |
 | One-off node impact | None beyond today | One reboot (proxy), one drain (mirror removal) | Mirror config changes as today |
-| Security approval | Mirror host to Red Hat (as today) | Cluster nodes to Red Hat hosts | Mirror host to Red Hat |
+| Security approval | Mirror host to Red Hat (as today) | The change, on the threat model: applications cannot use the proxy by default | Mirror host to Red Hat |
 | New things to run | Two bastions and three mirror registries on RHEL 9 | HA proxy with allowlist | HA Quay, storage, Clair, bastion timers, Update Service |
 | Operator catalogs | Mirrored per version, list kept by hand | Red Hat's catalog, or a filtered one | Mirrored per version on a schedule |
 | Ready to use | Now | After approval and one window per cluster | After a Quay build |
@@ -270,46 +385,126 @@ Detail: [`quay-onprem/README.md`](quay-onprem/README.md).
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/three-steps/decision.dark.png">
   <source srcset="diagrams/three-steps/decision.light.png">
-  <img alt="How the team chooses. Now, Step 1 takes the clusters from 4.18.17 to 4.20 because 4.18's EUS term ends on 25 February 2027. In parallel security answers one question: may cluster nodes reach Red Hat's hosts through the enterprise proxy? Yes leads to the Step 2 runbook, lower environments first. No leads to building Red Hat Quay on-prem, Step 3. Either way the Step 1 playbooks stay, as Step 2's fallback or as Step 3's engine." src="diagrams/three-steps/decision.light.png">
+  <img alt="How the team chooses. The SMEs and the Product Owner shape the direction of this platform offering; this is the SME's recommendation from experience and modern best practice. The platform owner decides: the proxy approach, with no mirror, no sync and no local Update Service. The change goes to security on the threat model, with one condition: applications cannot use the proxy by default; the platform gives them no proxy settings (C2) and they have no route out (C1), proven by Verify tests 6 and 8. Approved leads to the preferred option, the proxy approach: VMware and TKG already update through this proxy; the Ansible retrofit, lower environments first; the mirror is retired per cluster. Not approved leads to the fallback only, the mirror approach automated: the Ansible playbooks on a timer into the new registries, a local Update Service stays required; Red Hat Quay on-prem would only change the registry product, not a third option. Under either option the clusters must be on 4.20 before 4.18's EUS term ends on 25 February 2027. Ansible automates the upgrade in both cases, under the proxy option too: the hops, the update service, the registry settings and catalog gating; the difference is the manual mirror, which the proxy approach eliminates. With the proxy enabled on 4.18 first, the hops to 4.20 and 4.22 need no sync." src="diagrams/three-steps/decision.light.png">
 </picture>
 
-*Proposed decision flow. Only Step 1's playbooks exist today.*
+*Proposed decision flow. The platform owner's decision, the change with security, and the fallback. Only
+the Ansible playbooks exist today.*
+
+**The platform owner decides**, and the decision is the proxy approach. The change goes to security on
+the threat model ([`enterprise-proxy/THREAT-MODEL.md`](enterprise-proxy/THREAT-MODEL.md)), with one
+condition to meet: consumers and applications cannot use the proxy by default. The platform gives
+application pods no proxy settings (C2) and they have no route out (C1); the runbook's tests 6 and 8
+prove it on every cluster. With that condition met, we are good.
+
+**Who shapes it.** The SMEs and the Product Owner shape the direction of this platform offering.
+This is the SME's professional recommendation, from experience and modern best practice: the Ansible
+mirror is a lot of work to maintain, and that time is better spent on the update process itself,
+through the proxy. Ansible automates the upgrade under both options. With the proxy approach the
+playbooks drive the retrofit and the updates themselves: the update runs, the checks and the evidence,
+as the Step 1 playbooks do for mirroring today. With the mirror approach they also have to run and
+maintain the mirror. The difference is the manual mirror, which the proxy approach eliminates.
+
+**What Ansible automates under the proxy approach.** The work that stays in every option
+([`PROBLEM-STATEMENT.md`](PROBLEM-STATEMENT.md), "What the proposal removes, and what stays") becomes
+playbooks, as the mirroring is today:
+
+- the updates themselves: each control-plane hop (`oc adm upgrade`), the waits and the health checks;
+- the update service: clear `spec.upstream` and set the channel, so the cluster reads Red Hat's graph;
+- the cluster registry configuration: the Red Hat pull secret, `allowedRegistries`, the proxy and its
+  CA, and the mirror sets removed after the first connected update;
+- catalog gating through GitOps: Git owns every CatalogSource and Subscription, the admission policies
+  enforce the approved list;
+- the retrofit itself, phase by phase, and the runbook's Verify tests as evidence.
+
+This is the north star: Ansible does the conversion and the updates, and the runbook
+([`enterprise-proxy/`](enterprise-proxy/README.md)) is the documentation and teaching copy of the same steps.
+The first four items are written: [`enterprise-proxy-ansible/`](../enterprise-proxy-ansible/README.md) holds
+the retrofit, update, remove-mirror and verify playbooks, tested offline against a stand-in cluster, waiting
+for the lab cluster and the security decision.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../enterprise-proxy-ansible/docs/diagrams/automation/update-flow.dark.png">
+  <source srcset="../enterprise-proxy-ansible/docs/diagrams/automation/update-flow.light.png">
+  <img alt="One update hop under the proxy approach. On the bastion, in a change window, update-playbook runs for one cluster: health check and no local Update Service in spec.upstream, else it stops with nothing started; the channel change when moving to 4.20, with RetrievedUpdates true, else stop and fix the allowlist or the CA; a recommended version from availableUpdates, else refused; then oc adm upgrade and the wait for a Completed history entry whose signature was verified, else stop before the next hop. The cluster's CVO then reads the graph from api.openshift.com, pulls the release by digest from quay.io and checks the signature with built-in keys; operators and pools roll, control plane then workers, CRI-O pulling through the proxy within the allowlist. All of it reaches Red Hat through the enterprise proxy with HTTP CONNECT on 443 to the documented hosts only. Back on the bastion: every operator and pool checked, the verify playbook writes the evidence file, and the next hop is the same run, 4.18 to 4.19 to 4.20 and later 4.22, with nothing to mirror first." src="../enterprise-proxy-ansible/docs/diagrams/automation/update-flow.light.png">
+</picture>
+
+*One update hop under the proxy approach, the counterpart of Step 3's scheduled sync: the update playbook
+on the bastion, the cluster's own update machinery through the proxy to Red Hat's documented hosts, the
+evidence file afterwards. Nothing to prepare before a hop but the window.* Red Hat's Knowledgebase solution ["Converting a disconnected
+cluster to a connected cluster"](https://access.redhat.com/solutions/6966995) (solution 6966995, Solution Verified, 2025) lists the catalog and pull secret steps they run.
+
+**Order of work.** The cluster-wide proxy is a documented configuration on 4.18. Enabled first, it lets
+the hops to 4.20 and 4.22 run straight from Red Hat with no sync at all, which is how the proxy approach
+meets the 4.20 deadline without a mirror. Red Hat Support should confirm that removing the mirror sets
+also removes the signature acknowledgment before 4.21 (runbook, phase 8).
+
+**Why the proxy approach.** We are not looking for two-headed DNS, and no option needs it. We are
+looking for a sustainable way to update our clusters that keeps pace with our growth. The disconnected
+setup we run today was carried over from OpenShift 3.x, where it was the sound choice because the proxy
+setup was a mess. OpenShift 4.x is far more advanced, and we have to be ready for the growth that follows it (OpenShift
+5.x, for example): the
+cluster-wide proxy is Red Hat's documented, supported way for enterprise customers to take updates and
+fixes as they ship ("Production environments can deny direct access to the internet and instead have
+an HTTP or HTTPS proxy available" [R4]), which is what operations and vulnerability management need.
+
+The recommendation is two-fold. The two are independent options, not steps in sequence, and the
+proxy approach needs no mirror at all:
+
+1. **Preferred: the proxy approach** ([`enterprise-proxy/`](enterprise-proxy/README.md)). No
+   mirror, no sync, no local Update Service: the clusters take their updates straight from Red Hat
+   through the enterprise proxy, as a connected cluster does. Other teams already update their
+   platforms through the same proxy, among them VMware and Tanzu Kubernetes Grid (TKG), so platform
+   egress through the proxy to a vendor's hosts is established practice in our network. The proxy
+   approach extends it to the OpenShift nodes, with only Red Hat's documented hosts allowed, using
+   only documented configuration.
+2. **Fallback only: the mirror approach, automated.** If security does not approve the change, the
+   Ansible playbooks run on a schedule into the new registries, so a person no longer runs the sync;
+   a local Update Service stays required. Red Hat Quay on-prem ([`quay-onprem/`](quay-onprem/README.md))
+   would only change the registry product of this same approach; it is not a third option and adds
+   no value of its own.
 
 ```text
-Now: Step 1 takes the clusters to 4.20 (4.18 EUS ends 25 Feb 2027)
-  -> security: may cluster nodes reach Red Hat's hosts through the proxy?
-       yes -> Step 2 runbook, lower environments first   (Step 1 stays as the fallback)
-       no  -> Step 3, build Red Hat Quay on-prem          (Step 1 becomes its engine)
+Platform owner decides: the proxy approach
+  -> the change goes to security on the threat model; one condition: applications cannot use the proxy by default
+     approved     -> 1 · preferred: the proxy approach, the Ansible retrofit; no mirror at all   (mirror retired per cluster)
+     not approved -> 2 · fallback only: the mirror approach, automated on the new registries      (mirror stays, on a schedule)
+Either option: the clusters must be on 4.20 before 4.18's EUS term ends on 25 Feb 2027.
+Proxy first on 4.18, then the hops to 4.20 and 4.22 run with no sync; Ansible automates the hops either way.
 ```
 
-1. **First:** build the two bastions and three registries ([`PREREQUISITES.md`](PREREQUISITES.md)).
-2. **Now:** use Step 1 to take the clusters from 4.18.17 to 4.20, mirroring the road back to back
-   before any cluster updates. 4.18's EUS term ends on 25 February 2027, so this cannot wait for
-   Steps 2 or 3.
-3. **In parallel:** take Step 2 to security. It is the team's preferred design, uses only documented
-   configuration, and removes the sync entirely.
-4. **If security approves node egress:** run the Step 2 runbook in lower environments, then
-   production, one cluster per window.
-5. **If security does not approve it:** build Step 3 and move the Step 1 playbooks onto its
-   schedule.
+In order:
+
+1. **Now:** the platform owner takes the change to security on the threat model, with the precedent
+   that VMware and TKG already update through the proxy, and the condition that applications cannot
+   use the proxy by default.
+2. **If security approves the change:** run the retrofit playbooks in lower environments, then
+   production, one cluster per window, on 4.18 and before the updates. The hops to 4.20 and 4.22 then
+   run straight from Red Hat with no sync; the mirror is retired as each cluster is retrofitted.
+3. **If security does not approve it:** build the two bastions and three registries
+   ([`PREREQUISITES.md`](PREREQUISITES.md)) and put the Ansible playbooks on a schedule into them.
+4. **Under either option:** the clusters must be on 4.20 before 4.18's EUS term ends on 25 February
+   2027, so the decision has to come early enough to run the chosen approach by then. Ansible runs the
+   hops in both cases.
 
 ## Decisions needed
 
 | Decision | From | Blocks |
 |---|---|---|
-| May cluster nodes reach Red Hat's hosts through the proxy? | Security | Step 2 or Step 3 |
-| Telemetry and Insights on or off? | Security | Step 2 allowlist and pull secret |
-| Will the proxy intercept TLS to Red Hat hosts? | Network team, Red Hat Support | Step 2 proxy configuration |
-| Filtered or stock operator catalog? | Platform team | Step 2 catalog phase, Step 3 catalog runs |
-| Quay subscription, platform and build partner | Management | Step 3 |
+| The proxy approach: the platform owner's decision, taken to security on the threat model; condition: applications cannot use the proxy by default | Platform owner, with security | The proxy approach (preferred) or the mirror approach (fallback) |
+| Telemetry and Insights on or off? | Security | The proxy allowlist and the pull secret |
+| ~~Will the proxy intercept TLS to Red Hat hosts?~~ Answered 2026-10-09: yes, with the enterprise CA every node trusts | Network team | The proxy configuration |
+| Filtered or stock operator catalog? | Platform team | The catalog phase of the proxy approach; the catalog runs of the mirror approach |
+| Quay subscription, platform and build partner | Management | Only if the fallback is chosen and Quay is picked as its registry product |
 | Five RHEL 9 hosts, DNS names, internal-CA certificates and firewall flows | Infrastructure, network teams | Everything ([`PREREQUISITES.md`](PREREQUISITES.md)) |
-| Which datacenter holds the lab; how many clusters each production registry serves | Platform team | Registry layout; whether Step 3 is needed |
-| Monthly z-stream window | Platform team | All steps |
+| Which datacenter holds the lab; how many clusters each production registry serves | Platform team | Registry layout, fallback only |
+| Monthly z-stream window | Platform team | Either option |
 
 ## Diagram sources
 
-The figures are drawn in [`diagrams/three-steps/source.html`](diagrams/three-steps/source.html) and
-[`../oc-mirror-ansible/docs/diagrams/mirroring/source.html`](../oc-mirror-ansible/docs/diagrams/mirroring/source.html),
+The figures are drawn in [`diagrams/three-steps/source.html`](diagrams/three-steps/source.html),
+[`../oc-mirror-ansible/docs/diagrams/mirroring/source.html`](../oc-mirror-ansible/docs/diagrams/mirroring/source.html) and
+[`../enterprise-proxy-ansible/docs/diagrams/automation/source.html`](../enterprise-proxy-ansible/docs/diagrams/automation/source.html),
 and rendered to the PNGs beside them with [diagram-kit](https://github.com/ephico2real2/diagram-kit):
 
 ```sh
@@ -318,6 +513,8 @@ and rendered to the PNGs beside them with [diagram-kit](https://github.com/ephic
   three-steps,decision,retrofit,quay-sync
 .venv/bin/diagram-render oc-mirror-ansible/docs/diagrams/mirroring/source.html oc-mirror-ansible/docs/diagrams/mirroring \
   run-flow,network-routes,upgrade-path-runs
+.venv/bin/diagram-render enterprise-proxy-ansible/docs/diagrams/automation/source.html enterprise-proxy-ansible/docs/diagrams/automation \
+  run-flow,update-flow
 ```
 
 A figure, its text twin and its page change together. The Word copy embeds the light PNGs.

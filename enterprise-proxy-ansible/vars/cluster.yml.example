@@ -1,0 +1,64 @@
+# One file per cluster, kept out of Git (vars/cluster-<name>.yml) and passed with -e @vars/cluster-<name>.yml.
+# Everything here is from docs/enterprise-proxy/README.md, phase by phase. Nothing in this file is a secret:
+# the Red Hat pull secret stays in the Vault file of the mirroring playbooks (pull_secret_file).
+
+cluster_name: prod1                                   # used in the backup folder name only
+kubeconfig: ""                                        # empty: oc uses the current login
+oc_bin: oc
+
+# Phase 1: where the backup of every object this runbook changes is written (mode 0700, on the bastion only)
+backup_root: "~/retrofit-backups"
+
+# Phase 2: the Red Hat pull secret (Vault-encrypted, as oc-mirror-ansible uses it) and D3, telemetry
+pull_secret_file: "../oc-mirror-ansible/vars/redhat-pull-secret.json"
+telemetry_enabled: false                              # false: the cloud.openshift.com entry is dropped (D3)
+
+# Phase 3: allowedRegistries. Everything the platform pulls, plus what the phase 1 inventory shows.
+allowed_registries:
+  - quay.io/openshift-release-dev
+  - registry.redhat.io
+  - registry.access.redhat.com
+  - image-registry.openshift-image-registry.svc:5000
+  - registry-dc1.example.com:8443                     # the mirror registry, until phase 9
+remove_blocked_registries: false                      # true: an existing blockedRegistries list is removed first (the two cannot coexist)
+
+# Phase 4: the cluster-wide proxy
+proxy_url: "http://proxy.example.com:3128"            # http:// unless the proxy really speaks TLS on that port
+no_proxy:                                             # internal names by name; .domain covers subdomains (runbook, phase 4b)
+  - .apps.prod1.example.com
+  - api-int.prod1.example.com
+  - .example.com
+  - 10.10.0.0/16
+  - registry-dc1.example.com
+  - ldap.example.com
+  - vcenter.example.com
+readiness_endpoints:                                  # hosts on our allowlist; the docs' www.google.com would be denied
+  - https://mirror.openshift.com
+  - https://quay.io
+proxy_ca_file: "/etc/pki/corp/corp-proxy-ca.pem"     # the enterprise CA the proxy re-signs with (D4); "" if a public CA signs the proxy
+trusted_ca_configmap: user-ca-bundle
+mcp_wait_minutes: 240                                 # phase 4 drains and reboots every node, one pool at a time
+
+# Phase 5 (optional, off): EgressFirewall denying the proxy's IPs, only in the namespaces listed
+egress_firewall_namespaces: []
+proxy_ips: []                                         # each proxy IP, VIP and HA node, as /32
+
+# Phase 7: catalogs. Default sources to turn on, and the mirrored sources whose Subscriptions move
+default_catalog_sources:
+  - redhat-operators
+# - certified-operators                               # only if partner operators are used (registry.connect.redhat.com on the allowlist)
+mirrored_catalog_sources:
+  - cs-redhat-operator-index-v4-18
+subscription_target_source: redhat-operators
+subscription_manual_approval: true                    # set installPlanApproval Manual before moving a Subscription (the stock catalog may be newer)
+
+# Phase 8: the first connected update (update-playbook.yml)
+update_channel: ""                                    # e.g. eus-4.20, only when moving to 4.20; empty keeps the channel
+update_to: ""                                         # a version from the recommended list; empty: --to-latest
+update_wait_minutes: 360
+
+# Phase 9: remove the mirror (remove-mirror-playbook.yml)
+mirror_registry: "registry-dc1.example.com:8443"     # its pull-secret entry, allowedRegistries entry and CA key are removed
+mirror_ca_configmap_keys:                             # keys in the additionalTrustedCA ConfigMap that belong to the mirror
+  - registry-dc1.example.com..8443
+osus_namespace: openshift-update-service

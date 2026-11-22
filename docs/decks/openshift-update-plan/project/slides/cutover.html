@@ -1,0 +1,17 @@
+<section id="cutover" data-transition="fade" style="background:#F5F6F8;color:#18212C;font-family:'IBM Plex Sans', Arial, sans-serif;padding:128px 128px 160px;display:flex;flex-direction:column;gap:32px">
+<h2 style="font-size:64px;font-weight:700;line-height:1.1">Moving each cluster to its new registry</h2>
+<table style="font-size:26px;color:#18212C">
+<tr style="background:#E9EDF1"><th style="width:8%">#</th><th style="width:56%">Change</th><th style="width:36%">Effect on the nodes</th></tr>
+<tr><td>1</td><td>New registry's read account in the pull secret</td><td>None</td></tr>
+<tr style="background:#FFFFFF"><td>2</td><td>Trust the new registry's certificate</td><td>Watch in the lab</td></tr>
+<tr><td>3</td><td>New IDMS (digest mirrors)</td><td>None</td></tr>
+<tr style="background:#FFFFFF"><td>3b</td><td>New ITMS (tag mirrors), if written</td><td>Drain</td></tr>
+<tr><td>4–5</td><td>New catalogs; Update Service on the new registry</td><td>None</td></tr>
+<tr style="background:#FFFFFF"><td>6</td><td>One update with both registries configured</td><td>A normal update</td></tr>
+<tr><td>7</td><td>Delete the old ICSPs and catalogs</td><td>Drain, plan for a reboot</td></tr>
+<tr style="background:#FFFFFF"><td>8</td><td>Remove the old login and certificate</td><td>None</td></tr>
+</table>
+<p style="font-size:28px;line-height:1.4">Lab pair first. Assumed pairs: old lab to new lab, old DC1 to DC1, old DC2 to DC2 (to confirm).</p>
+<p style="position:absolute;left:128px;bottom:64px;width:1664px;font-size:24px;color:#58636F">Node effects from openshift-docs 4.22 · PREREQUISITES.md · 26</p>
+<aside>The old registries were filled with oc-mirror v1, so the clusters carry ICSP objects; oc-mirror v2 writes IDMS and ITMS instead. Steps 3b and 7 each drain the nodes, so plan a window for each.</aside>
+</section>

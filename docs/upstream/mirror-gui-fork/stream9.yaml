@@ -1,0 +1,32 @@
+# Lima VM on CentOS Stream 9 for testing the mirror-gui fork.
+#   limactl start --name=mirror-gui-stream9 docs/upstream/mirror-gui-fork/stream9.yaml
+#   limactl shell mirror-gui-stream9
+# vmType is left to Lima's default: vz on macOS, qemu (with KVM) on Linux.
+base: template://centos-stream-9
+cpus: 4
+memory: 8GiB
+disk: 60GiB
+# Only the repo is shared, read-only; the VM works on its own clone.
+mounts:
+- location: "~/openshift-upgrade"
+  writable: false
+# The web UI port is NOT forwarded to the host on purpose: the fix keeps it on the VM's
+# 127.0.0.1. Reach it with: ssh -F ~/.lima/mirror-gui-stream9/ssh.config -L 3000:127.0.0.1:3000 lima-mirror-gui-stream9
+portForwards:
+- guestPort: 3000
+  ignore: true
+provision:
+- mode: system
+  script: |
+    #!/bin/bash
+    set -eux -o pipefail
+    dnf -y install dnf-plugins-core epel-release
+    dnf -y module reset nodejs
+    dnf -y module enable nodejs:22
+    dnf -y install podman git jq python3 python3-pyyaml nodejs npm ShellCheck iproute nmap-ncat
+- mode: user
+  script: |
+    #!/bin/bash
+    set -eux -o pipefail
+    podman --version
+    node --version

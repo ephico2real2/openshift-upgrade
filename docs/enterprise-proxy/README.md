@@ -2,26 +2,48 @@
 
 | | |
 |---|---|
-| Status | Proposed runbook. Not run on any of our clusters, not approved by security |
+| Status | Documentation and teaching copy of the Step 2 conversion. The conversion is done by the Ansible playbooks in [`enterprise-proxy-ansible/`](../../enterprise-proxy-ansible/README.md), our north star; this document explains each phase for review and learning. Not run on any of our clusters. The platform owner's decision; the change is with security on [`THREAT-MODEL.md`](THREAT-MODEL.md), condition: applications cannot use the proxy by default; not yet approved |
 | Researched | 2026-10-07, against `openshift/openshift-docs` branches `enterprise-4.18`, `enterprise-4.21` and `enterprise-4.22`; earlier findings in [`openshift-update-egress.html`](../openshift-update-egress.html) (2026-09-25) |
 | Starting point | OpenShift 4.18.17 on `eus-4.18`, disconnected: IDMS/ITMS from oc-mirror pointing at the datacenter's mirror registry (`registry-dc1` in the examples), mirrored CatalogSources, a local OpenShift Update Service, default OperatorHub sources off |
-| Where commands run | The mirroring bastion of the cluster's datacenter ([`PREREQUISITES.md`](../PREREQUISITES.md)); it needs `oc`, `jq`, Ansible Vault and the cluster API on 6443 |
+| Where commands run | The mirroring bastion of the cluster's datacenter ([`PREREQUISITES.md`](../PREREQUISITES.md)); it needs `oc`, `jq`, Ansible Vault and the cluster API on 6443. The playbooks: [`enterprise-proxy-ansible/`](../../enterprise-proxy-ansible/README.md) |
 | End point | The cluster pulls images, the update graph and signatures from Red Hat through the corporate proxy. No mirror, no local Update Service, no two-headed DNS |
-| In the design docs | Option 1 ([`DESIGN-DECISIONS.md`](../DESIGN-DECISIONS.md)); this runbook is its rollout order, phase by phase |
+| In the design docs | Option 1 ([`DESIGN-DECISIONS.md`](../DESIGN-DECISIONS.md)); this document explains its rollout order, phase by phase; the playbooks run it |
 
 Step 1 ([`oc-mirror-ansible/`](../../oc-mirror-ansible/README.md)) still means we mirror everything
 ourselves. Step 2 removes the mirror: the cluster-wide `Proxy` resource sends the platform's
 traffic to the enterprise proxy, which lets through only Red Hat's documented hosts. Everything
 the cluster needs from Red Hat then arrives the same way a connected cluster gets it.
 
-**Red Hat has no single "disconnected to connected" procedure.** The closest document is the reverse
-("Converting a connected cluster to a disconnected cluster",
-`disconnected/connected-to-disconnected.adoc`), whose "Restoring the network" section deletes the
-mirror objects. This runbook puts that together with the documented proxy, pull secret, update
-server and OperatorHub procedures. Where a step rests on our own reading and not on a Red Hat
+**Red Hat's own steps for this direction** are in the Knowledgebase solution ["Converting a disconnected
+cluster to a connected cluster"](https://access.redhat.com/solutions/6966995) (solution 6966995, Solution Verified, updated 29 October 2025): turn the default OperatorHub
+sources back on (`disableAllDefaultSources: false`), check the CatalogSources, delete the
+ImageContentSourcePolicy for the internal registry, delete the mirrored CatalogSource, point each
+Subscription at `redhat-operators` (or `certified-operators`), and update the global pull secret; a
+community note adds the cluster-wide proxy, with its reboots, and the pull secret first. The product
+documentation has only the reverse ("Converting a connected cluster to a disconnected cluster",
+`disconnected/connected-to-disconnected.adoc`), whose "Restoring the network" section deletes the mirror
+objects. This runbook puts the solution's steps in a safe order (the proxy and the pull secret first, the
+mirror objects out only after a connected update worked) together with the documented proxy, pull secret,
+update server and OperatorHub procedures. Where a step rests on our own reading and not on a Red Hat
 sentence, it says so.
 
+**How we do it: Ansible.** The conversion is automated, as the mirroring is today. The playbooks in
+[`enterprise-proxy-ansible/`](../../enterprise-proxy-ansible/README.md) run phases 1 to 7
+(`retrofit-playbook.yml`, one tag per phase), phase 8 and every later hop (`update-playbook.yml`), phase 9
+(`remove-mirror-playbook.yml`) and the Verify table (`verify-playbook.yml`, the evidence file for security).
+This document is the explanation behind them, for review and teaching: what each phase does, why, in which
+order, with Red Hat's words. The commands shown are the ones the playbooks run; a phase is done by hand only
+to learn it in the lab, or in an emergency with the playbook's backup in hand.
+
 ## How it fits together
+
+The threat model of this design, with each flow, its caller and its control, is in
+[`THREAT-MODEL.md`](THREAT-MODEL.md).
+
+The phases below, and the updates that follow them, are to be run from Ansible, as the mirroring
+playbooks are today: the retrofit phase by phase, the hops themselves, the update service and registry
+settings, catalog gating through GitOps, and the Verify tests as evidence. Run the retrofit on 4.18 and
+before the updates: the hops to 4.20 and 4.22 then need no sync at all.
 
 ```text
 RED HAT          quay.io + CDN, registry.redhat.io, api.openshift.com, mirror.openshift.com
@@ -29,7 +51,7 @@ RED HAT          quay.io + CDN, registry.redhat.io, api.openshift.com, mirror.op
 ENTERPRISE PROXY allowlist of Red Hat hosts only; the firewall lets only the proxy out
                     ^ node IPs only (pod traffic leaves with the node IP too, see "Only core components")
 CLUSTER          Proxy CR -> CVO, CRI-O, OLM, Insights, image registry operator ...
-                 workload namespaces: no proxy variables + EgressFirewall denying the proxy
+                 workload namespaces: no proxy variables from the platform
                  allowedRegistries limits what any pod may pull
 ```
 
@@ -51,19 +73,19 @@ come out only after a connected update has worked.
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="../diagrams/three-steps/retrofit.dark.png">
   <source srcset="../diagrams/three-steps/retrofit.light.png">
-  <img alt="The Step 2 runbook converts a disconnected cluster in ten phases. Phases 0 to 3 touch no nodes beyond a CRI-O reload: approval, backup, the Red Hat pull secret and the image allowlist. Phase 4 turns on the cluster-wide proxy and drains and reboots every node. Phases 5 to 7 lock workloads out of the proxy, point update checks at Red Hat and move the operator catalogs, with no node effect. Phase 8 runs one update with the mirror still in place, and only then phase 9 removes the mirror, which drains the nodes again." src="../diagrams/three-steps/retrofit.light.png">
+  <img alt="Step 2 converts a disconnected cluster in ten phases, run by the Ansible playbooks. Phases 0 to 3 touch no nodes beyond a CRI-O reload: approval, backup, the Red Hat pull secret and the image allowlist. Phase 4 turns on the cluster-wide proxy and drains and reboots every node. Phase 5 is optional, since the proxy never reaches application pods; phases 6 and 7 point update checks at Red Hat and move the operator catalogs, with no node effect. Phase 8 runs one update with the mirror still in place, and only then phase 9 removes the mirror, which drains the nodes again." src="../diagrams/three-steps/retrofit.light.png">
 </picture>
 
-*Proposed runbook, not run on any cluster. The table below carries the same phases and node effects.*
+*The conversion as the playbooks run it; not run on any cluster yet. The table below carries the same phases and node effects.*
 
 | Phase | What | Node effect |
 |---|---|---|
 | 0 · Approve and prepare outside the cluster | Security sign-off, proxy allowlist, firewall, Red Hat credentials | None |
-| 1 · Back up and check | Save every object this runbook changes | None |
+| 1 · Back up and check | Save every object the conversion changes | None |
 | 2 · Pull secret | Merge Red Hat's pull secret into `openshift-config/pull-secret` | None ("without draining or rebooting the node") |
 | 3 · Image policy | `allowedRegistries` | CRI-O reload, no drain |
 | 4 · Proxy | `user-ca-bundle`, then `proxy/cluster` | **Drain and reboot, every node** |
-| 5 · Lock workloads out | EgressFirewall per workload namespace, project template | None |
+| 5 · Optional: keep workloads off the proxy | Only if security asks; app teams that already use the proxy must be excluded | None |
 | 6 · Update graph | Clear `spec.upstream`, keep the channel | None |
 | 7 · Catalogs | Default `redhat-operators` source back on, Subscriptions moved to it | None (operators may update) |
 | 8 · First connected update | One z-stream or the planned EUS update | Normal update |
@@ -73,10 +95,12 @@ Do it per cluster, lower environments first.
 
 ## Phase 0: approve and prepare outside the cluster
 
-1. **Security sign-off** on the host list below and on the controls in
+1. **Security sign-off** on the change, taken to security by the platform owner on the threat model
+   ([`THREAT-MODEL.md`](THREAT-MODEL.md)); the condition is that applications cannot use the proxy by
+   default (tests 6 and 8). Also the host list below and the controls in
    [`openshift-update-egress.html`](../openshift-update-egress.html), "Security controls for the
-   approval request". The open telemetry question (D3) and TLS interception question (D4) must be
-   answered before phase 2 and phase 4.
+   approval request". The open telemetry question (D3) must be answered before phase 2. TLS
+   inspection (D4) is answered: see item 4.
 2. **Firewall:** cluster nodes may reach the proxy and internal services only. Nothing goes out
    directly.
 3. **Proxy:** highly available. A proxy outage stops every image pull from Red Hat, so it needs the
@@ -89,6 +113,7 @@ Do it per cluster, lower environments first.
    | `registry.redhat.io` | Core images, operator catalogs and operator images | Always |
    | `api.openshift.com` | "API endpoint for cluster tokens and update checks" | Always |
    | `mirror.openshift.com` | Release signatures ("the Cluster Version Operator needs only a single functioning source") | Always |
+   | `storage.googleapis.com/openshift-release` | The other documented source of release signatures, same sentence | Not needed: the CVO tries it too, the proxy denies it, and `mirror.openshift.com` serves the signature. Expect that deny in the proxy logs (test 11) |
    | `quayio-production-s3.s3.amazonaws.com` | "Required to access Quay image content in AWS" | As listed; ask Red Hat whether on-prem needs it |
    | `console.redhat.com`, `sso.redhat.com` | Cluster tokens and authentication | Listed under updates; whether updates fail without them is unverified |
    | `registry.access.redhat.com`, `access.redhat.com` | Ecosystem Catalog images and their signature store | If anything pulls from that registry |
@@ -103,10 +128,16 @@ Do it per cluster, lower environments first.
    - **Proxy login:** prefer a proxy that admits the cluster's node subnets without a password. A
      user name and password in `httpProxy` are readable by anyone who can read `proxy/cluster`, and
      they end up in the environment of every platform pod.
-4. **TLS interception (D4):** until Red Hat Support answers, exempt the hosts above from
-   interception. If the proxy does intercept, the proxy's CA must go into `trustedCA` (phase 4)
-   and `sso.redhat.com` must not be re-encrypted (`modules/cluster-wide-proxy-preqs.adoc`, ROSA/OSD
-   context).
+4. **TLS inspection (D4), answered 2026-10-09:** the enterprise proxy inspects TLS to the Red Hat
+   hosts and re-signs it with the enterprise CA, and every node already carries the enterprise trust
+   bundle. The same CA must also be in `user-ca-bundle`, which `proxy/cluster` names in `trustedCA`
+   (phase 4a): Red Hat: that bundle "is merged with the RHCOS trust bundle and injected into the trust
+   store of platform components that make egress HTTPS calls"
+   (`security/certificate_types_descriptions/proxy-certificates.adoc`). Red Hat also says a proxy that
+   re-encrypts egress traffic must exclude `sso.redhat.com` from re-encryption
+   (`modules/cluster-wide-proxy-preqs.adoc`; the same table lists `observatorium-mst.api.openshift.com`,
+   managed-OpenShift telemetry). Payload integrity does not depend on TLS: the CVO checks GPG
+   signatures and CRI-O sigstore signatures.
 5. **Red Hat credentials:** a Registry Service Account for `registry.redhat.io` ("recommended… in
    place of an individual's Customer Portal credentials"), or the organisation's pull secret from
    `console.redhat.com`. Keep it Vault-encrypted as in Step 1 (`vars/redhat-pull-secret.json`).
@@ -250,6 +281,12 @@ oc patch image.config.openshift.io/cluster --type merge -p '{
   CRI-O reloads.
 - **Open question for Red Hat Support:** whether `quay.io/openshift-release-dev` covers everything a
   connected cluster pulls from `quay.io`. Watch for `ErrImagePull` with "not allowed" after phase 8.
+- **Stricter rule for applications (Kyverno):** this list has to include everything the platform
+  pulls. Kyverno's standard allowed-registries policy, in [`../image-policies/`](../image-policies/),
+  narrows application namespaces further at admission: the list is a ConfigMap in the cluster,
+  with an audit mode first and per-team exceptions. It adds to
+  `allowedRegistries` and does not replace it: admission never sees build `FROM` pulls, static pods
+  or pulls run on a node.
 
 ## Phase 4: the cluster-wide proxy (maintenance window)
 
@@ -327,18 +364,29 @@ oc debug $NODE -- chroot /host cat /etc/mco/proxy.env
 drain and reboot of every node. Changing `httpProxy`, `httpsProxy` or `noProxy` later reboots the
 nodes again; a `trustedCA`-only change restarts CRI-O.
 
-## Phase 5: only core components may use the proxy
+## Phase 5 (optional): keep workloads off the proxy
 
-The proxy cannot tell node traffic from pod traffic: OVN-Kubernetes sends pod egress out with the
-node's IP. Three layers keep application pods off it:
+**Our guarantee does not depend on this phase.** Red Hat: "The system-wide proxy affects system
+components only, not user workloads"
+([`enable-cluster-wide-proxy.adoc`](https://github.com/openshift/openshift-docs/blob/enterprise-4.18/networking/configuring_network_settings/enable-cluster-wide-proxy.adoc)).
+The platform never writes proxy variables into an application pod. Application teams are already
+allowed to set a proxy in their own deployments; when they do, it is their deliberate choice under
+our existing policy, not something the Proxy object does. So this is not a platform gap.
 
-| Layer | Control | Gap it closes |
+| Layer | Control | What it covers |
 |---|---|---|
-| Proxy settings | `proxy/cluster` sets proxy variables on platform components and OLM operators only | Pods don't use the proxy by default |
-| Network | EgressFirewall in every workload namespace denying the proxy's IPs | A pod that sets `HTTPS_PROXY` itself |
-| Image policy | `allowedRegistries` (phase 3) | A workload pulling arbitrary `quay.io` images: CRI-O pulls through the node proxy for every pod |
+| Proxy settings | `proxy/cluster` sets proxy variables on platform components and OLM operators only | Application pods get no proxy from the platform (the guarantee) |
+| Image policy | `allowedRegistries` (phase 3) | A workload pulling arbitrary `quay.io` images: CRI-O pulls through the node proxy for every pod; "Registries not in your allowlist are blocked" ([`images-configuration-allowed.adoc`](https://github.com/openshift/openshift-docs/blob/enterprise-4.18/modules/images-configuration-allowed.adoc)) |
+| Network (optional, this phase) | EgressFirewall denying the proxy's IPs | Only if security wants the platform proxy unusable by any pod |
 
-**EgressFirewall per workload namespace.** It must be named `default`; there can be only one per
+**Do not apply this phase as written if application teams use the same proxy today:** the
+EgressFirewall would cut them off. Prefer a separate proxy listener (or port) for the clusters'
+nodes, with its own allowlist of Red Hat hosts, as phase 0 suggests. Then application traffic and
+platform traffic are separated at the proxy, and nothing changes for the teams. Use the
+EgressFirewall below only for namespaces that must not use any proxy, and leave out every namespace
+whose team uses one.
+
+**EgressFirewall per workload namespace (optional).** It must be named `default`; there can be only one per
 namespace; it "does not apply to the host network namespace", so CRI-O and kubelet are unaffected.
 
 ```yaml
@@ -354,7 +402,7 @@ spec:
       cidrSelector: 10.20.0.15/32      # each proxy IP, including the VIP and every node of an HA proxy
 ```
 
-Apply it to every namespace that is not part of the platform:
+Apply it to the namespaces security names, skipping any whose team uses the proxy:
 
 ```bash
 for ns in $(oc get ns -o name | cut -d/ -f2 | grep -vE '^(openshift|kube-|default$)'); do
@@ -407,7 +455,8 @@ The signature ConfigMaps that Step 1 applied (`mirrored-release-signatures` in
 
 Today's Subscriptions point at the mirrored CatalogSources (`cs-redhat-operator-index-…`). Turn on
 the default Red Hat source only, move each Subscription to it, then delete the mirrored source in
-phase 9.
+phase 9. These are the Knowledgebase solution's steps; the solution turns all default sources on
+(`disableAllDefaultSources: false`), we enable only the approved ones.
 
 ```bash
 oc patch operatorhub cluster --type merge -p '{"spec":{"disableAllDefaultSources":true,"sources":[{"name":"redhat-operators","disabled":false}]}}'
@@ -491,13 +540,13 @@ watch oc get mcp
   from the `additionalTrustedCA` ConfigMap (and `updateservice-registry`), and the mirror's login
   from the pull secret (repeat the phase 2 commands with
   `jq 'del(.auths["registry-dc1.example.com:8443"])'`). Keep the mirror registries themselves until every
-  cluster has gone through this runbook.
+  cluster has gone through this conversion.
 - **Check a node again:** `registries.conf` should list no mirrors for `quay.io` or
   `registry.redhat.io`.
 
 ## Verify: only core components reach Red Hat
 
-Run these after phase 5 and again after phase 9; keep the output as evidence for security.
+Run these after phase 6 and again after phase 9; keep the output as evidence for security.
 
 | # | Test | Command | Expected |
 |---|---|---|---|
@@ -507,13 +556,14 @@ Run these after phase 5 and again after phase 9; keep the output as evidence for
 | 4 | Node has no direct route | `oc debug $NODE -- chroot /host curl -s -m 10 --noproxy '*' https://quay.io` | Times out |
 | 5 | Proxy allowlist holds | `oc debug $NODE -- chroot /host sh -c '. /etc/mco/proxy.env; curl -s -m 10 -o /dev/null -w "%{http_code}" -x $HTTPS_PROXY https://www.example.com'` | Denied (`403` or connection refused) |
 | 6 | A workload pod gets no proxy | in a test namespace: `oc run t --image=registry.redhat.io/ubi9/ubi-minimal --restart=Never -- sleep 600`, then `oc exec t -- env \| grep -i proxy` | Nothing |
-| 7 | A workload pod cannot use the proxy | `oc exec t -- curl -s -m 10 -x http://proxy.example.com:3128 https://quay.io` | Times out (EgressFirewall) |
+| 7 | Optional, only with phase 5: a workload pod cannot use the platform proxy | `oc exec t -- curl -s -m 10 -x http://proxy.example.com:3128 https://quay.io` | Times out (EgressFirewall); skip if phase 5 was not applied |
 | 8 | A workload pod cannot go direct | `oc exec t -- curl -s -m 10 https://quay.io` | Times out (firewall) |
 | 9 | Pulls outside the allowlist fail | `oc run t2 --image=quay.io/libpod/alpine:latest --restart=Never -- true; oc get pod t2` | `ErrImagePull`, "not allowed" in `oc describe` |
 | 10 | Platform still healthy | `oc get co` | All `Available=True`, none `Degraded` |
-| 11 | Proxy logs | Ask the network team for a week of the clusters' requests | Sources are node IPs only; destinations are on the allowlist; denies reviewed |
+| 11 | Proxy logs | Ask the network team for a week of the clusters' requests | Sources are node IPs only; destinations are on the allowlist; denies reviewed (the CVO's attempts on `storage.googleapis.com` are expected, phase 0) |
 
-Tests 6 to 9 need a namespace created the way users create them (so it gets the EgressFirewall).
+Tests 6 to 9 need a namespace created the way users create them, with no proxy set by us. Test 6
+is the guarantee: the platform injects nothing.
 Clean up with `oc delete pod t t2`.
 
 Red Hat documents tests 1, 2 and 10 (`modules/nw-verify-proxy-configuration.adoc`; its CVO log
@@ -523,9 +573,11 @@ our own.
 
 ## Still open
 
-- **Security:** approval of the host list, node egress through the proxy, and D3 (telemetry).
+- **Security:** approval of the change on the threat model (the condition: applications cannot use the
+  proxy by default, tests 6 and 8), the host list, and D3 (telemetry).
 - **Red Hat Support case:**
-  - TLS interception (D4).
+  - Whether Red Hat supports TLS inspection of `quay.io` and `registry.redhat.io` traffic (D4 is
+    decided on our side; Red Hat's position is not verified).
   - Whether updates need `console.redhat.com`/`sso.redhat.com`, and whether on-prem clusters need
     `quayio-production-s3.s3.amazonaws.com`.
   - Whether `allowedRegistries: quay.io/openshift-release-dev` is enough.
@@ -557,6 +609,9 @@ Read from [`openshift/openshift-docs`](https://github.com/openshift/openshift-do
 - Sigstore: 4.21 `modules/rn-ocp-release-notes-new-features.adoc`, 4.22
   `modules/nodes-sigstore-configure-cluster-policy.adoc`, 4.20 `modules/update-preparing-ack-sigstore.adoc`,
   4.22 `modules/zstream-4-22-16.adoc`
+- Red Hat Knowledgebase: ["Converting a disconnected cluster to a connected cluster"](https://access.redhat.com/solutions/6966995)
+  (solution 6966995, Solution Verified, updated 29 October 2025; the OperatorHub, CatalogSource, ICSP, Subscription and pull
+  secret steps, and the community note on the proxy)
 - Earlier research (2026-09-25): [`openshift-update-egress.html`](../openshift-update-egress.html) for
   the DNS conditions, node effects and security controls
 
