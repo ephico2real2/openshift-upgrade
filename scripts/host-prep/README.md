@@ -6,7 +6,7 @@ bastion. See [`docs/PREREQUISITES.md`](../../docs/PREREQUISITES.md) for what eac
 | Script | What it does |
 |---|---|
 | [`install-podman.sh`](install-podman.sh) | Installs Podman and sets the rootless network command, per Red Hat "Configure rootless Podman networking" |
-| [`install-cli-tools.sh`](install-cli-tools.sh) | Installs `tmux` with `dnf`, and `oc`, `kubectl` and `oc-mirror` from the Red Hat tarballs in a tools folder |
+| [`install-cli-tools.sh`](install-cli-tools.sh) | Installs `tmux`, `ansible-core` and `jq` with `dnf`, and `oc`, `kubectl` and `oc-mirror` from the Red Hat tarballs in a tools folder |
 | [`install-mirror-registry.sh`](install-mirror-registry.sh) | Installs the mirror registry for Red Hat OpenShift, with all its data in one folder |
 
 Run them in the order of this table. [`INSTALL.md`](INSTALL.md) gives the full procedure. It has the commands and
@@ -107,7 +107,8 @@ matters on hosts without a default route.
 
 ## install-cli-tools.sh
 
-This script installs `tmux` with `dnf`. Then it installs `oc` and `kubectl` from the OpenShift client tarball, and
+This script installs `tmux`, `ansible-core` and `jq` with `dnf`. `ansible-core` gives `ansible-vault` and runs the
+playbooks in `oc-mirror-ansible/`, and `jq` reads the pull secret. Then it installs `oc` and `kubectl` from the OpenShift client tarball, and
 `oc-mirror` from its own tarball, into `/usr/local/bin`. If the SSH connection drops, a long job in `tmux`
 continues. It does not install the mirror registry. That tarball is installed in a separate
 step.
@@ -129,12 +130,14 @@ Copy the tarballs from `tools/` in this repository to the host. The folder is in
 root:
 
 ```bash
-rsync -a --chown=root:root --exclude .DS_Store tools/ root@<host>:/root/tools/
+rsync -a --exclude .DS_Store --exclude pull-secret.txt tools/ root@<host>:/root/tools/
+ssh root@<host> 'chown -R root:root /root/tools'
 scp scripts/host-prep/install-cli-tools.sh root@<host>:/root/
 ssh root@<host> 'bash /root/install-cli-tools.sh'
 ```
 
-The `--chown` option sets the owner to root. Without it, `rsync -a` keeps the user ID of your Mac.
+`rsync -a` keeps the user ID of your Mac, so the `chown` command sets the owner to root. The `rsync` of macOS is
+`openrsync`, which does not support `--chown`.
 
 To use other paths, set the variables:
 
@@ -155,7 +158,7 @@ content, `install -C` does not replace it.
 To install by hand, run these commands as root. They do the same steps as the script.
 
 ```bash
-dnf install -y tmux
+dnf install -y tmux ansible-core jq
 
 TOOLS_DIR=/root/tools
 BIN_DIR=/usr/local/bin
@@ -283,9 +286,21 @@ The dry run ran on 2026-11-22 on the same Rocky Linux 9.9 server. The real insta
 | `SSL_CERT` without `SSL_KEY` | `ERROR: set both SSL_CERT and SSL_KEY to existing files, or neither` |
 | After all dry runs | `/registry-data` did not exist |
 
-### Open points
+### Results of the first install
 
-- SELinux is permissive on the test server. Nobody checked yet whether the installer labels the folders in
-  `/registry-data` for containers. Check this before you set SELinux to enforcing.
-- The installer connects over SSH with the key `~/.ssh/quay_installer`, per its `install --help`. Nobody checked yet
-  what it adds to `~/.ssh/authorized_keys` of root. After the install, read that file and record the result here.
+The first real install ran on 2026-11-22 on the test server, with `QUAY_HOSTNAME=kcs-ewd-registry.getsolisvault.com`.
+
+| Item | Result |
+|---|---|
+| Installer | `failed=0`, `Quay installed successfully, config data is stored in /registry-data/quay-install` |
+| Health | `https://kcs-ewd-registry.getsolisvault.com:8443/health/instance` returned HTTP 200 |
+| Data | `podman volume ls` showed no volumes. `quay-app` mounts `/registry-data/quay-storage`, `/registry-data/sqlite-storage` and `/registry-data/quay-install/quay-config` |
+| Certificates | `quay-rootCA/rootCA.pem`, valid until 2029-09-11. `quay-config/ssl.cert` for `DNS:kcs-ewd-registry.getsolisvault.com`, valid until 2027-11-13 |
+| SELinux | The installer labels the three mounted folders `container_file_t` with private categories (`s0:c93,c897` on the test server). The audit log had 0 AVC denials, in permissive mode |
+| SSH | The installer made the RSA key `/root/.ssh/quay_installer` and added its public key to `/root/.ssh/authorized_keys` of root |
+
+Do not run `restorecon -R` on `/registry-data`. The folder has no rule in the SELinux policy, so `restorecon` replaces
+the labels of the installer with `default_t`. In enforcing mode, Quay then cannot read its data.
+
+The key `quay_installer` gives SSH access as root on this host. The installer uses it for `mirror-registry upgrade`
+and `uninstall` too. Keep it, or remove its line from `authorized_keys` and add it again before the next upgrade.
