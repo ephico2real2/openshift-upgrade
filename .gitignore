@@ -1,5 +1,7 @@
 .DS_Store
 node_modules/
+# Red Hat downloads and the pull secret: large binaries and a credential, never committed
+tools/
 # the pinned diagram-kit install (docs/PROBLEM-STATEMENT.md, Diagram sources)
 .venv/
 # ansible-lint and galaxy caches
@@ -8,3 +10,6 @@ node_modules/
 enterprise-proxy-ansible/vars/cluster*.yml
 !enterprise-proxy-ansible/vars/cluster.yml.example
 retrofit-backups/
+
+# Session handover notes of Claude Code, local only.
+claude-resumes/

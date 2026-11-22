@@ -36,6 +36,7 @@ Every step needs the new hosts first: a mirroring bastion in each datacenter and
 | [`docs/image-policies/`](docs/image-policies/) | Kyverno's standard allowed-registries policy for application pods, the list kept in a ConfigMap in the cluster, on top of `allowedRegistries`; with its tests |
 | [`docs/catalog-policies/`](docs/catalog-policies/) | ValidatingAdmissionPolicy, Kyverno and Gatekeeper rules for operator catalogs, with their tests |
 | [`enterprise-proxy-ansible/`](enterprise-proxy-ansible/README.md) | How we do Step 2 (the north star): Ansible playbooks that retrofit a cluster to the proxy phase by phase, run the updates with the signature check, remove the mirror, and write the Verify evidence; tested offline against a stand-in cluster |
+| [`scripts/host-prep/`](scripts/host-prep/README.md) | Scripts that prepare a RHEL 9 host and install the mirror registry. The procedure is in [`INSTALL.md`](scripts/host-prep/INSTALL.md) |
 | [`oc-mirror-ansible/`](oc-mirror-ansible/README.md) | How we mirror today: oc-mirror v2 Ansible playbooks and step-by-step guides for release images (4.18 → 4.20 → 4.22, Update Service) and operator catalogs |
 
 The figures are rendered with [diagram-kit](https://github.com/ephico2real2/diagram-kit) (MPL-2.0), which checks

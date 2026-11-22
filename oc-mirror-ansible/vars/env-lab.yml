@@ -1,0 +1,7 @@
+# The Hetzner lab (scripts/host-prep/INSTALL.md). No secrets: see vars/env.yml.example.
+# Use with: ansible-playbook playbook.yml --ask-vault-pass -e @vars/env-lab.yml ...
+
+base_path: "/registry-data/oc-mirror"                           # this host has no /data
+oc_mirror_bin: "/usr/local/bin/oc-mirror"                       # install-cli-tools.sh installs it here
+target_registry_fqdn: "kcs-ewd-registry.getsolisvault.com:8443"
+mirror_namespace: "ocp4v2"                                      # change to the organization name used at work
