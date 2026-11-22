@@ -21,7 +21,8 @@ The examples use the test server of 2026-11-22: Rocky Linux 9.9 at Hetzner, with
 | 10 | Host and workstation | Makes sure that the registry works |
 | 11 | Your workstation | Copies the repository and the pull secret to the host |
 | 12 | Host | Encrypts the pull secret with Ansible Vault |
-| 13 | On the host with the real pull secret (plain file, before step 12), by the operator on 2026-11-22: the auth file had the four Red Hat logins of the pull secret plus `kcs-ewd-registry.getsolisvault.com:8443`. Before that, with a dummy pull secret: the `email` fields were dropped, mode `600`, and `oc image info` gave `unauthorized` with no login. `oc image info` with the real file and `oc-mirror` did not run yet |
+| 13 | Host | Uses the pull secret for an `oc-mirror` run |
+| 14 | Host | Prepares the playbooks in `oc-mirror-ansible/` and does a dry run |
 
 The details of each script are in [`README.md`](README.md).
 
@@ -472,7 +473,8 @@ jq -r '.auths | keys[]' "$PULL_SECRET"
 The output must include `quay.io` and `registry.redhat.io`. A `jq` parse error means that the file is damaged.
 Download it again from https://console.redhat.com/openshift/install/pull-secret.
 
-Choose a Vault password, and keep it in your password manager first. If you lose it, nobody can open the file. Then
+Choose a Vault password, and keep it in your password manager first. If you lose it, nobody can open the file. Step
+14 uses the same password for the second Vault file. Then
 encrypt the pull secret. When `ansible-vault` asks for the password, enter it two times:
 
 ```bash
@@ -616,6 +618,103 @@ file, and `podman pull` uses it too. `--authfile` makes the choice visible in th
 The clusters never get the Red Hat pull secret. They get a read-only robot account of this registry, as
 [`docs/PREREQUISITES.md`](../../docs/PREREQUISITES.md) describes.
 
+## 14. Prepare the playbooks and do a dry run
+
+The playbooks in `oc-mirror-ansible/` do not use `AUTH_FILE` from step 13. Each run makes its own auth file from two
+Vault files and gives it to `oc-mirror`. At the end of the run, also after a failure, the playbook deletes the file. `playbook.yml` needs four
+things on the host before the first run:
+
+| Item | Why |
+|---|---|
+| `vars/redhat-pull-secret.json` | The encrypted pull secret. Step 12 makes it |
+| `vars/credentials.yml` | The encrypted login of this registry: `target_registry_user` and `target_registry_password` |
+| An `oc-mirror` file in the playbook folder | The playbook runs `{{ playbook_dir }}/oc-mirror`, not `/usr/local/bin/oc-mirror` |
+| Two path overrides | `base_path` is `/data/oc-mirror` by default, and this host has no `/data`. `target_registry_fqdn` is `registry-lab.example.com:8443` by default |
+
+Git ignores `vars/credentials.yml`, `vars/redhat-pull-secret.json` and `oc-mirror`, as `oc-mirror-ansible/.gitignore`
+shows.
+
+### Set the paths
+
+On the host, run:
+
+```bash
+PLAYBOOK_DIR=/root/openshift-upgrade/oc-mirror-ansible
+BASE_PATH=/registry-data/oc-mirror
+REGISTRY=kcs-ewd-registry.getsolisvault.com:8443
+cd "$PLAYBOOK_DIR"
+```
+
+`BASE_PATH` keeps the mirror data on the same file system as the registry data. The playbook makes the folders under
+it.
+
+### Make the Vault file of the registry login
+
+Use the same Vault password as in step 12. `--ask-vault-pass` asks for one password, and that password must open both
+files. This command reads the `init` password from the install log, so the password does not show on the screen:
+
+```bash
+grep -o 'credentials (init, [^)]*' /registry-data/install-*.log | sed 's/.*, //' | { read -r pw; printf 'target_registry_user: "init"\ntarget_registry_password: "%s"\n' "$pw"; } | ansible-vault encrypt --output vars/credentials.yml
+```
+
+`ansible-vault` asks for the new Vault password two times. Then make sure that the file is encrypted and correct:
+
+```bash
+head -1 vars/credentials.yml
+stat -c '%a %n' vars/credentials.yml
+ansible-vault view vars/credentials.yml | sed 's/password: .*/password: <hidden>/'
+```
+
+| Command | Expected output |
+|---|---|
+| `head` | `$ANSIBLE_VAULT;1.1;AES256` |
+| `stat` | `600 vars/credentials.yml` |
+| `ansible-vault view` | `target_registry_user: "init"` and `target_registry_password: <hidden>` |
+
+`init` is the first user of the registry, with full rights. For the lab test, it is the login. Before production, use
+a robot account with push rights on one organization only, as
+[`docs/PREREQUISITES.md`](../../docs/PREREQUISITES.md) describes.
+
+### Link the oc-mirror binary
+
+```bash
+ln -s /usr/local/bin/oc-mirror "$PLAYBOOK_DIR/oc-mirror"
+ls -l "$PLAYBOOK_DIR/oc-mirror"
+```
+
+`ls` must show `oc-mirror -> /usr/local/bin/oc-mirror`. With a link, step 5 stays the only step that installs
+`oc-mirror`.
+
+### Do the dry run
+
+Start a `tmux` session first, as in step 6. Then run:
+
+```bash
+ansible-playbook playbook.yml --ask-vault-pass -e base_path="$BASE_PATH" -e target_registry_fqdn="$REGISTRY" -e oc_mirror_dry_run=true
+```
+
+The default workflow is `m2d` (mirror to disk). It reads from Red Hat and writes an archive under `$BASE_PATH`. It
+does not push to the registry. With `oc_mirror_dry_run=true`, `oc-mirror` copies no images. It only lists them.
+
+The run must end with `failed=0` in `PLAY RECAP`. Then look at the results:
+
+```bash
+cat "$BASE_PATH/imagesets/archive.yaml"
+ls "$BASE_PATH/archive/working-dir/dry-run/"
+ls -la "$BASE_PATH/private/"
+```
+
+The ImageSet must show the channel `eus-4.18`, `minVersion: 4.18.17` and `maxVersion: 4.18.17`, `graph: true`, and
+the `cincinnati-operator` package from `redhat-operator-index:v4.18`. These are the defaults in `playbook.yml`. The
+release guide says that the dry run writes `mapping.txt` and `missing.txt` in `working-dir/dry-run/`. `mapping.txt`
+lists the images, and `missing.txt` lists the images that `oc-mirror` cannot get. `private/` must be empty, because the
+playbook deleted the auth file.
+
+For the real runs after the dry run, read
+[`oc-mirror-ansible/docs/release-mirroring-guide.md`](../../oc-mirror-ansible/docs/release-mirroring-guide.md). A push
+to this registry (`d2m` or `m2m`) also needs the organization `ocp4v2` in Quay, because the playbook pushes to
+`$REGISTRY/ocp4v2`.
+
 ## Replace the TLS certificate later
 
 You can replace the certificate after the install with `mirror-registry upgrade`. In version 2.0.13, `upgrade` has the
@@ -677,7 +776,8 @@ Sources:
 | 10 | Yes for the units, the pod, `/health/instance` (HTTP 200), no named volumes, and the three mounts. A trusted `podman login` on the host passed with `rootCA.pem` as `ca.crt` (temporary `--cert-dir`), and failed with `certificate signed by unknown authority` without it. The operator saw the same error before the `certs.d` step |
 | 11 | The `rsync` of the whole repository, as a dry run from macOS with `-v`: 742 entries, 48 MB, no top-level `tools/`, no `pull-secret.txt`, `docs/tools/` kept. The `scp` of the pull secret did not run |
 | 12 | Yes, in a Rocky Linux 9 container with a dummy pull secret, `ansible-core-2.14.18-5.el9` and `jq-1.6-21.el9_9`. The Vault file had mode `600` and the header `$ANSIBLE_VAULT;1.1;AES256` |
-| 13 | The auth file from the Vault file, in the same container, with mode `600`. `podman login` and `oc-mirror` did not run |
+| 13 | On the host with the real pull secret (plain file, before step 12), by the operator on 2026-11-22: the auth file had the four Red Hat logins of the pull secret plus `kcs-ewd-registry.getsolisvault.com:8443`. Before that, with a dummy pull secret: the `email` fields were dropped, mode `600`, and `oc image info` gave `unauthorized` with no login. `oc image info` with the real file and `oc-mirror` did not run yet |
+| 14 | In a Rocky Linux 9 container with `ansible-core`, the real playbook, a stand-in `oc-mirror` script, a test pull secret and a `--vault-password-file`: `failed=0`. The stand-in received `--authfile $BASE_PATH/private/mirroring.json` (mode `600`, with the registry and the Red Hat logins), `--dry-run` and `file://$BASE_PATH/archive`. The auth file was gone after the run. The `credentials.yml` command ran on a terminal (`script` pty): two password prompts, `Encryption successful`, mode `600`. The real `oc-mirror` and the dry-run lists did not run yet |
 | Replace the TLS certificate | Not yet. Only the flags were read from `mirror-registry upgrade --help` of 2.0.13 |
 
 On the test server, the install made `/registry-data/quay-install/quay-rootCA/rootCA.pem`, valid until 2029-09-11,
