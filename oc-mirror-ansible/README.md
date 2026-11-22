@@ -44,6 +44,7 @@ production mirror registries they push to.
 | `vars/env.yml.example` | Values of one environment, no secrets: `base_path`, `oc_mirror_bin`, `target_registry_fqdn`, `mirror_namespace`. Pass a copy to every run with `-e @vars/env-<name>.yml` |
 | `vars/env-lab.yml` | The environment file of the Hetzner lab ([`scripts/host-prep/INSTALL.md`](../scripts/host-prep/INSTALL.md), step 14) |
 | [`docs/cluster-inventory.md`](docs/cluster-inventory.md) | Cheat sheet: read-only `oc` commands that list a cluster's version, mirrors, organizations, catalogs and operators, and where each result goes in the vars files |
+| [`scripts/catalog-inventory.py`](scripts/catalog-inventory.py) | Lists the packages, channels and versions of a catalog copied out of its image, and marks each channel that fails the check of `oc-mirror`. Use it when `oc-mirror list operators` rejects a catalog |
 
 Not in Git (see `.gitignore`): `vars/credentials.yml`, `vars/registry-*.yml`, `vars/redhat-pull-secret.json`, the
 `oc-mirror` binary. Create them on the mirror host as the release guide describes.

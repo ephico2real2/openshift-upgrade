@@ -146,6 +146,61 @@ that is the same file as `AUTH_FILE` above.
 A package that the cluster's catalog serves must also be in Red Hat's catalog of the same version. Otherwise the new
 mirror cannot get it from Red Hat.
 
+### If oc-mirror refuses the catalog
+
+`oc-mirror` checks the update paths of every package before it lists anything. If one package fails the check, it
+refuses the whole catalog. In the lab, on 2026-11-22, `redhat-operator-index:v4.18` failed this way:
+
+```text
+[ERROR]  : [Executor] failed to load catalog: failed to load catalog model: invalid index:
+└── invalid package "skupper-operator":
+    ├── invalid channel "alpha":
+    │   └── channel contains one or more stranded bundles: skupper-operator.v1.2.2, ...
+```
+
+The same error on the 4.20 catalog is [skupper-operator issue #68](https://github.com/skupperproject/skupper-operator/issues/68).
+`oc-mirror` has no flag that skips one package. Instead, copy the catalog files out of the image and read them with
+[`../scripts/catalog-inventory.py`](../scripts/catalog-inventory.py). The script reports a problem on the line of its
+channel and goes on.
+
+On the host, set the paths:
+
+```bash
+CATALOG_IMAGE=registry.redhat.io/redhat/redhat-operator-index:v4.18
+OUT=/registry-data/oc-mirror/catalogs/redhat-operator-index-v4.18
+mkdir -p "$OUT"
+```
+
+Copy the files out of the image. `podman create` makes a container that does not start, so the image needs no tools of
+its own:
+
+```bash
+podman pull "$CATALOG_IMAGE"
+podman image inspect "$CATALOG_IMAGE" --format '{{ index .Config.Labels "operators.operatorframework.io.index.configs.v1" }}'
+ctr=$(podman create "$CATALOG_IMAGE")
+podman cp "$ctr":/configs "$OUT/configs"
+podman rm "$ctr"
+ls "$OUT/configs" | wc -l
+```
+
+The `inspect` command must print `/configs`, the folder of the catalog files in the image. If it prints another path,
+use that path in `podman cp`. `ls` counts the packages, one folder each.
+
+Then list the packages, channels and versions:
+
+```bash
+python3 /root/openshift-upgrade/oc-mirror-ansible/scripts/catalog-inventory.py "$OUT/configs" > "$OUT/inventory.txt"
+grep '^skupper-operator ' "$OUT/inventory.txt"
+grep ' problem=' "$OUT/inventory.txt" | cut -d' ' -f1,2,6 | cut -c1-120
+```
+
+Each line of `inventory.txt` is `<package> <channel> default|- head=<version> versions=<v1>,<v2>,...`. A channel that
+fails the check of `oc-mirror` also gets `problem=stranded:...`, `problem=multiple-heads:...`, `problem=no-head` or
+`problem=cycle:...`. The script uses the rules of `Channel.Head` and `validateReplacesChain` in
+[operator-registry](https://github.com/operator-framework/operator-registry/blob/main/alpha/model/model.go), the
+library that loads catalogs for `oc-mirror`. It reads `catalog.json` and `catalog.yaml` files. It needs Python 3 and
+PyYAML, which `ansible-core` installs.
+
 ## 5. Installed operators
 
 ```bash
@@ -189,4 +244,10 @@ each form and what it mirrors.
 
 The `oc` commands were tested on a kind cluster with stand-in versions of the OpenShift and OLM objects, not on an
 OpenShift cluster. For `oc-mirror --v2 list operators`, `--catalogs --version=4.18` ran in the lab with `oc-mirror` 2.0.0
-and gave the output above. The forms with `--catalog`, `--package` and `--channel` did not run yet.
+and gave the output above. The form with `--catalog` failed on `redhat-operator-index:v4.18`, as "If oc-mirror refuses the catalog" shows.
+
+`catalog-inventory.py` was tested in a Rocky Linux 9 container (Python 3.9.25, PyYAML 5.4.1). Four test channels gave
+the result that `Channel.Head` and `validateReplacesChain` require: a valid channel, a stranded bundle, two heads and a
+cycle. The public catalog `quay.io/operatorhubio/catalog` was copied out with `podman cp`. From its YAML files, the script
+read 475 packages and 741 channels, and found 5 channels with stranded bundles. It did not run on the Red Hat catalog yet, and
+`opm validate` was not used as a second check.
