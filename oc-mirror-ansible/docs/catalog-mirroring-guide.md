@@ -324,6 +324,9 @@ The playbook stops before doing anything if no catalog list is passed, or if a c
 
     # Working directories on the data volume (Step 2)
     base_path: "/data/oc-mirror"
+    # The oc-mirror binary. The default is the copy beside the playbooks (Step 2);
+    # an environment file (vars/env.yml.example) can point to another path.
+    oc_mirror_bin: "{{ playbook_dir }}/oc-mirror"
 
     # Workflow (docs/PREREQUISITES.md, "Order of a mirroring cycle"):
     #   m2d = Red Hat -> archive on disk; uses and fills the cache, so later runs fetch only changes
@@ -445,7 +448,7 @@ The playbook stops before doing anything if no catalog list is passed, or if a c
 
         - name: Execute oc-mirror v2 for catalogs (retried on failure)
           ansible.builtin.command: >
-            {{ playbook_dir }}/oc-mirror --v2
+            {{ oc_mirror_bin }} --v2
             --authfile {{ auth_file_path }}
             --cache-dir {{ cache_path }}
             {{ oc_mirror_tuning }}

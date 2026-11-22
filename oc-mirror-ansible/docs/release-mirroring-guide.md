@@ -512,6 +512,9 @@ Before the first run, compare `oc_mirror_tuning` with the flag list you saved in
 
     # Working directories on the data volume (Step 2)
     base_path: "/data/oc-mirror"
+    # The oc-mirror binary. The default is the copy beside the playbooks (Step 2);
+    # an environment file (vars/env.yml.example) can point to another path.
+    oc_mirror_bin: "{{ playbook_dir }}/oc-mirror"
 
     # Workflow (docs/PREREQUISITES.md, "Order of a mirroring cycle"):
     #   m2d = Red Hat -> archive on disk; uses and fills the cache, so later runs fetch only changes
@@ -630,7 +633,7 @@ Before the first run, compare `oc_mirror_tuning` with the flag list you saved in
 
         - name: Execute oc-mirror v2 (retried on failure)
           ansible.builtin.command: >
-            {{ playbook_dir }}/oc-mirror --v2
+            {{ oc_mirror_bin }} --v2
             --authfile {{ auth_file_path }}
             --cache-dir {{ cache_path }}
             {{ oc_mirror_tuning }}
@@ -756,6 +759,7 @@ Variables you can override with `-e`:
 | `mirror_update_service` | `true` | Build the update graph and mirror the OSUS operator |
 | `osus_operator_package` | `cincinnati-operator` | OSUS operator package name in the catalog (Step 4) |
 | `base_path` | `/data/oc-mirror` | Parent of the archives, cache, ImageSets, cluster resources and private folder |
+| `oc_mirror_bin` | `<playbook folder>/oc-mirror` | The `oc-mirror` binary that the playbook runs. Set it in the environment file when `oc-mirror` is installed elsewhere, for example `/usr/local/bin/oc-mirror` |
 | `oc_mirror_tuning` | 4 images, 4 layers, 30 min per image, 5 retries | oc-mirror's own download settings |
 | `oc_mirror_retries` | `3` | Extra full attempts after a failed run |
 | `oc_mirror_retry_delay` | `120` | Seconds to wait between attempts |
