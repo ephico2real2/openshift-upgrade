@@ -1,4 +1,6 @@
 .DS_Store
 node_modules/
+# Red Hat downloads and the pull secret: large binaries and a credential, never committed
+tools/
 # the pinned diagram-kit install (docs/PROBLEM-STATEMENT.md, Diagram sources)
 .venv/
