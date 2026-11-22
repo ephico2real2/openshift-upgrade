@@ -21,7 +21,7 @@ The examples use the test server of 2026-11-22: Rocky Linux 9.9 at Hetzner, with
 | 10 | Host and workstation | Makes sure that the registry works |
 | 11 | Your workstation | Copies the repository and the pull secret to the host |
 | 12 | Host | Encrypts the pull secret with Ansible Vault |
-| 13 | On the host with a dummy pull secret: `podman login --authfile` added the registry entry and kept `quay.io` and `registry.redhat.io`, mode `600`, `email` fields dropped. `oc image info` read a public image, and gave `unauthorized` for `registry.redhat.io` with no login. The real pull secret and `oc-mirror` did not run yet |
+| 13 | On the host with the real pull secret (plain file, before step 12), by the operator on 2026-11-22: the auth file had the four Red Hat logins of the pull secret plus `kcs-ewd-registry.getsolisvault.com:8443`. Before that, with a dummy pull secret: the `email` fields were dropped, mode `600`, and `oc image info` gave `unauthorized` with no login. `oc image info` with the real file and `oc-mirror` did not run yet |
 
 The details of each script are in [`README.md`](README.md).
 
@@ -572,6 +572,33 @@ oc image info --registry-config "$AUTH_FILE" --filter-by-os linux/amd64 registry
 | `oc image info` | A `Name:` line and a `Digest:` line. The command reads the image details and downloads no image |
 
 If the pull secret is not valid, `oc image info` shows `unauthorized: Please login to the Red Hat Registry`.
+
+To make sure that the auth file is the combined file, compare its logins with the logins of the pull secret:
+
+```bash
+jq -r '.auths | keys[]' "$PULL_SECRET"
+jq -r '.auths | keys[]' "$AUTH_FILE"
+```
+
+The auth file must have every login of the pull secret, plus the registry. In the lab, the output was:
+
+```text
+[root@kcs-ewd-registry ~]# jq -r '.auths | keys[]' "$PULL_SECRET"
+cloud.openshift.com
+quay.io
+registry.connect.redhat.com
+registry.redhat.io
+[root@kcs-ewd-registry ~]# jq -r '.auths | keys[]' "$AUTH_FILE"
+cloud.openshift.com
+kcs-ewd-registry.getsolisvault.com:8443
+quay.io
+registry.connect.redhat.com
+registry.redhat.io
+```
+
+The four Red Hat logins are in both lists, and `kcs-ewd-registry.getsolisvault.com:8443` is only in the auth file.
+After step 12, `PULL_SECRET` no longer exists. Then compare with `ansible-vault view "$VAULT_FILE" | jq -r '.auths |
+keys[]'`.
 
 ### Run oc-mirror and delete the auth file
 
