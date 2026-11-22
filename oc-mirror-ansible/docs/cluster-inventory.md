@@ -129,6 +129,20 @@ oc-mirror --v2 list operators --authfile "$AUTH_FILE" --catalogs --version=4.18
 oc-mirror --v2 list operators --authfile "$AUTH_FILE" --catalog=registry.redhat.io/redhat/redhat-operator-index:v4.18
 ```
 
+In the lab, on 2026-11-22, the first command printed:
+
+```text
+Available OpenShift OperatorHub catalogs:
+OpenShift 4.18:
+registry.redhat.io/redhat/redhat-operator-index:v4.18
+registry.redhat.io/redhat/certified-operator-index:v4.18
+registry.redhat.io/redhat/community-operator-index:v4.18
+registry.redhat.io/redhat/redhat-marketplace-index:v4.18
+```
+
+Without `--authfile`, `oc-mirror` reads `${XDG_RUNTIME_DIR}/containers/auth.json`, as its `--help` shows. For root,
+that is the same file as `AUTH_FILE` above.
+
 A package that the cluster's catalog serves must also be in Red Hat's catalog of the same version. Otherwise the new
 mirror cannot get it from Red Hat.
 
@@ -174,5 +188,5 @@ table "Choosing what each package entry mirrors" in [`catalog-mirroring-guide.md
 each form and what it mirrors.
 
 The `oc` commands were tested on a kind cluster with stand-in versions of the OpenShift and OLM objects, not on an
-OpenShift cluster. For the `oc-mirror --v2 list operators` commands, only the flags were checked, with `--help` of
-`oc-mirror` 2.0.0. They did not run against a catalog yet.
+OpenShift cluster. For `oc-mirror --v2 list operators`, `--catalogs --version=4.18` ran in the lab with `oc-mirror` 2.0.0
+and gave the output above. The forms with `--catalog`, `--package` and `--channel` did not run yet.
