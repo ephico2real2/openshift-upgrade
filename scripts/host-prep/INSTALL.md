@@ -19,7 +19,7 @@ The examples use the test server of 2026-11-22: Rocky Linux 9.9 at Hetzner, with
 | 8 | Host | Does a dry run of `install-mirror-registry.sh` |
 | 9 | Host | Installs the mirror registry |
 | 10 | Host and workstation | Makes sure that the registry works |
-| 11 | Your workstation | Copies the playbooks and the pull secret to the host |
+| 11 | Your workstation | Copies the repository and the pull secret to the host |
 | 12 | Host | Encrypts the pull secret with Ansible Vault |
 | 13 | Host | Uses the pull secret for an `oc-mirror` run |
 
@@ -393,28 +393,37 @@ without `--tls-verify=false`:
 podman login -u init "$REGISTRY_HOST:8443"
 ```
 
-## 11. Copy the playbooks and the pull secret to the host
+## 11. Copy the repository and the pull secret to the host
 
 The mirror registry does not need the Red Hat pull secret. `oc-mirror` needs it to pull images from Red Hat. The
-playbooks in `oc-mirror-ansible/` read it from an Ansible Vault file.
+playbooks in `oc-mirror-ansible/` read it from an Ansible Vault file. This step copies the whole repository to the
+host. The playbooks, the guides and the scripts then have the same paths as on your workstation.
 
-On your workstation, in the root of this repository, set the path of your pull secret:
+`rsync` also copies files that git ignores. On your workstation, in the root of this repository, list them first:
+
+```bash
+git status --short --ignored | grep '^!!'
+```
+
+In the lab, the output was `.DS_Store` and `tools/`. `tools/` holds the tarballs and the plain pull secret, so the
+copy leaves it out. If the output shows other files, add an `--exclude` for each one.
+
+Set the path of your pull secret, and copy the repository and the pull secret:
 
 ```bash
 LOCAL_PULL_SECRET=tools/pull-secret.txt
-```
-
-Copy the playbooks and the pull secret:
-
-```bash
-rsync -a --partial --progress --exclude .DS_Store \
-    oc-mirror-ansible/ "$SSH_TARGET":/root/oc-mirror-ansible/
+rsync -a --partial --progress --exclude .DS_Store --exclude /tools/ \
+    ./ "$SSH_TARGET":/root/openshift-upgrade/
 scp "$LOCAL_PULL_SECRET" "$SSH_TARGET":/root/tools/pull-secret.txt
-ssh "$SSH_TARGET" 'chown -R root:root /root/oc-mirror-ansible /root/tools && chmod 600 /root/tools/pull-secret.txt'
+ssh "$SSH_TARGET" 'chown -R root:root /root/openshift-upgrade /root/tools && chmod 600 /root/tools/pull-secret.txt'
 ```
 
-`rsync` also copies files that git ignores. Before the copy, make sure that `git status --short --ignored
-oc-mirror-ansible/` shows nothing.
+The `/` at the start of `/tools/` matters. It matches only the `tools/` folder at the root of the repository. Without
+it, `rsync` also leaves out `docs/tools/`. The copy includes `.git`, so the history is on the host too. To use `git`
+there, run `dnf install -y git` on the host.
+
+To see what the copy sends before you run it, add `-v --dry-run` to the `rsync` command. In the lab, the dry run
+listed 742 entries and 48 MB, with no top-level `tools/` entry and no `pull-secret.txt`.
 
 ## 12. Encrypt the pull secret with Ansible Vault
 
@@ -422,7 +431,7 @@ On the host, set the three paths:
 
 ```bash
 PULL_SECRET=/root/tools/pull-secret.txt
-PLAYBOOK_DIR=/root/oc-mirror-ansible
+PLAYBOOK_DIR=/root/openshift-upgrade/oc-mirror-ansible
 VAULT_FILE=$PLAYBOOK_DIR/vars/redhat-pull-secret.json
 ```
 
@@ -470,7 +479,7 @@ For a manual run, make a temporary auth file. `oc-mirror` needs two logins in it
 registry, to push. Set the paths on the host:
 
 ```bash
-VAULT_FILE=/root/oc-mirror-ansible/vars/redhat-pull-secret.json
+VAULT_FILE=/root/openshift-upgrade/oc-mirror-ansible/vars/redhat-pull-secret.json
 AUTH_FILE=/run/user/0/containers/auth.json
 ```
 
@@ -558,7 +567,7 @@ Sources:
 | 8 | Yes. All checks passed with the real name, without `SSL_CERT` and `SSL_KEY` |
 | 9 | Yes, on 2026-11-22. `failed=0`, 4 minutes |
 | 10 | Yes for the units, the pod, `/health/instance` (HTTP 200), no named volumes, and the three mounts. `podman login` not recorded yet |
-| 11 | The `rsync` of the playbooks, as a dry run from macOS. The `scp` of the pull secret did not run |
+| 11 | The `rsync` of the whole repository, as a dry run from macOS with `-v`: 742 entries, 48 MB, no top-level `tools/`, no `pull-secret.txt`, `docs/tools/` kept. The `scp` of the pull secret did not run |
 | 12 | Yes, in a Rocky Linux 9 container with a dummy pull secret, `ansible-core-2.14.18-5.el9` and `jq-1.6-21.el9_9`. The Vault file had mode `600` and the header `$ANSIBLE_VAULT;1.1;AES256` |
 | 13 | The auth file from the Vault file, in the same container, with mode `600`. `podman login` and `oc-mirror` did not run |
 | Replace the TLS certificate | Not yet. Only the flags were read from `mirror-registry upgrade --help` of 2.0.13 |
