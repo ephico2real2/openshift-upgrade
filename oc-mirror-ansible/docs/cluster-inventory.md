@@ -167,7 +167,7 @@ On the host, set the paths:
 
 ```bash
 CATALOG_IMAGE=registry.redhat.io/redhat/redhat-operator-index:v4.18
-OUT=/registry-data/oc-mirror/catalogs/redhat-operator-index-v4.18
+OUT=/data/oc-mirror/catalogs/redhat-operator-index-v4.18
 mkdir -p "$OUT"
 ```
 
